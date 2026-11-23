@@ -99,6 +99,10 @@ class Manager:
         self.redirect = redirect and self.d.has_extension('Composite')
         self.previous_classes = None
         self.overlays = {}  # override-redirect Windows 7 shell windows kept above the taskbar and Start menu
+        # Mapped override-redirect top-level windows: Wine's menus (the Start
+        # menu's All Programs cascades), tooltips and other popups that place
+        # themselves and that raising the taskbar or Start menu must not cover.
+        self.unmanaged = set()
         # Windows without a cursor of their own, such as the menus of Linux
         # applications while they hold the pointer, show the root's: an
         # arrow, as window managers set, instead of the X server's cross.
@@ -211,6 +215,8 @@ class Manager:
     def manage(self, w):
         attrs = w.get_attributes()
         if attrs.override_redirect or w.id == self.support.id:
+            if attrs.override_redirect:
+                self.unmanaged.add(w.id)
             w.map()
             return
         if w.id not in self.clients:
@@ -417,6 +423,27 @@ class Manager:
         temporary.write_text(f'{self.shell_keys} {kind}' + ''.join(f' {k:x}' for k in keys) + '\n')
         temporary.replace(self.ipc / 'shellkeys.tsv')
 
+    def stacking(self):
+        """The root's children, bottom to top."""
+        try:
+            return [w.id for w in self.root.query_tree().children]
+        except error.XError:
+            return []
+
+    def keep_unmanaged_above(self, before, raised):
+        """Raise again, in their order, the override-redirect windows that were
+        above any of the RAISED windows in BEFORE (a stacking): the All
+        Programs menu over the Start menu that a restack had raised over it."""
+        positions = [before.index(i) for i in raised if i in before]
+        if not positions:
+            return
+        for window_id in before[min(positions)+1:]:
+            if window_id in self.unmanaged and window_id not in self.overlays:
+                try:
+                    self.d.create_resource_object('window', window_id).configure(stack_mode=X.Above)
+                except error.XError:
+                    self.unmanaged.discard(window_id)
+
     def raise_overlays(self):
         # Windows 7's Start button over the taskbar and the user picture over the
         # Start menu are unmanaged (override-redirect) windows of their own;
@@ -440,7 +467,9 @@ class Manager:
             # An XP Start popup needs real X keyboard focus for Wine activation,
             # without becoming the active application task or an Alt+Tab entry.
             w.map()
+            before = self.stacking()
             w.configure(stack_mode=X.Above)
+            self.keep_unmanaged_above(before, {w.id})
             self.raise_overlays()
             if self.atom('WM_TAKE_FOCUS') in self.prop(w, 'WM_PROTOCOLS'):
                 self.message(w, 'WM_PROTOCOLS', [self.atom('WM_TAKE_FOCUS'), X.CurrentTime, 0, 0, 0])
@@ -521,7 +550,11 @@ class Manager:
             w.kill_client()
 
     def unmanage(self, window_id):
-        self.clients.pop(window_id, None)
+        self.unmanaged.discard(window_id)
+        if self.clients.pop(window_id, None) is None and window_id not in self.frames.keys() | self.frames.values():
+            # Not a client: Wine destroys short-lived top-level windows (a
+            # submenu's toolbar) while the Start menu's cascades change.
+            return
         self.previous_icons.pop(window_id, None)
         (self.ipc / f'icon-{window_id:x}.argb').unlink(missing_ok=True)
         (self.ipc / f'icon-{window_id:x}-small.argb').unlink(missing_ok=True)
@@ -545,6 +578,8 @@ class Manager:
         # Native clients remain root children. The genuine Wine nonclient frame
         # sits immediately below its native client, so Wine draws the XP caption
         # and resize borders while the native pixels cover its unused client area.
+        before = self.stacking()
+        raised = set()
         for frame_id, native_id in self.frames.items():
             if frame_id in self.clients and native_id in self.clients:
                 self.clients[frame_id]['w'].configure(sibling=self.clients[native_id]['w'], stack_mode=X.Below)
@@ -554,21 +589,26 @@ class Manager:
         for c in self.clients.values():
             if c['kind'] == 'dock' and not c['hidden']:
                 c['w'].configure(stack_mode=X.Above)
+                raised.add(c['w'].id)
         # Win32 topmost windows (EWMH above), such as XP's dimmed shut down
         # screen, cover the topmost taskbar; keep their transients above them.
         above = self.atom('_NET_WM_STATE_ABOVE')
-        raised = set()
+        topmost = set()
         for c in list(self.clients.values()):
             if c['kind'] == 'normal' and not c['hidden'] and above in self.prop(c['w'], '_NET_WM_STATE'):
                 c['w'].configure(stack_mode=X.Above)
-                raised.add(c['w'].id)
+                topmost.add(c['w'].id)
         for i, c in list(self.clients.items()):
-            if c['kind'] == 'normal' and not c['hidden'] and i not in raised:
-                if c['owner'] in raised:
+            if c['kind'] == 'normal' and not c['hidden'] and i not in topmost:
+                if c['owner'] in topmost:
                     c['w'].configure(stack_mode=X.Above)
+                    raised.add(i)
+        raised |= topmost
         for c in self.clients.values():
             if c['kind'] == 'popup' and not c['hidden']:
                 c['w'].configure(stack_mode=X.Above)
+                raised.add(c['w'].id)
+        self.keep_unmanaged_above(before, raised)
         self.raise_overlays()
         ids = [i for i, c in self.clients.items() if c['kind'] != 'proxy']
         self.setprop(self.root, '_NET_CLIENT_LIST', Xatom.WINDOW, ids)
@@ -979,6 +1019,8 @@ class Manager:
         if e.type == X.MapRequest:
             self.manage(e.window)
         elif e.type == X.MapNotify:
+            if e.override:
+                self.unmanaged.add(e.window.id)
             if e.override and e.window.id not in self.overlays:
                 try:
                     cls = bytes(self.prop(e.window, '_WIN4WINE_CLASS')).strip(b'\0').lower()
@@ -1016,6 +1058,7 @@ class Manager:
             self.overlays.pop(e.window.id, None)
             self.unmanage(e.window.id)
         elif e.type == X.UnmapNotify:
+            self.unmanaged.discard(e.window.id)
             c = self.clients.get(e.window.id)
             # A minimized client that withdraws itself sends only the synthetic
             # UnmapNotify (XWithdrawWindow); Wine 11 restores a minimized window
