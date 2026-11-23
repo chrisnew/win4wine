@@ -27,6 +27,11 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = Path.home() / '.config/win4wine/session.json'
 # Seconds the shut-down screen waits for the system to end the session (compositor)
 POWER_OFF_WAIT = 60
+# How long the started shell's taskbar may be away before the shell counts as
+# failed. A program that changes the display mode (a full-screen game going
+# to 640x480) leaves the taskbar outside the new screen for a moment, and
+# Wine unmaps a window that is wholly outside it until Explorer moves it in.
+TASKBAR_GRACE = 10
 IM_VARIABLES = ('XMODIFIERS', 'GTK_IM_MODULE', 'QT_IM_MODULE', 'SDL_IM_MODULE', 'CLUTTER_IM_MODULE')
 
 
@@ -519,6 +524,7 @@ class Session:
             shell = self.spawn([self.wine, self.shell['command']], 'xp-shell')
             started = time.monotonic()
             ready = False
+            missing = None  # since when the started shell's taskbar is away
             while not self.stopping:
                 if wm and wm.poll() is not None:
                     raise RuntimeError('WM exited during session')
@@ -531,7 +537,14 @@ class Session:
                     self.hide_welcome()
                     if attempt == 1:
                         self.play_sound('SystemStart')
-                if ready and not has_tray:
+                if ready and has_tray:
+                    missing = None
+                elif ready and (shell.poll() is not None or self.request.exists()):
+                    # The shell exited, or logs off: no waiting for the taskbar.
+                    break
+                elif ready and missing is None:
+                    missing = time.monotonic()
+                elif ready and time.monotonic()-missing > TASKBAR_GRACE:
                     break
                 if not ready and (time.monotonic()-started > self.readiness_timeout or shell.poll() is not None):
                     break
@@ -539,7 +552,7 @@ class Session:
                     break
                 # While the shell starts, its taskbar may get its class or
                 # size without an event this client sees; check every second.
-                self.wait((wm, im, proxy, shell), None if ready else 1)
+                self.wait((wm, im, proxy, shell), None if ready and missing is None else 1)
             if self.stopping:
                 break
             if self.end_requested(shell):
