@@ -379,6 +379,8 @@ class Session:
             try:
                 p = w.get_full_property(self.class_atom, X.AnyPropertyType)
                 if p and bytes(p.value).rstrip(b'\0').lower() == b'shell_traywnd' and w.get_attributes().map_state == X.IsViewable:
+                    if self.tray_window is None or self.tray_window.id != w.id:
+                        self.watch(w)
                     self.tray_window = w
                     geometry = w.get_geometry()
                     return geometry.width >= 200 and geometry.height >= 20
@@ -386,8 +388,23 @@ class Session:
                 pass
         if self.tray_window is not None:
             self.tray_window = None
+            self.watch(None)
             return self.tray()
         return False
+
+    def watch(self, taskbar):
+        """Wake for the changes of TASKBAR only, or of every top-level window
+        while there is none. Each step of a window drag changes top-level
+        windows, and waking for them cost a tenth of a core on an Atom."""
+        root = self.d.screen().root
+        try:
+            if taskbar:
+                taskbar.change_attributes(event_mask=X.StructureNotifyMask)
+                root.change_attributes(event_mask=X.NoEventMask)
+            else:
+                root.change_attributes(event_mask=X.SubstructureNotifyMask)
+        except error.XError:
+            root.change_attributes(event_mask=X.SubstructureNotifyMask)
 
     def wait(self, processes, timeout=None):
         """Sleep until a window changes, one of the processes exits, a signal comes or the timeout passes."""

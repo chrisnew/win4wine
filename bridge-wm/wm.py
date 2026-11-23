@@ -35,13 +35,13 @@ VOLUME_KEYS = {
 
 
 class Inotify:
-    """Wake for the proxy's command and frame files in the IPC directory."""
+    """Wake for the proxy's command and frame files in the IPC directory
+    (MASK: the inotify events to wake for; tray.py's are only renamed)."""
 
-    def __init__(self, directory):
+    def __init__(self, directory, mask=IN_CLOSE_WRITE | IN_MOVED_TO):
         libc = ctypes.CDLL(None, use_errno=True)
         self.fd = libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
-        if self.fd < 0 or libc.inotify_add_watch(self.fd, os.fsencode(directory),
-                                                 IN_CLOSE_WRITE | IN_MOVED_TO) < 0:
+        if self.fd < 0 or libc.inotify_add_watch(self.fd, os.fsencode(directory), mask) < 0:
             raise OSError(ctypes.get_errno(), 'inotify')
 
     def names(self):
@@ -299,12 +299,19 @@ class Manager:
             c['owner'] = owner.id if owner else 0
 
     def configure(self, c, **values):
-        """Configure a client and tell it its new root geometry (ICCCM)."""
+        """Configure a client and tell it its new root geometry (ICCCM).
+
+        Clients stay root children, so when the geometry changes the X
+        server's own ConfigureNotify already gives root coordinates; the
+        synthetic one is for requests that change nothing, which the server
+        does not answer. Sending both cost a fifth of the WM's work in a drag
+        (two windows move in each step)."""
         c['w'].configure(**values)
-        x, y, width, height, border = c['geometry']
+        x, y, width, height, border = previous = c['geometry']
         c['geometry'] = (values.get('x', x), values.get('y', y), values.get('width', width),
                          values.get('height', height), values.get('border_width', border))
-        self.configure_notify(c['w'])
+        if c['geometry'] == previous:
+            self.configure_notify(c['w'])
 
     def redraw_native(self, w):
         # Wine keeps its own window surfaces. Native clients (notably xterm on
