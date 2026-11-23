@@ -35,8 +35,11 @@ def environment(base, config, shell):
     prefix = Path(config['prefix']).resolve(strict=True)
     # WIN4WINE_EXTERNAL_SHELL is the opt-in of win4wine's Wine changes: without
     # it a program gets Wine's own behaviour (no Windows 7 Basic frames, for one).
+    # No winemenubuilder: for each link an installer saves on the desktop it
+    # writes a Linux launcher (NAME.desktop) beside it, into the prefix's
+    # Desktop folder, which the shell shows as a desktop item of its own.
     env = dict(base, WINEPREFIX=str(prefix), WIN4WINE_EXTERNAL_SHELL='1',
-               WINEDLLOVERRIDES=f'explorer=b;{shell["module"]}=n;mscoree,mshtml=;uxtheme=b')
+               WINEDLLOVERRIDES=f'explorer=b;{shell["module"]}=n;mscoree,mshtml=;uxtheme=b;winemenubuilder.exe=d')
     if shell['folders']:
         # Wine's explorer.exe hands folder windows to the shell's own explorer.
         env['WIN4WINE_FOLDER_SHELL'] = shell['command']
