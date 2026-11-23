@@ -1,6 +1,6 @@
 # Wine のパッチ
 
-`wine/patches/` には、未改変の Wine 11.0（`wine/upstream.env` の commit）に上から順に当てる 151 本のパッチがあります。
+`wine/patches/` には、未改変の Wine 11.0（`wine/upstream.env` の commit）に上から順に当てる 152 本のパッチがあります。
 当てるのは `wine/build.sh` で、実際の適用は `wine/patch-state.py` が行います（途中まで当たったソースにも、足りない分だけを当てます）。
 
 番号の付け直しや、以前の番号との対応表は [history/patch-history.md](history/patch-history.md) にあります。
@@ -266,6 +266,7 @@ XP と ReactOS のシェルのための変更のうち、Windows 7 のシェル�
 | 0149 | ntdll: XP のセッションで、実行ファイルの横に XP の comctl32.dll（native。システムのディレクトリは除く）があるときは comctl32 の SxS のリダイレクトを使わず、その XP の Common Controls 6 だけを使う（画面のプロパティのボタンがクラシックになっていた。ReactOS のシェルは 0143）（AshesTom） | あり（XP のセッション） |
 | 0150 | user32: XP のセッションで、XP の comctl32 を横に置いたプロセスは、コモン コントロールのクラス名を版つきにしない（Internet Explorer 6 のメニュー バー、ツール バー、アドレス バー、ステータス バーが作られなかった）（AshesTom） | あり（XP のセッション） |
 | 0151 | user32: PrivateExtractIconsW で 2 つの大きさ（32 と 16、48 と 16）を一度に取るとき、それぞれの大きさのアイコンをその大きさに選んだ画像から作る（16x16 が 32x32・48x48 の縮小になり、縁のアルファが無かった。XP のクイック起動とシステムのイメージ リストのアイコン。実機と 0 画素差。Wine 全体） | なし |
+| 0152 | win32u: 表示したばかりの最上位の窓は、その窓と子の窓が描き終えるまで（最大 300 ms）画面に出さない（新しい surface は白く、描き終える前の flush で XP のスタートメニューが約 100 ms 白い四角に見えた。0060 と同じまとまりで、まだ番号を振り直していない） | あり |
 
 ## 並び順の考え方
 

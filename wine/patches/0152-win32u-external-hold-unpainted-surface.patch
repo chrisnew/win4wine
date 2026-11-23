@@ -1,0 +1,154 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] win32u: keep a window just shown off the screen until it has painted
+
+Purpose: XP's Start menu shows at once in its painted state, without a
+white box first.
+Windows behavior: a top-level window that shows appears with its painted
+contents; a window that is slow to paint shows what was on the screen
+until it does.
+Wine before: a new window surface starts white (see 0060), and win32u
+flushes surfaces when a thread waits or every 50 ms of work. XP's Start
+menu (DV2ControlHost, which has a background brush) took about 100 ms to
+paint its children after it showed, and a flush in between put its white
+surface on the screen: captured frame by frame on an Atom N550, the menu
+window was white from 44 ms to 148 ms after it mapped.
+Change: when a top-level, non-layered window shows, its surface is held:
+window_surface_flush skips it, keeping its bounds dirty, while the
+wineserver reports a paint or non-client paint pending for the window or
+any of its children (get_update_region with UPDATE_ALLCHILDREN), for at
+most 300 ms. The next flush after its last paint shows it.
+Evidence: the same capture with this change.
+Scope: external shell opt-in only; top-level, non-layered windows, from
+the moment they show.
+---
+ dlls/win32u/win32u_private.h |    1 +
+ dlls/win32u/dce.c            |   75 ++++++++++++++++++++++++++++++++++++++++++
+ dlls/win32u/window.c         |    3 ++
+ 3 files changed, 79 insertions(+)
+
+diff --git a/dlls/win32u/win32u_private.h b/dlls/win32u/win32u_private.h
+index 99474bc..edcb470 100644
+--- a/dlls/win32u/win32u_private.h
++++ b/dlls/win32u/win32u_private.h
+@@ -49,6 +49,7 @@ extern void create_window_surface( HWND hwnd, BOOL create_layered, const RECT *s
+ extern struct window_surface *get_driver_window_surface( struct window_surface *surface, UINT monitor_dpi );
+ extern void erase_now( HWND hwnd, UINT rdw_flags );
+ extern void flush_window_surfaces( BOOL idle );
++extern void hold_window_surface( struct window_surface *surface, HWND hwnd );
+ extern void move_window_bits( HWND hwnd, const struct window_rects *rects, const RECT *valid_rects );
+ extern void move_window_bits_surface( HWND hwnd, const RECT *window_rect, struct window_surface *old_surface,
+                                       const RECT *old_visible_rect, const RECT *valid_rects );
+diff --git a/dlls/win32u/dce.c b/dlls/win32u/dce.c
+index 9d34962..23cae11 100644
+--- a/dlls/win32u/dce.c
++++ b/dlls/win32u/dce.c
+@@ -49,6 +49,20 @@ struct dce
+ 
+ static struct list dce_list = LIST_INIT(dce_list);
+ 
++static BOOL get_update_flags( HWND hwnd, HWND *child, UINT *flags );
++
++/* win4wine: the surfaces of top-level windows just shown, kept off the screen
++ * until the window and its children have painted, for at most HOLD_MS. */
++#define HELD_SURFACES 8
++#define HOLD_MS 300
++static struct
++{
++    struct window_surface *surface;  /* compared only, never used */
++    HWND hwnd;
++    DWORD until;
++} held_surfaces[HELD_SURFACES];
++static pthread_mutex_t held_surfaces_lock = PTHREAD_MUTEX_INITIALIZER;
++
+ #define DCE_CACHE_SIZE 64
+ 
+ static struct list window_surfaces = LIST_INIT( window_surfaces );
+@@ -609,6 +623,64 @@ void *window_surface_get_color( struct window_surface *surface, BITMAPINFO *info
+     return gdi_bits.ptr;
+ }
+ 
++/*******************************************************************
++ *           hold_window_surface
++ *
++ * win4wine: keep the surface of top-level window HWND, just shown, off the
++ * screen until the window has painted. A new surface starts white, and the
++ * first flush (an idle wait, or 50 ms of work) came while XP's Start menu was
++ * still painting its children: it showed as a white box for about 100 ms on
++ * an Atom N550. Windows shows such a window once it has painted.
++ */
++void hold_window_surface( struct window_surface *surface, HWND hwnd )
++{
++    DWORD now = NtGetTickCount();
++    unsigned int i, slot = HELD_SURFACES;
++
++    pthread_mutex_lock( &held_surfaces_lock );
++    for (i = 0; i < HELD_SURFACES; i++)
++    {
++        if (held_surfaces[i].surface == surface) { slot = i; break; }
++        if (slot == HELD_SURFACES && (!held_surfaces[i].surface || (int)(now - held_surfaces[i].until) >= 0))
++            slot = i;
++    }
++    if (slot < HELD_SURFACES)
++    {
++        held_surfaces[slot].surface = surface;
++        held_surfaces[slot].hwnd = hwnd;
++        held_surfaces[slot].until = now + HOLD_MS;
++    }
++    pthread_mutex_unlock( &held_surfaces_lock );
++}
++
++/* Whether SURFACE is held: its window or a child still has to paint. */
++static BOOL surface_held( struct window_surface *surface )
++{
++    DWORD now = NtGetTickCount();
++    unsigned int i;
++    HWND hwnd = 0;
++    UINT flags;
++
++    pthread_mutex_lock( &held_surfaces_lock );
++    for (i = 0; i < HELD_SURFACES; i++)
++    {
++        if (held_surfaces[i].surface != surface) continue;
++        if ((int)(now - held_surfaces[i].until) < 0) hwnd = held_surfaces[i].hwnd;
++        else held_surfaces[i].surface = NULL;
++        break;
++    }
++    pthread_mutex_unlock( &held_surfaces_lock );
++    if (!hwnd) return FALSE;
++
++    flags = UPDATE_NONCLIENT | UPDATE_PAINT | UPDATE_ALLCHILDREN;
++    if (get_update_flags( hwnd, NULL, &flags ) && (flags & (UPDATE_NONCLIENT | UPDATE_PAINT))) return TRUE;
++
++    pthread_mutex_lock( &held_surfaces_lock );
++    if (i < HELD_SURFACES && held_surfaces[i].surface == surface) held_surfaces[i].surface = NULL;
++    pthread_mutex_unlock( &held_surfaces_lock );
++    return FALSE;
++}
++
+ W32KAPI void window_surface_flush( struct window_surface *surface )
+ {
+     char color_buf[FIELD_OFFSET( BITMAPINFO, bmiColors[256] )];
+@@ -619,6 +691,9 @@ W32KAPI void window_surface_flush( struct window_surface *surface )
+     BOOL flushed = FALSE;
+     void *color_bits;
+ 
++    /* the bounds stay dirty, for the flush after its paint */
++    if (win4wine_external_shell() && surface_held( surface )) return;
++
+     window_surface_lock( surface );
+ 
+     /* align bounds / dirty rect to help with 1bpp shape bitmap updates */
+diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
+index b7710ba..1cdaeca 100644
+--- a/dlls/win32u/window.c
++++ b/dlls/win32u/window.c
+@@ -2392,6 +2392,9 @@ static BOOL apply_window_pos( HWND hwnd, HWND insert_after, UINT swp_flags, stru
+             new_surface != &dummy_surface && !is_layered && (swp_flags & SWP_SHOWWINDOW) &&
+             !get_class_long_ptr( hwnd, GCLP_HBRBACKGROUND, FALSE ))
+             copy_screen_to_new_surface( hwnd, &new_rects->window );
++        if (win4wine_external_shell() && !is_child && new_surface &&
++            new_surface != &dummy_surface && !is_layered && (swp_flags & SWP_SHOWWINDOW))
++            hold_window_surface( new_surface, hwnd );
+         if (old_surface)
+         {
+             if (valid_rects)
