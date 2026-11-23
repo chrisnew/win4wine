@@ -8,6 +8,7 @@ from pathlib import Path
 import select
 import signal
 import struct
+import subprocess
 from Xlib import X, XK, Xatom, Xutil, display, error, protocol
 from Xlib.ext import composite
 from icons import payload as icon_payload
@@ -17,6 +18,20 @@ IN_CLOSE_WRITE, IN_MOVED_TO = 0x8, 0x80
 VIRTUAL_KEYS = {XK.XK_Tab: 0x09, XK.XK_Pause: 0x13, XK.XK_Break: 0x13, XK.XK_space: 0x20,
                 XK.XK_Escape: 0x1b, XK.XK_Return: 0x0d,
                 XK.XK_Left: 0x25, XK.XK_Up: 0x26, XK.XK_Right: 0x27, XK.XK_Down: 0x28}
+# The keyboard's volume keys (XF86AudioRaiseVolume, XF86AudioLowerVolume,
+# XF86AudioMute) change the default sink, as XP's set its master volume,
+# through PipeWire (wpctl) or PulseAudio (pactl) like xptray's volume flyout.
+VOLUME_STEP = 3
+VOLUME_KEYS = {
+    0x1008ff13: f'if command -v wpctl >/dev/null; then wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ {VOLUME_STEP}%+; '
+                f'else v=$(pactl get-sink-volume @DEFAULT_SINK@ | awk \'/Volume/{{gsub("%","",$5); print $5; exit}}\'); '
+                f'if [ "${{v:-0}}" -ge {100 - VOLUME_STEP} ]; then pactl set-sink-volume @DEFAULT_SINK@ 100%; '
+                f'else pactl set-sink-volume @DEFAULT_SINK@ +{VOLUME_STEP}%; fi; fi',
+    0x1008ff11: f'if command -v wpctl >/dev/null; then wpctl set-volume @DEFAULT_AUDIO_SINK@ {VOLUME_STEP}%-; '
+                f'else pactl set-sink-volume @DEFAULT_SINK@ -{VOLUME_STEP}%; fi',
+    0x1008ff12: 'if command -v wpctl >/dev/null; then wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle; '
+                'else pactl set-sink-mute @DEFAULT_SINK@ toggle; fi',
+}
 
 
 class Inotify:
@@ -130,6 +145,12 @@ class Manager:
             self.root.grab_key(code, X.AnyModifier, True, X.GrabModeAsync, X.GrabModeSync)
         for modifiers in (0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask):
             self.root.grab_key(self.escape, X.ControlMask | modifiers, True, X.GrabModeAsync, X.GrabModeSync)
+        self.volume_codes = {}
+        for keysym, script in VOLUME_KEYS.items():
+            code = self.d.keysym_to_keycode(keysym)
+            if code:
+                self.volume_codes[code] = script
+                self.root.grab_key(code, X.AnyModifier, True, X.GrabModeAsync, X.GrabModeAsync)
         for w in self.root.query_tree().children:
             if w.get_attributes().map_state == X.IsViewable:
                 self.manage(w)
@@ -366,6 +387,14 @@ class Manager:
                     self.shell_combo = []
         finally:
             self.d.allow_events(mode, e.time)
+
+    def volume_key(self, code):
+        """Run a volume key's command; held keys repeat it."""
+        try:
+            subprocess.Popen(['/bin/sh', '-c', self.volume_codes[code]], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError as err:
+            print(f'volume key: {err}', flush=True)
 
     def shell_combo_event(self, e):
         """A key while the WM holds the keyboard for the Windows key."""
@@ -1035,6 +1064,8 @@ class Manager:
                 w.configure(width=max(64, width+dx), height=max(32, height+dy))
         elif e.type == X.ButtonRelease:
             self.drag = None
+        elif e.type == X.KeyPress and e.detail in self.volume_codes:
+            self.volume_key(e.detail)
         elif self.shell_combo is not None and e.type in (X.KeyPress, X.KeyRelease):
             # The WM holds the keyboard until the Windows key is released;
             # repeated presses of that key are ignored there.
