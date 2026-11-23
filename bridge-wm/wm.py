@@ -299,19 +299,12 @@ class Manager:
             c['owner'] = owner.id if owner else 0
 
     def configure(self, c, **values):
-        """Configure a client and tell it its new root geometry (ICCCM).
-
-        Clients stay root children, so when the geometry changes the X
-        server's own ConfigureNotify already gives root coordinates; the
-        synthetic one is for requests that change nothing, which the server
-        does not answer. Sending both cost a fifth of the WM's work in a drag
-        (two windows move in each step)."""
+        """Configure a client and tell it its new root geometry (ICCCM)."""
         c['w'].configure(**values)
-        x, y, width, height, border = previous = c['geometry']
+        x, y, width, height, border = c['geometry']
         c['geometry'] = (values.get('x', x), values.get('y', y), values.get('width', width),
                          values.get('height', height), values.get('border_width', border))
-        if c['geometry'] == previous:
-            self.configure_notify(c['w'])
+        self.configure_notify(c['w'])
 
     def redraw_native(self, w):
         # Wine keeps its own window surfaces. Native clients (notably xterm on
