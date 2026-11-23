@@ -243,26 +243,45 @@ static LRESULT CALLBACK proxy_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
-struct notification { WPARAM event; LPARAM window; };
-static BOOL CALLBACK deliver(HWND hwnd, LPARAM parameter)
+/* The windows that take shell hook messages (Wine 0026 marks them). Finding
+ * them asks wineserver about every window, a request each, and a window that
+ * opens sends several messages: about 40 ms each on an Atom N550. They are
+ * looked for again when one has lost its mark (the shell restarted), and at
+ * most every two seconds otherwise, for a shell that registers later. */
+#define MAX_SHELL_HOOKS 8
+static HWND shell_hooks[MAX_SHELL_HOOKS];
+static unsigned shell_hook_count;
+static DWORD shell_hooks_found;
+
+static BOOL CALLBACK find_hook(HWND hwnd, LPARAM unused)
 {
-    struct notification *n = (struct notification *)parameter;
-    if (GetPropW(hwnd, L"Win4WineShellHook")) PostMessageW(hwnd, shell_message, n->event, n->window);
+    (void)unused;
+    if (shell_hook_count < MAX_SHELL_HOOKS && GetPropW(hwnd, L"Win4WineShellHook"))
+        shell_hooks[shell_hook_count++] = hwnd;
     return TRUE;
 }
 
-static BOOL CALLBACK deliver_tree(HWND hwnd, LPARAM parameter)
+static BOOL CALLBACK find_hook_tree(HWND hwnd, LPARAM unused)
 {
-    deliver(hwnd, parameter);
+    find_hook(hwnd, unused);
     /* XP registers its child task-switcher window, not the taskbar parent. */
-    EnumChildWindows(hwnd, deliver, parameter);
+    EnumChildWindows(hwnd, find_hook, unused);
     return TRUE;
 }
 
 static void notify(UINT event, HWND window)
 {
-    struct notification n = { event, (LPARAM)window };
-    EnumWindows(deliver_tree, (LPARAM)&n);
+    unsigned i;
+    BOOL stale = !shell_hook_count || GetTickCount() - shell_hooks_found > 2000;
+    for (i = 0; i < shell_hook_count && !stale; ++i)
+        stale = !GetPropW(shell_hooks[i], L"Win4WineShellHook");
+    if (stale)
+    {
+        shell_hook_count = 0;
+        EnumWindows(find_hook_tree, 0);
+        shell_hooks_found = GetTickCount();
+    }
+    for (i = 0; i < shell_hook_count; ++i) PostMessageW(shell_hooks[i], shell_message, event, (LPARAM)window);
 }
 
 /* The WM writes shellkeys.tsv when the Windows key or Ctrl+Esc is pressed
@@ -502,30 +521,64 @@ static void place_frame(struct client *c)
                  wanted.bottom - wanted.top, SWP_NOACTIVATE | SWP_NOZORDER);
 }
 
+/* A line of geometry.tsv: "XID x y width height maximized" and the work area. */
+static BOOL geometry_line(const char *line, unsigned long *xid, long long *x, long long *y, long long *width,
+                          long long *height, long long *maximized, RECT *workarea)
+{
+    long long ax, ay, aw, ah;
+    if (sscanf(line, "%lx %lld %lld %lld %lld %lld %lld %lld %lld %lld", xid, x, y, width, height,
+               maximized, &ax, &ay, &aw, &ah) != 10 || *width <= 0 || *height <= 0 ||
+        *width > 65535 || *height > 65535 || aw <= 0 || ah <= 0 || aw > 65535 || ah > 65535 ||
+        *x < -65535 || *x > 65535 || *y < -65535 || *y > 65535 ||
+        ax < -65535 || ax > 65535 || ay < -65535 || ay > 65535 ||
+        (*maximized != 0 && *maximized != 1)) return FALSE;
+    SetRect(workarea, ax, ay, ax + aw, ay + ah);
+    return TRUE;
+}
+
+/* A new frame goes around its client before it shows: placed once shown, it
+ * was painted twice, at its first place and size and again at the client's. */
+static void place_new_frame(struct client *c)
+{
+    WCHAR path[MAX_PATH + 32];
+    FILE *file;
+    unsigned long xid;
+    long long x, y, width, height, maximized;
+    char line[240];
+    RECT workarea;
+    swprintf(path, MAX_PATH + 32, L"%ls\\geometry.tsv", directory);
+    if (!(file = _wfopen(path, L"rb"))) return;
+    while (fgets(line, sizeof(line), file))
+        if (geometry_line(line, &xid, &x, &y, &width, &height, &maximized, &workarea) && xid == c->xid)
+        {
+            c->workarea = workarea;
+            c->x = x; c->y = y; c->width = width; c->height = height;
+            if (!maximized) place_frame(c);
+            break;
+        }
+    fclose(file);
+}
+
 static void frame_geometry(void)
 {
     WCHAR path[MAX_PATH + 32], target[MAX_PATH + 32];
     FILE *file;
     unsigned long xid;
-    long long x, y, width, height, maximized, ax, ay, aw, ah;
+    long long x, y, width, height, maximized;
     char line[240];
+    RECT workarea;
     unsigned i;
     swprintf(path, MAX_PATH + 32, L"%ls\\geometry.tsv", directory);
     file = _wfopen(path, L"rb");
     if (!file) return;
     while (fgets(line, sizeof(line), file))
     {
-        if (sscanf(line, "%lx %lld %lld %lld %lld %lld %lld %lld %lld %lld", &xid, &x, &y, &width, &height,
-                   &maximized, &ax, &ay, &aw, &ah) != 10 || width <= 0 || height <= 0 ||
-            width > 65535 || height > 65535 || aw <= 0 || ah <= 0 || aw > 65535 || ah > 65535 ||
-            x < -65535 || x > 65535 || y < -65535 || y > 65535 ||
-            ax < -65535 || ax > 65535 || ay < -65535 || ay > 65535 ||
-            (maximized != 0 && maximized != 1)) continue;
+        if (!geometry_line(line, &xid, &x, &y, &width, &height, &maximized, &workarea)) continue;
         for (i = 0; i < MAX_CLIENTS; ++i)
             if (clients[i].xid == xid && !clients[i].hidden)
             {
                 struct client *c = &clients[i];
-                SetRect(&c->workarea, ax, ay, ax + aw, ay + ah);
+                c->workarea = workarea;
                 if (!!GetPropW(c->hwnd, L"Win4WineMaximized") != !!maximized)
                 {
                     if (maximized) SetPropW(c->hwnd, L"Win4WineMaximized", (HANDLE)1);
@@ -679,7 +732,8 @@ static void snapshot(void)
     WCHAR path[MAX_PATH + 32];
     char line[4096];
     FILE *file;
-    unsigned i;
+    unsigned i, activations = 0;
+    struct client *activated[MAX_CLIENTS];
     swprintf(path, MAX_PATH + 32, L"%ls\\windows.tsv", directory);
     file = _wfopen(path, L"rb");
     if (!file) return; /* A missing snapshot is not an empty client list. */
@@ -707,6 +761,7 @@ static void snapshot(void)
             /* before the taskbar sees the window: Windows 7's keeps the icon of an
              * application's first window for its button */
             client_icon(c);
+            place_new_frame(c);
             ShowWindow(c->hwnd, SW_SHOWNOACTIVATE);
         }
         c->seen = 1;
@@ -724,21 +779,8 @@ static void snapshot(void)
         else if (!hidden && IsIconic(c->hwnd)) ShowWindow(c->hwnd, SW_SHOWNOACTIVATE);
         if (active != c->active)
         {
-            /* The frame looks active while its client has the X focus. Win32
-             * activation cannot always follow: like Windows, Wine refuses
-             * SetForegroundWindow to a process that did not get the last
-             * input, and the input goes to the native client, not to this
-             * process. So the frame's caption is set directly, both ways;
-             * it would otherwise keep the look of its last real activation. */
             c->active = active; /* before WM_NCACTIVATE, which proxy_proc checks */
-            if (active) SetForegroundWindow(c->hwnd);
-            SendMessageW(c->hwnd, WM_NCACTIVATE, active, 0);
-            /* Activations of other processes' windows around this one
-             * sometimes leave its caption painted in the previous state,
-             * though WM_NCACTIVATE's state is right (seen in the classic
-             * theme; a repaint shows it). Paint the caption again once
-             * they are over. */
-            SetTimer(c->hwnd, CAPTION_REPAINT_TIMER, 250, NULL);
+            activated[activations++] = c;
         }
     }
     fclose(file);
@@ -752,7 +794,30 @@ static void snapshot(void)
             for (unsigned j = 0; j < 3; j++) if (clients[i].relaunch[j]) GlobalDeleteAtom(clients[i].relaunch[j]);
             memset(&clients[i], 0, sizeof(clients[i]));
         }
+    /* The frames first: the WM shows a new client's frame once frames.tsv
+     * pairs them, and an activation can wait for the shell. */
     frame_geometry();
+    for (i = 0; i < activations; ++i)
+    {
+        /* The frame looks active while its client has the X focus. Win32
+         * activation cannot always follow: like Windows, Wine refuses
+         * SetForegroundWindow to a process that did not get the last
+         * input, and the input goes to the native client, not to this
+         * process. So the frame's caption is set directly, both ways;
+         * it would otherwise keep the look of its last real activation.
+         * SetForegroundWindow sends the shell its activation messages and
+         * waits for them, while XP Explorer adds the new taskbar button. */
+        struct client *c = activated[i];
+        if (!c->xid) continue; /* gone in this pass */
+        if (c->active) SetForegroundWindow(c->hwnd);
+        SendMessageW(c->hwnd, WM_NCACTIVATE, c->active, 0);
+        /* Activations of other processes' windows around this one
+         * sometimes leave its caption painted in the previous state,
+         * though WM_NCACTIVATE's state is right (seen in the classic
+         * theme; a repaint shows it). Paint the caption again once
+         * they are over. */
+        SetTimer(c->hwnd, CAPTION_REPAINT_TIMER, 250, NULL);
+    }
     syncing = 0;
 }
 
