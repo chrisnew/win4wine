@@ -724,9 +724,18 @@ class Manager:
             if c['restore'] is None:
                 c['restore'] = c['geometry'][:4]
             x, y, width, height = self.area
+            frame = next((self.clients[f]['w'] for f, n in self.frames.items() if n == w.id), None)
+            if frame and c['extents']:
+                # The proxy maximizes the frame (geometry.tsv says so) and
+                # sync_frames fits the client into it once frames.tsv has its
+                # maximized borders. Moving the client here first, to a guess
+                # from the restored frame, resized the frame twice more.
+                atoms = [self.atom('_NET_WM_STATE_MAXIMIZED_VERT'), self.atom('_NET_WM_STATE_MAXIMIZED_HORZ')]
+                self.setprop(w, '_NET_WM_STATE', Xatom.ATOM, list(set(self.prop(w, '_NET_WM_STATE')) | set(atoms)))
+                self.focus(w)
+                return
             # Fit the complete Wine border inside the work area, using its
             # measured extents rather than assuming classic or Luna metrics.
-            frame = next((self.clients[f]['w'] for f, n in self.frames.items() if n == w.id), None)
             if frame:
                 (nx, ny, nwidth, nheight, _), outer = c['geometry'], frame.get_geometry()
                 left, top = nx-outer.x, ny-outer.y

@@ -589,7 +589,11 @@ static void frame_geometry(void)
                 if (!!IsZoomed(c->hwnd) != !!maximized && !snap_moving(c->hwnd))
                     ShowWindow(c->hwnd, maximized ? SW_MAXIMIZE : SW_RESTORE);
                 c->x = x; c->y = y; c->width = width; c->height = height;
-                place_frame(c);
+                /* Wine sizes a maximized frame itself (Wine 0031) and the WM
+                 * fits the client into it: placing the frame around the
+                 * client's rectangle of the moment made the frame jump
+                 * between that and its maximized size while it maximized. */
+                if (!(maximized && IsZoomed(c->hwnd))) place_frame(c);
                 break;
             }
     }
