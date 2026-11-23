@@ -172,12 +172,7 @@ def themes(assets, prefix, wine):
     """Display Properties' Windows XP and Windows Classic themes."""
     env = dict(os.environ, WINEPREFIX=str(prefix), WINEDEBUG='-all', WINEDLLOVERRIDES='themeui=n')
     env.pop('WINEARCH', None)
-    # The Windows XP theme (luna.theme) names %WinDir%\web\wallpaper\Bliss.bmp.
-    jpeg = prefix / 'drive_c/windows/Web/Wallpaper/Bliss.jpg'
-    converter = BRIDGE / 'wallpaper-convert.exe'
-    if jpeg.is_file() and converter.is_file() and not jpeg.with_suffix('.bmp').exists():
-        subprocess.run([wine, str(converter), 'Z:' + str(jpeg).replace('/', '\\'),
-                        'Z:' + str(jpeg.with_suffix('.bmp')).replace('/', '\\')], env=env, check=False)
+    # The Windows XP theme's Bliss.bmp: stage.py's stage_media, at each start.
     # themeui's own registration: Theme.Manager, the visual style folders,
     # .theme and .msstyles files.
     subprocess.run([wine, r'C:\windows\syswow64\regsvr32.exe', '/s', r'C:\windows\system32\themeui.dll'],

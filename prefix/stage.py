@@ -140,17 +140,21 @@ def stage_media(prefix, wine=None):
         shutil.copyfile(source, target)
     # XP converts a JPEG wallpaper to Wallpaper1.bmp; without it, XP's desktop
     # switches to the HTML Active Desktop that this shell does not provide.
+    # Display Properties' Windows XP theme (luna.theme) names
+    # %WinDir%\web\wallpaper\Bliss.bmp, which XP's setup installs beside Bliss.jpg.
     jpeg = prefix / 'drive_c/windows/Web/Wallpaper/Bliss.jpg'
-    bitmap = prefix / f'drive_c/users/{user}/AppData/Local/Microsoft/Wallpaper1.bmp'
+    bitmaps = [bitmap for bitmap in (prefix / f'drive_c/users/{user}/AppData/Local/Microsoft/Wallpaper1.bmp',
+                                     jpeg.with_suffix('.bmp')) if not bitmap.exists()]
     converter = Path(__file__).resolve().parents[1] / '.local/bridge/wallpaper-convert.exe'
-    if wine and jpeg.is_file() and converter.is_file() and not bitmap.exists():
-        bitmap.parent.mkdir(parents=True, exist_ok=True)
+    if wine and jpeg.is_file() and converter.is_file() and bitmaps:
         env = dict(os.environ, WINEPREFIX=str(prefix), WINEDEBUG='-all')
         env.pop('WINEARCH', None)
         try:
-            subprocess.run([str(wine), str(converter), 'Z:' + str(jpeg).replace('/', '\\'),
-                            'Z:' + str(bitmap).replace('/', '\\')], env=env, check=False, timeout=120,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for bitmap in bitmaps:
+                bitmap.parent.mkdir(parents=True, exist_ok=True)
+                subprocess.run([str(wine), str(converter), 'Z:' + str(jpeg).replace('/', '\\'),
+                                'Z:' + str(bitmap).replace('/', '\\')], env=env, check=False, timeout=120,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         finally:
             # Do not leave a desktop started without the external shell flag.
             server = str(wine.with_name('wineserver'))
