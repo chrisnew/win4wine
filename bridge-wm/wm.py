@@ -944,8 +944,9 @@ class Manager:
             if c['icon_dirty']:
                 # The caption's 16x16 icon beside the big one; the proxy
                 # reads both when the big file changes, so it goes last.
-                data = (icon_payload(self.d, w, self.atom('_NET_WM_ICON'), 16),
-                        icon_payload(self.d, w, self.atom('_NET_WM_ICON')))
+                hints = []  # a WM_HINTS pixmap is read once for both sizes
+                data = (icon_payload(self.d, w, self.atom('_NET_WM_ICON'), 16, hints),
+                        icon_payload(self.d, w, self.atom('_NET_WM_ICON'), hints=hints))
                 if i not in self.previous_icons or data != self.previous_icons[i]:
                     for name, payload in zip((f'icon-{i:x}-small.argb', f'icon-{i:x}.argb'), data):
                         target = self.ipc / name
