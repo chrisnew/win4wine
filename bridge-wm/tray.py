@@ -33,6 +33,7 @@ from gi.repository import Gio, GLib, GdkPixbuf
 from Xlib import X, Xatom, display, error
 from Xlib.ext import composite, damage, shape, xtest
 from Xlib.protocol import event
+from wm import IN_MOVED_TO, Inotify
 
 WATCHER = 'org.kde.StatusNotifierWatcher'
 ITEM = 'org.kde.StatusNotifierItem'
@@ -567,8 +568,12 @@ class Host:
         self.tsv = None
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
         self.loop = GLib.MainLoop()
-        self.monitor = Gio.File.new_for_path(str(ipc)).monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, None)
-        self.monitor.connect('changed', self.changed)
+        # The WM and the proxy write their own files here all the time
+        # (geometry.tsv in each step of a window drag); a GIO monitor woke
+        # for each of their creations, writes and renames. The proxy renames
+        # the tray's files into place, so only renames are seen.
+        self.changes = Inotify(ipc, IN_MOVED_TO)
+        GLib.io_add_watch(self.changes.fd, GLib.PRIORITY_DEFAULT, GLib.IO_IN, self.changed)
         node = Gio.DBusNodeInfo.new_for_xml(WATCHER_XML)
         self.bus.register_object('/StatusNotifierWatcher', node.interfaces[0], self.method, self.property, None)
         Gio.bus_own_name_on_connection(self.bus, WATCHER, Gio.BusNameOwnerFlags.DO_NOT_QUEUE,
@@ -706,12 +711,10 @@ class Host:
             write_atomic(self.ipc / 'tray.tsv', text)
             self.tsv = text
 
-    def changed(self, monitor, file, other, event):
-        # The WM and the proxy write and remove their own files here all the
-        # time (several for each step of a window drag); look only at ours.
-        names = [f.get_basename() for f in (file, other) if f]
-        if any(name.endswith('.tray') or name == 'tray-size' for name in names):
+    def changed(self, *_):
+        if any(name.endswith('.tray') or name == 'tray-size' for name in self.changes.names()):
             self.commands()
+        return GLib.SOURCE_CONTINUE
 
     def commands(self):
         if (self.ipc / 'tray-size').exists() and getattr(self, 'size', None) != self.icon_size():
