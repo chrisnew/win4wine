@@ -20,13 +20,13 @@ VIRTUAL_KEYS = {XK.XK_Tab: 0x09, XK.XK_Pause: 0x13, XK.XK_Break: 0x13, XK.XK_spa
 
 
 class Inotify:
-    """Wake for the proxy's command and frame files in the IPC directory."""
+    """Wake for the proxy's command and frame files in the IPC directory
+    (MASK: the inotify events to wake for; tray.py's are only renamed)."""
 
-    def __init__(self, directory):
+    def __init__(self, directory, mask=IN_CLOSE_WRITE | IN_MOVED_TO):
         libc = ctypes.CDLL(None, use_errno=True)
         self.fd = libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
-        if self.fd < 0 or libc.inotify_add_watch(self.fd, os.fsencode(directory),
-                                                 IN_CLOSE_WRITE | IN_MOVED_TO) < 0:
+        if self.fd < 0 or libc.inotify_add_watch(self.fd, os.fsencode(directory), mask) < 0:
             raise OSError(ctypes.get_errno(), 'inotify')
 
     def names(self):
