@@ -239,15 +239,68 @@ static void set_icon(UINT id, BOOL show, HICON icon, const WCHAR *tip, const WCH
 
 /* ---- Linux side --------------------------------------------------------- */
 
-/* Reads a small file such as one of sysfs; returns FALSE if it is missing. */
+/* The sysfs and procfs files read in each poll stay open. A read from offset 0
+ * gives their current text, and Wine reads an open file without wineserver,
+ * where each CreateFile and CloseHandle is a request of its own: about 80 a
+ * second while the desktop is idle, with some 25 files read every second. */
+#define OPEN_FILES 48
+static struct
+{
+    WCHAR path[MAX_PATH];
+    HANDLE file;
+    ULONGLONG used;
+} open_files[OPEN_FILES];
+
+/* Reads all of a small file such as one of sysfs or procfs, at most SIZE - 1
+ * bytes; returns FALSE if it is missing. */
+static BOOL read_file(const WCHAR *path, char *buffer, DWORD size)
+{
+    int slot = -1, oldest = 0;
+    buffer[0] = 0;
+    for (int i = 0; i < OPEN_FILES; i++)
+    {
+        if (open_files[i].file && !wcscmp(open_files[i].path, path))
+        {
+            slot = i;
+            break;
+        }
+        if (open_files[i].used < open_files[oldest].used) oldest = i;
+    }
+    for (int attempt = 0; attempt < 2; attempt++)
+    {
+        OVERLAPPED start = {0};
+        DWORD done = 0;
+        if (slot < 0)
+        {
+            HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+            if (file == INVALID_HANDLE_VALUE) return FALSE;
+            slot = oldest;
+            if (open_files[slot].file) CloseHandle(open_files[slot].file);
+            wcsncpy(open_files[slot].path, path, MAX_PATH - 1);
+            open_files[slot].path[MAX_PATH - 1] = 0;
+            open_files[slot].file = file;
+        }
+        open_files[slot].used = GetTickCount64();
+        if (ReadFile(open_files[slot].file, buffer, size - 1, &done, &start))
+        {
+            buffer[done] = 0;
+            return TRUE;
+        }
+        /* Gone with its device (an interface or a battery): open it once more. */
+        CloseHandle(open_files[slot].file);
+        open_files[slot].file = NULL;
+        open_files[slot].path[0] = 0;
+        open_files[slot].used = 0;
+        oldest = slot;
+        slot = -1;
+    }
+    return FALSE;
+}
+
+/* Reads the first line of a small file such as one of sysfs; returns FALSE if it is missing. */
 static BOOL read_text(const WCHAR *path, char *buffer, DWORD size)
 {
-    HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
-    DWORD done = 0;
-    if (file == INVALID_HANDLE_VALUE) return FALSE;
-    ReadFile(file, buffer, size - 1, &done, NULL);
-    CloseHandle(file);
-    buffer[done] = 0;
+    if (!read_file(path, buffer, size)) return FALSE;
     buffer[strcspn(buffer, "\r\n")] = 0;
     return TRUE;
 }
@@ -374,23 +427,51 @@ static void poll_volume(void)
     muted = strstr(out, "MUTED") != NULL;
 }
 
+/* The entries of a directory such as /sys/class/net, listed again every ten
+ * seconds: adapters and batteries come and go rarely, and each listing costs
+ * wineserver requests of its own. */
+typedef struct
+{
+    WCHAR names[16][32];
+    int count;
+    ULONGLONG listed;
+} LISTING;
+
+static int list_directory(const WCHAR *pattern, LISTING *list)
+{
+    ULONGLONG now = GetTickCount64();
+    if (!list->listed || now - list->listed >= 10000)
+    {
+        WIN32_FIND_DATAW found;
+        HANDLE search = FindFirstFileW(pattern, &found);
+        list->count = 0;
+        list->listed = now;
+        if (search != INVALID_HANDLE_VALUE)
+        {
+            do
+                if (found.cFileName[0] != '.' && list->count < 16 && wcslen(found.cFileName) < 32)
+                    wcscpy(list->names[list->count++], found.cFileName);
+            while (FindNextFileW(search, &found));
+            FindClose(search);
+        }
+    }
+    return list->count;
+}
+
 static void poll_power(void)
 {
-    WIN32_FIND_DATAW found;
-    HANDLE search = FindFirstFileW(L"Z:\\sys\\class\\power_supply\\*", &found);
+    static LISTING supplies;
     long long energy = 0, full = 0, power = 0;
-    int batteries = 0;
+    int batteries = 0, count = list_directory(L"Z:\\sys\\class\\power_supply\\*", &supplies);
     battery = -1;
     on_ac = 0;
     charging = 0;
     minutes_left = -1;
-    if (search == INVALID_HANDLE_VALUE) return;
-    do
+    for (int i = 0; i < count; i++)
     {
         WCHAR directory[MAX_PATH], path[MAX_PATH];
         char text[64];
-        if (found.cFileName[0] == '.') continue;
-        swprintf(directory, MAX_PATH, L"Z:\\sys\\class\\power_supply\\%ls", found.cFileName);
+        swprintf(directory, MAX_PATH, L"Z:\\sys\\class\\power_supply\\%ls", supplies.names[i]);
         swprintf(path, MAX_PATH, L"%ls\\type", directory);
         if (!read_text(path, text, sizeof(text))) continue;
         if (!strcmp(text, "Mains"))
@@ -410,8 +491,7 @@ static void poll_power(void)
             if (read_text(path, text, sizeof(text)) && !strcmp(text, "Charging")) charging = 1;
             if (battery < 0) battery = (int)read_number(directory, L"capacity", -1);
         }
-    } while (FindNextFileW(search, &found));
-    FindClose(search);
+    }
     if (!batteries) return;
     if (full > 0) battery = (int)(energy * 100 / full);
     if (battery > 100) battery = 100;
@@ -421,13 +501,7 @@ static void poll_power(void)
 /* The whole routing table: read_text keeps only a first line. */
 static void read_routes(char *route, DWORD size)
 {
-    HANDLE file = CreateFileW(L"Z:\\proc\\net\\route", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-    DWORD done = 0;
-    route[0] = 0;
-    if (file == INVALID_HANDLE_VALUE) return;
-    ReadFile(file, route, size - 1, &done, NULL);
-    CloseHandle(file);
-    route[done] = 0;
+    read_file(L"Z:\\proc\\net\\route", route, size);
 }
 
 /* Whether NAME has a route in ROUTE, or with DEFAULT_ONLY the default route. */
@@ -516,15 +590,10 @@ static void poll_interface(NETSTATE *state, const char *route, BOOL detail)
     }
     /* Without NetworkManager: the link quality of /proc/net/wireless (out of 70). */
     {
-        HANDLE file = CreateFileW(L"Z:\\proc\\net\\wireless", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-        DWORD done = 0;
         char name[32];
         state->signal = -1;
         state->ssid[0] = 0;
-        if (file == INVALID_HANDLE_VALUE) return;
-        ReadFile(file, text, sizeof(text) - 1, &done, NULL);
-        CloseHandle(file);
-        text[done] = 0;
+        if (!read_file(L"Z:\\proc\\net\\wireless", text, sizeof(text))) return;
         WideCharToMultiByte(CP_UTF8, 0, state->name, -1, name, sizeof(name), NULL, NULL);
         for (line = strtok(text, "\n"); line; line = strtok(NULL, "\n"))
         {
@@ -543,38 +612,33 @@ static void poll_interface(NETSTATE *state, const char *route, BOOL detail)
  * left out. The poll also notes when each interface came up. */
 static void poll_network(BOOL detail)
 {
-    WIN32_FIND_DATAW found;
-    HANDLE search;
+    static LISTING interfaces;
     char route[8192];
     WCHAR best[32] = L"", path[MAX_PATH], directory[MAX_PATH];
-    int best_rank = 0;
+    int best_rank = 0, count;
 
     read_routes(route, sizeof(route));
-    search = FindFirstFileW(L"Z:\\sys\\class\\net\\*", &found);
-    if (search != INVALID_HANDLE_VALUE)
+    count = list_directory(L"Z:\\sys\\class\\net\\*", &interfaces);
+    for (int i = 0; i < count; i++)
     {
-        do
+        const WCHAR *name = interfaces.names[i];
+        ULONGLONG *since;
+        int rank;
+        swprintf(directory, MAX_PATH, L"Z:\\sys\\class\\net\\%ls", name);
+        if ((since = net_time(name)))
         {
-            ULONGLONG *since;
-            int rank;
-            if (found.cFileName[0] == '.') continue;
-            swprintf(directory, MAX_PATH, L"Z:\\sys\\class\\net\\%ls", found.cFileName);
-            if ((since = net_time(found.cFileName)))
-            {
-                if (!interface_up(directory)) *since = 0;
-                else if (!*since) *since = GetTickCount64();
-            }
-            swprintf(path, MAX_PATH, L"%ls\\device", directory);
-            if (!exists(path)) continue;
-            swprintf(path, MAX_PATH, L"%ls\\wireless", directory);
-            rank = has_route(route, found.cFileName, TRUE) ? 3 : exists(path) ? 2 : 1;
-            if (rank > best_rank)
-            {
-                best_rank = rank;
-                wcsncpy(best, found.cFileName, 31);
-            }
-        } while (FindNextFileW(search, &found));
-        FindClose(search);
+            if (!interface_up(directory)) *since = 0;
+            else if (!*since) *since = GetTickCount64();
+        }
+        swprintf(path, MAX_PATH, L"%ls\\device", directory);
+        if (!exists(path)) continue;
+        swprintf(path, MAX_PATH, L"%ls\\wireless", directory);
+        rank = has_route(route, name, TRUE) ? 3 : exists(path) ? 2 : 1;
+        if (rank > best_rank)
+        {
+            best_rank = rank;
+            wcsncpy(best, name, 31);
+        }
     }
     if (!best_rank)
     {
