@@ -1,0 +1,112 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] win32u: repaint the external shell's desktop when the wallpaper is set
+
+Purpose: Display Properties' themes and Desktop page change XP's desktop at
+once, as they do on XP.
+Windows behavior: the desktop has one wallpaper. SystemParametersInfo with
+SPI_SETDESKWALLPAPER (or SPI_SETDESKPATTERN), called by any process, sets
+it and repaints the desktop.
+Wine before: win32u keeps each process's own copy of the wallpaper's path,
+read the first time it is asked for, and the setting process tells only the
+desktop window's process (WM_SETTINGCHANGE, Wine's explorer). XP's explorer
+paints its desktop in its own process (PaintDesktop, 0049), which went on
+getting the path it read at login: after Display Properties (rundll32)
+applied the Windows XP theme over Windows Classic, the registry held
+Bliss.bmp, and the desktop stayed plain blue until the next login.
+Change: when a process sets the wallpaper or the pattern, it sends
+WM_WINE_DESKWALLPAPER to the shell window (GetShellWindow, XP's Progman;
+the Progman window if there is none) without waiting for it. The shell
+window's thread forgets the wallpaper and pattern it read, and invalidates
+and erases the shell window with its children, so PaintDesktop reads the
+new wallpaper and paints it.
+Scope: external shell opt-in only. PaintDesktop (0049) loads the bitmap
+again only when the path changes, so a new WallpaperStyle with the same
+picture still shows from the next login.
+---
+ dlls/win32u/message.c        |  3 +++
+ dlls/win32u/sysparams.c      | 21 +++++++++++++++++++++
+ dlls/win32u/win32u_private.h |  1 +
+ include/ntuser.h             |  1 +
+ 4 files changed, 26 insertions(+)
+
+diff --git a/dlls/win32u/message.c b/dlls/win32u/message.c
+index b87c436..863042a 100644
+--- a/dlls/win32u/message.c
++++ b/dlls/win32u/message.c
+@@ -2290,6 +2290,9 @@ static LRESULT handle_internal_message( HWND hwnd, UINT msg, WPARAM wparam, LPAR
+             set_foreground_window( hwnd, FALSE, TRUE );
+         return ret;
+     }
++    case WM_WINE_DESKWALLPAPER:
++        reload_desk_wallpaper( hwnd );
++        return 0;
+     case WM_WINE_SETPIXELFORMAT:
+         set_window_pixel_format( hwnd, wparam, lparam );
+         return 0;
+diff --git a/dlls/win32u/sysparams.c b/dlls/win32u/sysparams.c
+index dc54436..40bfdb8 100644
+--- a/dlls/win32u/sysparams.c
++++ b/dlls/win32u/sysparams.c
+@@ -5973,6 +5973,25 @@ static BOOL update_desktop_wallpaper(void)
+     return TRUE;
+ }
+ 
++/* win4wine: the external shell paints the desktop in its own process
++ * (PaintDesktop), which keeps the wallpaper it read first; Windows keeps one
++ * wallpaper for the desktop and repaints the desktop when it is set. */
++static void notify_shell_wallpaper(void)
++{
++    HWND shell;
++
++    if (!win4wine_external_shell()) return;
++    if (!(shell = get_shell_window()) && !(shell = get_progman_window())) return;
++    send_notify_message( shell, WM_WINE_DESKWALLPAPER, 0, 0, FALSE );
++}
++
++/* WM_WINE_DESKWALLPAPER, in the shell window's thread */
++void reload_desk_wallpaper( HWND hwnd )
++{
++    update_desktop_wallpaper();
++    NtUserRedrawWindow( hwnd, NULL, 0, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN );
++}
++
+ /***********************************************************************
+  *	     NtUserSystemParametersInfoForDpi   (win32u.@)
+  */
+@@ -6140,10 +6159,12 @@ BOOL WINAPI NtUserSystemParametersInfo( UINT action, UINT val, void *ptr, UINT w
+     case SPI_SETDESKWALLPAPER:
+         if (!ptr || set_entry( &entry_DESKWALLPAPER, val, ptr, winini ))
+             ret = update_desktop_wallpaper();
++        if (ret && ptr) notify_shell_wallpaper();
+         break;
+     case SPI_SETDESKPATTERN:
+         if (!ptr || set_entry( &entry_DESKPATTERN, val, ptr, winini ))
+             ret = update_desktop_wallpaper();
++        if (ret && ptr) notify_shell_wallpaper();
+         break;
+     case SPI_GETKEYBOARDDELAY:
+         ret = get_entry( &entry_KEYBOARDDELAY, val, ptr );
+diff --git a/dlls/win32u/win32u_private.h b/dlls/win32u/win32u_private.h
+index edcb470..5d406bc 100644
+--- a/dlls/win32u/win32u_private.h
++++ b/dlls/win32u/win32u_private.h
+@@ -156,6 +156,7 @@ extern HBRUSH get_55aa_brush(void);
+ extern DWORD get_dialog_base_units(void);
+ extern LONG get_char_dimensions( HDC hdc, TEXTMETRICW *metric, int *height );
+ extern HBITMAP get_display_bitmap(void);
++extern void reload_desk_wallpaper( HWND hwnd );
+ extern INT get_display_depth( UNICODE_STRING *name );
+ extern RECT get_display_rect( const WCHAR *display );
+ extern UINT get_win_monitor_dpi( HWND hwnd, UINT *raw_dpi );
+diff --git a/include/ntuser.h b/include/ntuser.h
+index 99cc2d1..8fef550 100644
+--- a/include/ntuser.h
++++ b/include/ntuser.h
+@@ -685,6 +685,7 @@ enum wine_internal_message
+     WM_WINE_SETPIXELFORMAT,
+     WM_WINE_REFIT_MAXIMIZED,
+     WM_WINE_SETWINDOWPLACEMENT,
++    WM_WINE_DESKWALLPAPER,
+     WM_WINE_FIRST_DRIVER_MSG = 0x80001000,  /* range of messages reserved for the USER driver */
+     WM_WINE_CLIPCURSOR = 0x80001ff0, /* internal driver notification messages */
+     WM_WINE_SETCURSOR,

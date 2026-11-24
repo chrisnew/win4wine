@@ -150,3 +150,4 @@
 0150-user32-external-xp-plain-comctl32-classes.patch
 0151-user32-two-size-icons-own-images.patch
 0152-win32u-external-hold-unpainted-surface.patch
+0153-win32u-external-shell-wallpaper-change.patch
