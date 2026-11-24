@@ -1,0 +1,70 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] user32: read icons of %SystemRoot%\explorer.exe from XP's explorer
+
+Purpose: My Computer keeps its icon after Display Properties applies the
+Windows XP or Windows Classic theme.
+XP behavior: My Computer's icon is the first icon of explorer.exe in the
+Windows directory, which is XP's shell. XP's themes write it as
+HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\
+{20D04FE0-3AEA-1069-A2D8-08002B30309D}\DefaultIcon =
+%SystemRoot%\explorer.exe,0, and XP's shell32 registers the same in HKCR.
+Wine before: C:\windows\explorer.exe is Wine's desktop manager, and XP's
+shell is C:\xp\xp-explorer.exe (0021), so the icon was Wine's explorer's:
+a blank document. The prefix scripts rewrite the HKCR value
+(prefix/registry.py, prefix/extras.py), but the theme's HKCU value comes
+first.
+Change: PrivateExtractIcons and PrivateExtractIconEx (ICO_ExtractIconExW)
+read the icons of C:\windows\explorer.exe from C:\xp\xp-explorer.exe when
+that file exists.
+Scope: the XP shell session only (WIN4WINE_EXTERNAL_SHELL without
+WIN4WINE_SHELL); icon extraction only, Wine's explorer still runs as
+explorer.exe.
+---
+ dlls/user32/exticon.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/dlls/user32/exticon.c b/dlls/user32/exticon.c
+index d0bfced..3af97cc 100644
+--- a/dlls/user32/exticon.c
++++ b/dlls/user32/exticon.c
+@@ -25,6 +25,7 @@
+ #include <stdlib.h>
+ #include "user_private.h"
+ #include "wine/debug.h"
++#include "wine/win4wine.h"
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(icon);
+ 
+@@ -235,6 +236,24 @@ static BYTE * ICO_GetIconDirectory( LPBYTE peimage, LPicoICONDIR* lplpiID, ULONG
+ 	return 0;
+ }
+ 
++/* win4wine: XP's icon locations name its shell, %SystemRoot%\explorer.exe
++ * (My Computer's DefaultIcon, also written by Display Properties' themes).
++ * That file is Wine's desktop manager here; XP's explorer is renamed. */
++static void get_xp_shell_icon_file( WCHAR *path, DWORD size )
++{
++    static const WCHAR xp_explorer[] = L"C:\\xp\\xp-explorer.exe";
++    WCHAR explorer[MAX_PATH];
++    UINT len;
++
++    if (win4wine_shell() != WIN4WINE_SHELL_XP) return;
++    len = GetSystemWindowsDirectoryW( explorer, ARRAY_SIZE(explorer) );
++    if (!len || len + wcslen( L"\\explorer.exe" ) >= ARRAY_SIZE(explorer)) return;
++    lstrcatW( explorer, L"\\explorer.exe" );
++    if (wcsicmp( path, explorer ) || GetFileAttributesW( xp_explorer ) == INVALID_FILE_ATTRIBUTES) return;
++    TRACE( "%s -> %s\n", debugstr_w(path), debugstr_w(xp_explorer) );
++    lstrcpynW( path, xp_explorer, size );
++}
++
+ /*************************************************************************
+  *	ICO_ExtractIconExW		[internal]
+  *
+@@ -276,6 +295,7 @@ static UINT ICO_ExtractIconExW(
+             WARN("File %s not found or path too long\n", debugstr_w(lpszExeFileName));
+             return -1;
+         }
++        get_xp_shell_icon_file( szExePath, ARRAY_SIZE(szExePath) );
+ 
+ 	hFile = CreateFileW(szExePath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0);
+ 	if (hFile == INVALID_HANDLE_VALUE) return ret;
