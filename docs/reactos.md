@@ -1,106 +1,108 @@
-# ReactOS のシェル
+# The ReactOS shell
 
-XP の ISO が無くても試せるように、[ReactOS](https://reactos.org/) の `explorer.exe` とその周りの DLL を、XP のシェルの代わりに
-動かすセッションです。見た目は ReactOS の「クラシック」（Windows 2000 の「Windows スタンダード」の配色）です。
-XP のシェルと同じ Wine、同じ bridge（ウィンドウマネージャー、代理ウィンドウ、トレイ）、同じ supervisor で動きます。
+A session that runs [ReactOS](https://reactos.org/)'s `explorer.exe` and the DLLs around it instead of the XP shell, so that win4wine can
+be tried without an XP ISO. It looks like ReactOS's "Classic" (the colours of Windows 2000's "Windows Standard").
+It runs on the same Wine, the same bridge (window manager, stand-in windows, tray) and the same supervisor as the XP shell.
 
 ```sh
-scripts/setup.sh --shell reactos --lang ja    # 英語なら --lang en
+scripts/setup.sh --shell reactos --lang ja    # for English, --lang en
 ```
 
-ログイン画面でセッション「**ReactOS Shell (Wine, X11)**」を選びます。XP のシェルも入れてあれば、両方のセッションが並びます。
+Choose the session "**ReactOS Shell (Wine, X11)**" on the login screen. If the XP shell is installed too, both sessions are listed.
 
-## 使う ReactOS のファイル
+## The ReactOS files used
 
-`extract/reactos.py` が、ReactOS の公式のリリース（GitHub の `0.4.16-release` の `ReactOS-0.4.16-i386.zip`）を取得し、
-SHA-256 を確かめて、ISO から次のものだけを `.local/assets-reactos` に取り出します。取得した zip は `.local/dl` に残ります。
-`--zip` で手元の zip も使えます。
+`extract/reactos.py` downloads ReactOS's official release (`ReactOS-0.4.16-i386.zip` from `0.4.16-release` on GitHub), checks its
+SHA-256 and extracts only the following from the ISO into `.local/assets-reactos`. The downloaded zip stays in `.local/dl`.
+`--zip` uses a zip you already have.
 
-| ファイル | 使い方 |
+| File | Use |
 |---|---|
-| `explorer.exe` | `C:\ros\ros-explorer.exe` として置くシェル |
-| `shell32`、`browseui`、`shdocvw`、`shlwapi`、`comctl32`（5 と 6）、`zipfldr` | ros-explorer.exe だけが使う DLL |
-| `msgina` | 「シャットダウン」と「ログオフ」のダイアログ |
-| `tahoma`、`tahomabd`、`Marlett`、`DroidSansFallback` | ReactOS の自由なフォント（日本語の字は DroidSansFallback） |
-| `user32.dll` | カーソルだけを読み、X のカーソルテーマ `win4wine-reactos` を作ります |
-| `Nebula.bmp` | ReactOS の既定の壁紙 |
-| `lautus`、`lunar`、`mizu` の `.msstyles` | 任意のテーマ（既定はクラシック） |
+| `explorer.exe` | The shell, placed as `C:\ros\ros-explorer.exe` |
+| `shell32`, `browseui`, `shdocvw`, `shlwapi`, `comctl32` (5 and 6), `zipfldr` | DLLs used only by ros-explorer.exe |
+| `msgina` | The "Shut Down" and "Log Off" dialogs |
+| `tahoma`, `tahomabd`, `Marlett`, `DroidSansFallback` | ReactOS's free fonts (Japanese characters come from DroidSansFallback) |
+| `user32.dll` | Only its cursors are read, to make the X cursor theme `win4wine-reactos` |
+| `Nebula.bmp` | ReactOS's default wallpaper |
+| The `.msstyles` of `lautus`, `lunar` and `mizu` | Optional themes (the default is Classic) |
 
-32bit 版（i386）を使います。XP のシェルと同じ WoW64 の 32bit の経路で動き、64bit の ReactOS は毎晩のビルドしかないためです。
+The 32-bit version (i386) is used: it runs on the same WoW64 32-bit path as the XP shell, and 64-bit ReactOS only exists as nightly builds.
 
-### ライセンス
+### Licence
 
-ReactOS は全体として GPL-2.0-or-later です。使う DLL のソースは大半が LGPL-2.1-or-later（Wine に由来するものを含みます）で、
-一部のファイルが GPL-2.0 です。フォントはそれぞれのライセンス（Bitstream Vera 系、GPL とフォントの例外、Apache-2.0）です。
-win4wine は ReactOS のファイルを同梱せず、公式のリリースから取得して使うだけです。取り出したファイルを配るときは、
-GPL と LGPL に従い、対応するソース（`manifest.json` の `source`、ReactOS の `0.4.16-release` のタグ）を示してください。
+ReactOS as a whole is GPL-2.0-or-later. Most of the source of the DLLs used is LGPL-2.1-or-later (including what comes from Wine), and
+some files are GPL-2.0. The fonts have their own licences (Bitstream Vera family, GPL with the font exception, Apache-2.0).
+win4wine does not bundle ReactOS's files; it only downloads them from the official release. If you distribute the extracted files,
+follow the GPL and LGPL and point to the corresponding source (`source` in `manifest.json`, ReactOS's `0.4.16-release` tag).
 
-## prefix（`prefix/reactos.py`）
+## The prefix (`prefix/reactos.py`)
 
-`.local/prefix-reactos` は WoW64 の prefix で、XP の prefix と同じ考え方で作ります。
+`.local/prefix-reactos` is a WoW64 prefix, built on the same ideas as the XP prefix.
 
-- ReactOS の DLL は `syswow64` に置きます（shell32 などは KnownDlls なので、exe の隣は探されません）。prefix 全体では
-  Wine の DLL のまま（DllOverrides の `builtin`）にし、`ros-explorer.exe` だけに AppDefaults で `native` を使わせます。
-  Common Controls 6 は `C:\ros\comctl32.dll` に置き、ros-explorer.exe だけがそれを使います（Wine のパッチ 0143。Windows 7 の
-  0126 と同じ仕組み）。`winsxs` の Wine のアセンブリはそのままで、ほかのプログラムは Wine の Common Controls 6 を使います
-  （以前は Wine のファイルを置き換えていたため、ほかの 32bit のアプリでボタンやエディットが作られませんでした）。
-- ReactOS の explorer は、`HKLM\...\Winlogon` の `Shell` に自分のファイル名があるときだけシェルになります。`ros-explorer.exe` にします。
-- COM の登録などは、ReactOS の shell32、browseui、shdocvw 自身の `DllRegisterServer` に書かせます（32bit の view）。
-- フォルダの「開く」と「エクスプローラ」は ros-explorer.exe で開きます（ReactOS の hivecls.inf と同じ形）。
-- 日本語では、Tahoma などの UI のフォントに DroidSansFallback を FontLink でつなぎます。Wine はロケールの違う起動で
-  FontLink を作り直すので、prefix はそのロケールで作り、セッションの前の `stage` で入れ直します。
-  FontLink の届かない所（フォルダの窓のアドレス欄など）と Linux のアプリのために、`setup.sh` は日本語のとき `fonts-noto-cjk` も入れます。
-- 日本語では、スタートメニューの「スタートアップ」と「管理ツール」のフォルダを ReactOS と同じ日本語の名前にします（Wine は英語の名前で作ります）。
-  Wine は User Shell Folders の場所を使うので、名前を変えたフォルダをそのまま使います。
-- 見た目（作るときだけ）: テーマを切り（クラシック）、ReactOS の既定の配色（`win32ss/gdi/ntgdi/stockobj.c`）と寸法と
-  フォント（`boot/bootdata/hivedef.inf`）、壁紙 Nebula（塗りつぶし）、スタートメニューの「ログオフ」。
-  Wine の名前空間の「Internet」と「/」はデスクトップに出しません。「ヘルプとサポート」は出しません（Wine にヘルプが無いため）。
-- `reactos.py stage` は毎回のセッションの前に動き、Wine の更新で上書きされた DLL と登録を入れ直します。
+- ReactOS's DLLs go in `syswow64` (shell32 and others are KnownDlls, so the exe's directory is not searched). The prefix as a whole keeps
+  Wine's DLLs (`builtin` in DllOverrides), and only `ros-explorer.exe` uses `native` through AppDefaults.
+  Common Controls 6 goes in `C:\ros\comctl32.dll` and only ros-explorer.exe uses it (Wine patch 0143; the same mechanism as Windows 7's
+  0126). Wine's assembly in `winsxs` stays as it is, and other programs use Wine's Common Controls 6 (Wine's files used to be replaced,
+  and other 32-bit apps then could not create buttons or edit controls).
+- ReactOS's explorer only becomes the shell if `Shell` in `HKLM\...\Winlogon` holds its own file name. It is set to `ros-explorer.exe`.
+- COM registrations and the like are written by the `DllRegisterServer` of ReactOS's own shell32, browseui and shdocvw (32-bit view).
+- "Open" and "Explore" on folders open in ros-explorer.exe (the same form as ReactOS's hivecls.inf).
+- In Japanese, DroidSansFallback is linked to UI fonts such as Tahoma with FontLink. Wine rebuilds FontLink when started in a different
+  locale, so the prefix is created in that locale and the `stage` before each session reinstalls it.
+  For places FontLink does not reach (such as a folder window's address bar) and for Linux apps, `setup.sh` also installs
+  `fonts-noto-cjk` for Japanese.
+- In Japanese, the Start menu's "Startup" and "Administrative Tools" folders get the same Japanese names as in ReactOS (Wine creates them
+  with English names). Wine uses the locations in User Shell Folders, so the renamed folders are used as they are.
+- Appearance (only when created): theming off (Classic), ReactOS's default colours (`win32ss/gdi/ntgdi/stockobj.c`), metrics and fonts
+  (`boot/bootdata/hivedef.inf`), the Nebula wallpaper (stretched), "Log Off" in the Start menu.
+  Wine's namespace items "Internet" and "/" are not shown on the desktop. "Help and Support" is not shown (Wine has no help).
+- `reactos.py stage` runs before every session and reinstalls DLLs and registrations overwritten by a Wine update.
 
-## セッション
+## The session
 
-session.json（`~/.config/win4wine/reactos-session.json`）の `"shell": "reactos"` で、supervisor は次のように動きます。
+With `"shell": "reactos"` in session.json (`~/.config/win4wine/reactos-session.json`) the supervisor:
 
-- `C:\ros\ros-explorer.exe` を起動し、`prefix/reactos.py stage` を使います。XP のようこそ画面は出しません。
-- `WIN4WINE_FOLDER_SHELL` を設定します。ReactOS のシェルはコントロール パネル、検索、Win+E、ショートカットの「リンク先を開く」を
-  `explorer.exe` の起動で開きますが、この prefix の explorer.exe は Wine のデスクトップの管理です。パッチ 0090 で、Wine の explorer は
-  そうした起動を ros-explorer.exe に渡します。
-- `WIN4WINE_SWITCHER=reactos` を設定し、proxy は Alt+Tab の窓を ReactOS の形（`appswitch.c`）で描きます。
+- Starts `C:\ros\ros-explorer.exe` and uses `prefix/reactos.py stage`. XP's Welcome screen is not shown.
+- Sets `WIN4WINE_FOLDER_SHELL`. The ReactOS shell opens the Control Panel, Search, Win+E and a shortcut's "Open File Location" by starting
+  `explorer.exe`, but this prefix's explorer.exe is Wine's desktop manager. With patch 0090, Wine's explorer hands such starts to
+  ros-explorer.exe.
+- Sets `WIN4WINE_SWITCHER=reactos`, and the proxy draws the Alt+Tab window in ReactOS's form (`appswitch.c`).
 
-bridge と XP 向けのパッチは、そのまま ReactOS のシェルにも効きます（タスクバーのボタン、Linux の窓の枠、Alt+Tab、
-Windows キーと Ctrl+Esc、通知領域、ログオフとシャットダウン）。
+The bridge and the patches for XP work for the ReactOS shell as they are (taskbar buttons, frames for Linux windows, Alt+Tab, the Windows
+key and Ctrl+Esc, the notification area, log off and shut down).
 
-クイック起動は、タスクバーの右クリック →「Toolbars」→「Quick Launch」で出ます。prefix がクイック起動のフォルダ
-（`%APPDATA%\Microsoft\Internet Explorer\Quick Launch`）を作ります（無いと「Cannot create toolbar.」）。ただし ReactOS 0.4.16 の
-explorer はツールバーの配置を保存しないので（ReactOS 自身の制限。ツールバーのフォルダも保存しません）、セッションごとに出し直します。
+Quick Launch is shown with a right click on the taskbar → "Toolbars" → "Quick Launch". The prefix creates the Quick Launch folder
+(`%APPDATA%\Microsoft\Internet Explorer\Quick Launch`; without it you get "Cannot create toolbar."). ReactOS 0.4.16's explorer does not
+save the toolbar layout, though (a limit of ReactOS itself; it does not save folder toolbars either), so it has to be shown again in each
+session.
 
-## テーマ（任意）
+## Themes (optional)
 
-既定はクラシックですが、ReactOS の 3 つのテーマも選べます。`scripts/setup.sh --shell reactos --theme lautus`（`lunar`、`mizu`）、
-または `python3 prefix/reactos.py theme PREFIX lautus`。テーマは Wine の uxtheme が描きます（`prefix/theme-settings.c` の
-`msstyles` で当てます）。ReactOS のテーマのスタートボタンは負の余白を持つので、Wine のパッチ 0091 で余白の負の値を読めるようにしました。
+The default is Classic, but ReactOS's three themes can be chosen: `scripts/setup.sh --shell reactos --theme lautus` (or `lunar`, `mizu`),
+or `python3 prefix/reactos.py theme PREFIX lautus`. Themes are drawn by Wine's uxtheme (applied with `msstyles` in
+`prefix/theme-settings.c`). The Start button of ReactOS's themes has negative margins, so Wine patch 0091 makes negative margin values
+readable.
 
-## ログイン画面（任意）
+## The login screen (optional)
 
-`scripts/setup.sh --shell reactos --greeter` で、LightDM のログイン画面を ReactOS のもの（`greeter/reactos-greeter.py`）にします。
-ReactOS の msgina.dll のダイアログ（「Ctrl-Alt-Delete キーを押してください」→「ログオン」、「シャットダウン」）を、テンプレートの
-配置と文言（日本語と英語）、バナーの画像のまま、ReactOS の壁紙の上にクラシックの見た目で描きます（`greeter/rosdialog.py`）。
-認証は LightDM と PAM が行います。
+`scripts/setup.sh --shell reactos --greeter` makes LightDM's login screen ReactOS's (`greeter/reactos-greeter.py`). The dialogs of
+ReactOS's msgina.dll ("Press Ctrl-Alt-Delete" → "Log On", "Shut Down") are drawn with their template layout and text (Japanese and
+English) and banner image, in the Classic look, over ReactOS's wallpaper (`greeter/rosdialog.py`). Authentication is done by LightDM and PAM.
 
-- 「ようこそ」では Ctrl+Alt+Delete で「ログオン」に進みます。`/etc/win4wine/reactos-greeter.json` の `"ctrl_alt_del": false` で、
-  最初から「ログオン」を出します。
-- 「ログオン」の利用者名は LightDM が選ぶ利用者（前回の利用者）です。ログオン先はこのマシンの名前です。
-- 「シャットダウン」では、シャットダウンと再起動（できるならスリープ）を選べます。
-- 配置は 1024×768 の ReactOS 0.4.16 で測った位置と同じです（`tests/reactos_greeter.py`）。
+- On "Welcome", Ctrl+Alt+Delete goes on to "Log On". `"ctrl_alt_del": false` in `/etc/win4wine/reactos-greeter.json` shows "Log On"
+  straight away.
+- The user name in "Log On" is the user LightDM chooses (the last one). "Log on to" is this machine's name.
+- "Shut Down" offers shut down and restart (and sleep, where possible).
+- The layout matches positions measured on ReactOS 0.4.16 at 1024×768 (`tests/reactos_greeter.py`).
 
-## XP のシェルとの違い・制限
+## Differences from the XP shell, and limits
 
-- 見た目は ReactOS に近づけましたが、XP のシェルのように画素単位では合わせていません。とくに字は、ReactOS が太字を
-  標準の Tahoma から合成するのに対し、Wine は `tahomabd.ttf` を使うので、太字の幅が違います。
-- 「ヘルプとサポート」、ネットワーク、プリンターの設定は Wine にその部品が無いので使えません。
-- フォルダの窓の「フォルダ」の一覧には、Wine の Unix のルート（`/`）も出ます（デスクトップには出しません）。
-- Linux のアプリは、`.desktop` に作業ディレクトリ（`Path`）が無いと prefix の `C:\windows` から始まります（XP のシェルと同じ）。
-- Wayland のセッション（`--wayland`、「ReactOS Shell (Wine, Wayland)」）は XP のシェルの Wayland のセッションと同じ labwc で動きます。
-  XP のシェルと同じく、X11 のセッションより実験的です（[wayland.md](wayland.md)）。
+- The look is close to ReactOS but not matched pixel by pixel as the XP shell is. Text in particular: ReactOS synthesizes bold from
+  regular Tahoma, while Wine uses `tahomabd.ttf`, so bold text has a different width.
+- "Help and Support", networking and printer settings cannot be used, since Wine lacks those parts.
+- The "Folders" list of folder windows also shows Wine's Unix root (`/`) (it is not shown on the desktop).
+- Linux apps start in the prefix's `C:\windows` if their `.desktop` has no working directory (`Path`) (as in the XP shell).
+- The Wayland session (`--wayland`, "ReactOS Shell (Wine, Wayland)") runs on the same labwc as the XP shell's Wayland session.
+  As for the XP shell, it is more experimental than the X11 session ([wayland.md](wayland.md)).
 
-試験は `tests/reactos_session.py`（[development.md](development.md)）です。
+The test is `tests/reactos_session.py` ([development.md](development.md)).

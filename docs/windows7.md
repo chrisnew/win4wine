@@ -1,221 +1,229 @@
-# Windows 7 のシェル（実験的）
+# The Windows 7 shell (experimental)
 
-Windows 7 SP1（x64）の `explorer.exe` とその周りの DLL を、XP のシェルの代わりに動かすセッションです。見た目は
-「Windows 7 ベーシック」（Aero のテーマを、デスクトップの合成なしで描いたもの）です。半透明のガラスなどの Aero の効果はまだありません。
-XP のシェルと同じ Wine、同じ bridge（ウィンドウマネージャー、代理ウィンドウ、トレイ）、同じ supervisor で動きます。
+A session that runs Windows 7 SP1 (x64)'s `explorer.exe` and the DLLs around it instead of the XP shell. It looks like
+"Windows 7 Basic" (the Aero theme drawn without desktop composition). Aero effects such as translucent glass are not there yet.
+It runs on the same Wine, the same bridge (window manager, stand-in windows, tray) and the same supervisor as the XP shell.
 
 ```sh
 scripts/setup.sh --shell win7 --media /path/to/Windows7SP1x64.iso
 ```
 
-ログイン画面でセッション「**Windows 7 Shell (Wine, X11)**」を選びます。XP や ReactOS のシェルも入れてあれば、セッションが並びます。
-`--greeter` を付けると、LightDM のログイン画面が Windows 7 のログオン画面になり、そのまま Windows 7 のシェルに入ります。
+Choose the session "**Windows 7 Shell (Wine, X11)**" on the login screen. If the XP or ReactOS shells are installed too, the sessions are
+listed side by side. With `--greeter`, LightDM's login screen becomes Windows 7's logon screen and leads straight into the Windows 7 shell.
 
 > [!WARNING]
-> XP のシェルより新しく、確かめた範囲も狭い試作です。下の「制限」を読んでから試してください。
-> Windows 7 の ISO はご自身で用意してください。Microsoft のファイルの扱いは、Microsoft の使用許諾に従ってください。
+> This is a prototype, newer than the XP shell and checked less. Read "Limits" below before trying it.
+> Bring your own Windows 7 ISO, and handle Microsoft's files according to Microsoft's licence terms.
 
-## 使う Windows 7 のファイル
+## The Windows 7 files used
 
-`extract/win7.py` が、ISO の `sources/install.wim` から次のものだけを `.local/assets-win7` に取り出します。
-エディションごとのイメージのうち Professional を使います（無ければ最後のもの）。シェルのファイルはどのエディションでも同じです。
-言語はイメージの既定の言語で決まり、その言語の MUI ファイル（`ja-JP\shell32.dll.mui` など）も取り出します。
+`extract/win7.py` extracts only the following from the ISO's `sources/install.wim` into `.local/assets-win7`.
+Of the per-edition images it uses Professional (or the last one, if there is none). The shell files are the same in every edition.
+The language is the image's default language, and that language's MUI files (`ja-JP\shell32.dll.mui` and so on) are extracted too.
 
-| ファイル | 使い方 |
+| File | Use |
 |---|---|
-| `explorer.exe` | `C:\w7\w7-explorer.exe` として置くシェル（x64） |
-| `explorerframe`、`shell32`、`shlwapi`、`propsys`、`shdocvw`、`dui70`、`duser`、`profapi`、`thumbcache`、`linkinfo` | Windows 7 のシェルの DLL。シェルと、セッションのプログラムのファイルのダイアログが使います（下の「どのプログラムが Windows 7 の DLL を使うか」） |
-| `sndvolsso`、`winbrand`、`shacct`、`authui` | シェルだけが使う DLL（通知領域の音量、スタートメニューのエディション名・利用者の画像・終了） |
-| `actxprxy` | Windows 7 のインターフェースの proxy。`w7actxprxy.dll` の名前で置きます（Wine の actxprxy.dll は Wine の DLL の proxy に残します） |
-| `imageres`、`sud`、`DeviceCenter` | 文字列とアイコンだけを読む DLL（override なし） |
-| `Cursors\aero_*.cur`、`aero_*.ani`、`user32.dll` | Windows 7 の Aero のカーソル（X のカーソルのテーマ `win4wine-win7` にします。I ビームと十字は user32.dll のもの） |
-| `Branding\Basebrd\basebrd.dll` | ログオン画面のエディションの名前 |
-| 上の DLL と `imageres` の 32bit 版（`SysWOW64`） | 32bit のプログラムのファイルのダイアログ、アイコンと名前 |
-| Common Controls 6（amd64 と x86） | Windows 7 の DLL だけが使う comctl32。`C:\w7\comctl32.dll`（32bit は `C:\w7\wow64\comctl32.dll`） |
-| user32.dll（データ） | システム アイコンだけを読む。`C:\w7\res\user32-w7.dll`（Wine の 0132） |
-| `ja-JP\notepad.exe.mui`（データ） | テキスト ファイルの種類名（「テキスト ドキュメント」、新規作成の名前）だけを読む。`C:\w7\res\notepad.exe.mui`。メモ帳そのものは Wine のもの |
-| Segoe UI、Tahoma、Microsoft Sans Serif、メイリオと MS UI Gothic（日本語のとき） | Windows 7 の UI とダイアログのフォント |
-| `Resources\Themes\Aero` | Aero のテーマ（形式 4 の msstyles。Wine の 0113 で読みます） |
-| `img0.jpg`、User Account Pictures、スタートメニューの `desktop.ini` | 壁紙、利用者の画像、スタートメニューのフォルダの日本語の名前 |
+| `explorer.exe` | The shell (x64), placed as `C:\w7\w7-explorer.exe` |
+| `explorerframe`, `shell32`, `shlwapi`, `propsys`, `shdocvw`, `dui70`, `duser`, `profapi`, `thumbcache`, `linkinfo` | The Windows 7 shell's DLLs, used by the shell and by the file dialogs of the session's programs ("Which programs use Windows 7's DLLs" below) |
+| `sndvolsso`, `winbrand`, `shacct`, `authui` | DLLs only the shell uses (volume in the notification area; the Start menu's edition name, user picture and shut down) |
+| `actxprxy` | The proxies of Windows 7's interfaces, placed as `w7actxprxy.dll` (Wine's actxprxy.dll stays as the proxy for Wine's DLLs) |
+| `imageres`, `sud`, `DeviceCenter` | DLLs only read for strings and icons (no override) |
+| `Cursors\aero_*.cur`, `aero_*.ani`, `user32.dll` | Windows 7's Aero cursors (made into the X cursor theme `win4wine-win7`; the I-beam and the cross come from user32.dll) |
+| `Branding\Basebrd\basebrd.dll` | The edition name on the logon screen |
+| 32-bit versions (`SysWOW64`) of the DLLs above and `imageres` | File dialogs, icons and names in 32-bit programs |
+| Common Controls 6 (amd64 and x86) | The comctl32 used only by Windows 7's DLLs: `C:\w7\comctl32.dll` (32-bit: `C:\w7\wow64\comctl32.dll`) |
+| user32.dll (data) | Only read for system icons: `C:\w7\res\user32-w7.dll` (Wine's 0132) |
+| `ja-JP\notepad.exe.mui` (data) | Only read for the text file type's name ("Text Document", and the name for New): `C:\w7\res\notepad.exe.mui`. Notepad itself is Wine's |
+| Segoe UI, Tahoma, Microsoft Sans Serif, Meiryo and MS UI Gothic (for Japanese) | Windows 7's UI and dialog fonts |
+| `Resources\Themes\Aero` | The Aero theme (format 4 msstyles, read with Wine's 0113) |
+| `img0.jpg`, User Account Pictures, the Start menu's `desktop.ini` | The wallpaper, user pictures, the Japanese names of Start menu folders |
 
-取り出したファイルには手を加えません。prefix には、Windows 7 と同じく DLL の隣の言語のフォルダに MUI ファイルを置き
-（`system32\ja-JP\shell32.dll.mui`）、Wine がそれを読みます（Wine のパッチ 0102。言語に依存しない DLL で見つからない
-リソースを、その DLL の MUI ファイルから探します）。名前を変えて置くもの（`w7-explorer.exe`、`w7actxprxy.dll`）は、MUI ファイルも
-その名前にします。
+The extracted files are not modified. In the prefix, as in Windows 7, MUI files are placed in the language folder next to the DLL
+(`system32\ja-JP\shell32.dll.mui`) and Wine reads them (Wine patch 0102: resources missing from a language-neutral DLL are looked up in that
+DLL's MUI file). Files placed under another name (`w7-explorer.exe`, `w7actxprxy.dll`) get MUI files of that name too.
 
-### レジストリ
+### The registry
 
-Windows 7 は、部品（component）ごとのマニフェスト（`WinSxS\Manifests`）にファイルとレジストリの値を書いています。
-`extract/manifests.py` が、上のファイルの部品のマニフェストから、レジストリのキーと値、設定の既定値（configuration の schema）を
-`.reg` にします。インストール済みの Windows のレジストリを丸ごと移すことはしません。使うファイルの部品が登録するものだけを入れます。
-アイコンを番号（`shell32.dll,3`）で指す値は、リソースの ID（`shell32.dll,-4`）に直します（ID は Windows 7 と Wine の shell32 で同じ
-ですが、並びは違います）。32bit の部品は自分のマニフェスト（`wow64_`）を持つので、32bit の登録（`registry-wow64.reg`）も同じように作り、
-32bit の regedit で入れます。テキスト ファイルの種類とアイコンは notepad の部品から取ります（開くのは Wine の Notepad です）。
+Windows 7 records files and registry values in per-component manifests (`WinSxS\Manifests`). `extract/manifests.py` turns the manifests of
+the components of the files above into a `.reg`: registry keys and values, and the defaults of settings (the configuration schema). The
+registry of an installed Windows is never copied wholesale; only what the components of the files used register is installed. Values that
+point to an icon by index (`shell32.dll,3`) are changed to the resource ID (`shell32.dll,-4`) (the IDs are the same in Windows 7's and Wine's
+shell32, but the order is not). 32-bit components have their own manifests (`wow64_`), so the 32-bit registrations (`registry-wow64.reg`)
+are made the same way and imported with the 32-bit regedit. The text file type and its icon are taken from the notepad component (Wine's
+Notepad opens them).
 
-Windows 7 の comdlg32 の部品が登録する `FileOpenDialog`（シェルの「参照」が開くダイアログ）は、prefix/win7.py が Wine の comdlg32 の
-ダイアログに向けます（部品のファイルは Wine のものなので、取り出しません）。
+The `FileOpenDialog` registered by Windows 7's comdlg32 component (the dialog the shell's "Browse" opens) is pointed by prefix/win7.py to
+Wine's comdlg32 dialog (that component's files are Wine's, so they are not extracted).
 
-## prefix（`prefix/win7.py`）
+## The prefix (`prefix/win7.py`)
 
-`.local/prefix-win7` は WoW64 の prefix で、XP の prefix と同じ考え方で作ります。
+`.local/prefix-win7` is a WoW64 prefix, built on the same ideas as the XP prefix.
 
-- Windows 7 のシェルの DLL は `C:\w7\native`（64bit）と `C:\w7\wow64`（32bit）に置き、`system32` と `syswow64` に写します。
-  どのプログラムがどれを使うかは、下の「どのプログラムが Windows 7 の DLL を使うか」のとおりです。
-- Windows 7 の Common Controls 6 は `C:\w7\comctl32.dll`（32bit は `C:\w7\wow64\comctl32.dll`）に置きます。Windows 7 のシェルの
-  セッションでは、シェル（`w7-explorer.exe`）と、ほかのプログラムの中の Windows 7 の DLL がこれを使い、プログラム自身は Wine の
-  Common Controls 6 のままです（Wine のパッチ 0126。Windows 7 の comctl32 をプログラムに使わせると Wine のアプリが壊れるため）。
-  サムネイルを作る `dllhost.exe` は、Wine の Common Controls 6 のままにします。
-- `HKLM\...\Winlogon` の `Shell` を `w7-explorer.exe` にします。
-- 利用者のフォルダー（ドキュメント・ピクチャ・ミュージック・ビデオなど）とライブラリは Windows 7 と同じ日本語の名前で出ます
-  （desktop.ini と、Windows 7 の読み取り専用の代わりのシステム属性。Linux のフォルダーへのリンクになっているものには書きません）。
-- フォントのつなぎ（FontLink）と置き換え（FontSubstitutes）は日本語の Windows 7 と同じです（MS Shell Dlg は MS UI Gothic、
-  MS Shell Dlg 2 は Tahoma、Segoe UI には Tahoma とメイリオ。参照用の実機で読んだ値）。古い形のダイアログの文字も Windows 7 と
-  同じフォントです。以前に取り出したファイル（MS UI Gothic と Tahoma が無い）では、これまでどおりメイリオ UI で代わりにします。
-- 見た目: ClearType（Windows 7 の既定。色の付き方も Windows 7 と同じ: Wine の 0134）、Aero のテーマ（`prefix/theme-settings.c`）。テーマのフォント（メイリオ 9pt）を利用者の
-  フォントとして保存します（`prefix/theme-fonts.c`。Windows でテーマを当てたときと同じ。日本語のフォント名はテーマの MUI にあるので、
-  prefix の言語で動かします）。壁紙は Windows 7 と同じく `TranscodedWallpaper.bmp` に変換して使います。
-- 「ドキュメント」は Linux のホーム（`H:`）です（XP のシェルと同じ）。
-- `win7.py stage` は毎回のセッションの前に動き、Wine の更新で上書きされた DLL と登録（「コンピューター」「コントロール パネル」
-  「ネットワーク」の名前など）を入れ直します。
+- The Windows 7 shell's DLLs go in `C:\w7\native` (64-bit) and `C:\w7\wow64` (32-bit) and are copied into `system32` and `syswow64`.
+  Which program uses which is described in "Which programs use Windows 7's DLLs" below.
+- Windows 7's Common Controls 6 goes in `C:\w7\comctl32.dll` (32-bit: `C:\w7\wow64\comctl32.dll`). In the Windows 7 shell session the
+  shell (`w7-explorer.exe`) and the Windows 7 DLLs inside other programs use it, while the programs themselves keep Wine's Common Controls 6
+  (Wine patch 0126; making programs use Windows 7's comctl32 breaks Wine's apps). `dllhost.exe`, which makes thumbnails, keeps Wine's
+  Common Controls 6.
+- `Shell` in `HKLM\...\Winlogon` is set to `w7-explorer.exe`.
+- The user folders (Documents, Pictures, Music, Videos and so on) and libraries show the same Japanese names as in Windows 7 (desktop.ini,
+  and the system attribute in place of Windows 7's read-only; nothing is written into ones that are links to Linux folders).
+- Font linking (FontLink) and substitution (FontSubstitutes) are the same as in Japanese Windows 7 (MS Shell Dlg is MS UI Gothic,
+  MS Shell Dlg 2 is Tahoma, Segoe UI gets Tahoma and Meiryo; values read on the reference machine). Text in old-style dialogs uses the same
+  fonts as Windows 7. With files extracted earlier (without MS UI Gothic and Tahoma), Meiryo UI stands in as before.
+- Appearance: ClearType (Windows 7's default, with the same colour fringes as Windows 7: Wine's 0134), the Aero theme
+  (`prefix/theme-settings.c`). The theme's font (Meiryo 9 pt) is saved as the user's font (`prefix/theme-fonts.c`, as when Windows applies a
+  theme; the Japanese font names are in the theme's MUI, so it runs in the prefix's language). The wallpaper is converted to
+  `TranscodedWallpaper.bmp`, as in Windows 7.
+- "Documents" is the Linux home (`H:`), as in the XP shell.
+- `win7.py stage` runs before every session and reinstalls DLLs and registrations overwritten by a Wine update (the names of "Computer",
+  "Control Panel", "Network" and so on).
 
-### どのプログラムが Windows 7 の DLL を使うか
+### Which programs use Windows 7's DLLs
 
-Windows のアプリのファイルを開く・保存するダイアログを Windows 7 の形にするため、ダイアログが読み込む DLL は
-アプリにも使わせます。それ以外の DLL はシェルだけです。
+To give Windows apps' open and save dialogs Windows 7's form, the DLLs the dialog loads are used by apps too. All other DLLs are for the
+shell only.
 
-| プログラム | Windows 7 の DLL | 設定 |
+| Program | Windows 7 DLLs | Setting |
 |---|---|---|
-| シェル（`w7-explorer.exe`） | 上の表のシェルの DLL すべて（14 個）と、Windows 7 の Common Controls 6 | AppDefaults で `native` |
-| Windows のアプリ（64bit と 32bit） | ファイルのダイアログの 10 個（`explorerframe`、`shell32`、`shlwapi`、`propsys`、`shdocvw`、`dui70`、`duser`、`profapi`、`thumbcache`、`linkinfo`） | DllOverrides で `native,builtin` |
-| Wine 自身のプログラム（デスクトップの `explorer.exe`、サービス、`start`、`winemenubuilder`、`winebrowser`、`control`、`rundll32`、`winecfg` など） | なし | AppDefaults で `builtin` |
-| サムネイルを作る `dllhost.exe` | ファイルのダイアログの 10 個（Common Controls 6 は Wine のもの） | AppDefaults で comctl32 だけ `builtin` |
+| The shell (`w7-explorer.exe`) | All the shell DLLs from the table above (14) and Windows 7's Common Controls 6 | `native` through AppDefaults |
+| Windows apps (64-bit and 32-bit) | The file dialog's 10 (`explorerframe`, `shell32`, `shlwapi`, `propsys`, `shdocvw`, `dui70`, `duser`, `profapi`, `thumbcache`, `linkinfo`) | `native,builtin` in DllOverrides |
+| Wine's own programs (the desktop's `explorer.exe`, services, `start`, `winemenubuilder`, `winebrowser`, `control`, `rundll32`, `winecfg` and others) | None | `builtin` through AppDefaults |
+| `dllhost.exe`, which makes thumbnails | The file dialog's 10 (Common Controls 6 is Wine's) | Only comctl32 `builtin` through AppDefaults |
 
-アプリの中では、Windows 7 の DLL は Windows 7 の Common Controls 6 を、アプリ自身は Wine の Common Controls 6 を使います
-（Wine のパッチ 0126）。
+Inside apps, Windows 7's DLLs use Windows 7's Common Controls 6 and the app itself uses Wine's (Wine patch 0126).
 
-Windows 7 の DLL でうまく動かないアプリには、Wine の DLL を使わせることができます（ファイルのダイアログは Wine のものに
-なります）。実行ファイルの名前で指定し、prefix に記録されるので、次からもそうなります。
+Apps that do not work well with Windows 7's DLLs can be made to use Wine's (their file dialogs become Wine's). They are named by
+executable, and the choice is recorded in the prefix, so it sticks.
 
 ```sh
-prefix/win7.py builtin .local/prefix-win7 app.exe          # Wine の DLL にする
-prefix/win7.py builtin .local/prefix-win7 app.exe --undo   # Windows 7 の DLL に戻す
+prefix/win7.py builtin .local/prefix-win7 app.exe          # use Wine's DLLs
+prefix/win7.py builtin .local/prefix-win7 app.exe --undo   # back to Windows 7's DLLs
 ```
 
-一度だけ試すときは、セッションの端末から
+To try it once, start it from a terminal in the session like
 `WINEDLLOVERRIDES="$WINEDLLOVERRIDES;explorerframe,shell32,shlwapi,propsys,shdocvw,dui70,duser,profapi,thumbcache,linkinfo,comctl32=b" wine app.exe`
-のように起動します（セッションが入れている値に足します）。
+(adding to the value the session sets).
 
-## カーソルとログオン画面
+## Cursors and the logon screen
 
-- カーソル: `greeter/cursors.py --win7` が、Windows 7 の Aero の配色（shell-cursors の部品のマニフェストにある既定の割り当て）の
-  `.cur`・`.ani` を X のカーソルのテーマ `win4wine-win7` にします。画像の影は Windows 7 のファイルに入っているものです。待ち（`aero_busy.ani`）と
-  バックグラウンドで作業中（`aero_working.ani`）は動くカーソルです。Wine のアプリも Linux のアプリも、このテーマのカーソルを使います。
-- ログオン画面: `greeter/win7-greeter.py`（LightDM の greeter）が、Windows 7 の LogonUI の画面を描きます（`greeter/w7logon.py`）。
-  背景（imageres.dll。画面の縦横比に近いもの）、利用者の写真とその枠、パスワードの欄と矢印のボタン、下のボタンと文字（authui.dll と
-  その MUI、メイリオ）、エディションの名前（basebrd.dll）は、メディアのファイルのものです。大きさや位置は authui のレイアウトの
-  ファイル（UIFILE）と、Windows 7 SP1 の実機（1024x768 と 1280x800）で測ったものです。パスワードが違うときのメッセージ、
-  シャットダウンのボタンと、その横の ▲ のメニュー（再起動、スリープ・休止状態（できる場合）、シャットダウン）があります。
-  利用者の写真は、LightDM（AccountsService）に設定されたものか、Windows 7 の既定の `user.bmp` です。
-- 利用者が複数いるときは、Windows 7 と同じく、まず利用者の一覧（小さな枠の写真と名前、名前の順、1 行で中央）を出し、
-  選んだ利用者の写真とパスワードの欄の下に「ユーザーの切り替え」のボタンを出します。クリックか矢印キーと Enter で選び、
-  「ユーザーの切り替え」・Esc・Alt+W で一覧に戻ります。枠の絵（authui.dll）、間隔、位置、ボタンの大きさは実機
-  （1280x800、2 人と 4 人、長い名前）で測りました。画面に 1 行で入らない人数のときの折り返しは測っていません。
-- ログオン後と終わるとき: シェルが動き出すまで「ようこそ」、ログオフ中は「ログオフしています...」、終了と再起動では
-  「シャットダウンしています...」を、ログオン画面の背景に回る印と一緒に出します（`greeter/w7-splash.py`）。文字は
-  winlogon.exe と wininit.exe の MUI、回る印は imageres.dll の BITMAP 5000〜5004（18 コマ）、並び方は authui のレイアウト（状態の表示）と
-  実機で測ったものです。ログオン画面と同じファイルを使うので、`--greeter` で入れたときに出ます（session.json の `welcome_screen` で止められます）。
+- Cursors: `greeter/cursors.py --win7` makes the `.cur` and `.ani` files of Windows 7's Aero scheme (the default assignment in the
+  shell-cursors component's manifest) into the X cursor theme `win4wine-win7`. The shadows are the ones in Windows 7's files. Busy
+  (`aero_busy.ani`) and Working in Background (`aero_working.ani`) are animated. Wine apps and Linux apps alike use this theme's cursors.
+- Logon screen: `greeter/win7-greeter.py` (a LightDM greeter) draws Windows 7's LogonUI screen (`greeter/w7logon.py`). The background
+  (imageres.dll, the one closest to the screen's aspect ratio), the user's picture and its frame, the password field and the arrow button,
+  the buttons and text at the bottom (authui.dll and its MUI, Meiryo) and the edition name (basebrd.dll) come from the media's files. Sizes
+  and positions come from authui's layout file (UIFILE) and from measurements on a real Windows 7 SP1 (1024x768 and 1280x800). There is the
+  message for a wrong password, the shut down button and the ▲ menu beside it (restart, sleep/hibernate where possible, shut down).
+  The user picture is the one set in LightDM (AccountsService), or Windows 7's default `user.bmp`.
+- With several users, as in Windows 7, the list of users comes first (small framed pictures and names, sorted by name, one centred row),
+  and a "Switch User" button appears below the chosen user's picture and password field. Choose with a click or the arrow keys and Enter;
+  "Switch User", Esc or Alt+W go back to the list. The frame image (authui.dll), spacing, positions and button sizes were measured on real
+  hardware (1280x800, 2 and 4 users, long names). Wrapping when the users do not fit in one row has not been measured.
+- After logon and when ending: until the shell starts, "Welcome"; while logging off, "Logging off..."; for shut down and restart,
+  "Shutting down...", shown with the spinning mark on the logon screen's background (`greeter/w7-splash.py`). The text comes from the MUIs
+  of winlogon.exe and wininit.exe, the spinning mark from imageres.dll's BITMAPs 5000–5004 (18 frames), and the arrangement from authui's
+  layout (the status display) and measurements on real hardware. It uses the same files as the logon screen, so it appears when installed
+  with `--greeter` (`welcome_screen` in session.json turns it off).
 
-## セッション
+## The session
 
-session.json（`~/.config/win4wine/win7-session.json`）の `"shell": "win7"` で、supervisor は次のように動きます。
+With `"shell": "win7"` in session.json (`~/.config/win4wine/win7-session.json`) the supervisor:
 
-- `C:\w7\w7-explorer.exe` を起動し、`prefix/win7.py stage` を使います。ようこそ画面は Windows 7 のもの（下の「カーソルとログオン画面」）です。
-- `WIN4WINE_SHELL=win7` を設定します。Windows 7 のためだけの Wine のパッチ（0120、0121、0123〜0125 の一部）は、これがあるときだけ効きます。
-- Linux の窓は、アプリ（X11 の `WM_CLASS`、Wayland の app_id）ごとにタスクバーのボタンにまとまります（proxy が窓に
-  AppUserModelID を付けます）。スタートメニューにあるアプリなら、ジャンプリストの題とアイコンはそのアプリのもので、
-  「タスク バーにこのプログラムを表示する」で固定でき、固定したボタンから起動できます（`session/linux_apps.py` が
-  `C:\xp\linux-apps\relaunch.tsv` に名前・コマンド・アイコンを書き、proxy が Windows 7 の shell32 と同じ窓のプロパティ
-  （AppUserModel の RelaunchCommand、RelaunchIconResource、RelaunchDisplayNameResource）に付けます。以前は題が "proxy" でした）。
-- Linux のトレイアイコン（StatusNotifierItem と XEmbed）は、Windows 7 の通知領域に出ます（Wine の 0124）。
-- 日本語入力は XP のシェルと同じ fcitx5 + Mozc です。入力モード（「あ」など）は通知領域に出て、Wine のアプリでは窓の中で
-  変換します。
-- Windows のアプリがスタートメニューに作るショートカットは、「すべてのプログラム」に並びます。
-- ファイルを開く・保存するダイアログ: Windows のアプリ（64bit・32bit）は Windows 7 のダイアログです（一覧は Windows 7 の shell32 と
-  explorerframe が描きます。ダイアログの枠は Wine の comdlg32 で、Windows 7 と同じ大きさ・配置・フォントにし、上の段の戻る・進む、
-  パンくずのアドレス（各フォルダーの ▸ でその中のフォルダーの一覧、空いた所のクリックで入力）、更新、検索欄も実機と同じ部品で
-  描きます。Wine の 0137）。検索は今のフォルダーの中を名前で絞り込みます（実機は Windows Search の索引を検索しますが、prefix には
-  ありません）。最初に開くのは「ドキュメント」フォルダーです（実機はドキュメント ライブラリ。ライブラリの一覧には Windows Search の
-  部品が要ります）。Notepad のように古い形のダイアログを使うアプリも、一覧は Windows 7 の
-  ものです（Wine の 0106、0108）。Linux のアプリ（GTK 3・GTK 4・Qt）はそれぞれのダイアログです。どちらも「ドキュメント」（`H:`）は
-  Linux のホームで、日本語の名前のファイルも開け、保存できます。
-- Windows キー、Ctrl+Esc（Linux の窓からも）、Win+R、Win+E、Alt+Tab が使えます。
-- タスクバーを右クリックして「プロパティ」を開くと、実機と同じように「小さいアイコンを使う」（高さ 30 px のタスクバー）と
-  「タスク バーのボタン」（常に結合、ラベルを非表示／タスク バーがいっぱいの場合に結合／結合しない）を変えられます。
-  「適用」か「OK」ですぐにタスクバーが変わり、最大化した窓（Wine の窓も Linux の窓も）も新しい作業領域に合わせ直します
-  （Wine の 0030、0111、0112）。設定は prefix のレジストリ（`HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced` の
-  `TaskbarSmallIcons` と `TaskbarGlomLevel`）に残り、次のセッションでもそのままです。Linux の窓のボタンも、ラベル付きのボタンになります。
-- クイック起動: 実機と同じく、タスクバーの右クリック →「ツール バー」→「新規ツール バー」で
-  `%APPDATA%\Microsoft\Internet Explorer\Quick Launch` を選ぶと、タスクバーに出ます（「ボタン名の表示」と「タイトルの表示」を外し、
-  固定を外して左へ動かすと Vista までの形）。左へ動かした直後は、実機と同じくクイック起動の帯が残りの幅を取り、起動中のアプリは
-  右端に寄ります。起動中のアプリの帯のつまみを左へ引きずると、普通の幅に戻ります（ログオフで保存されます）。フォルダには Windows 7 の既定のユーザーと同じく「デスクトップの表示」と
-  「ウィンドウを切り替える」が入ります（ISO から取り出したものを prefix が一度だけ置きます。EXTRACT_VERSION 6）。ツールバーは
-  ログオフで保存され、次のセッションでもそのままです。「デスクトップの表示」は 2 回目に窓を元に戻し、最後に使っていた窓が前面に
-  戻ります（Wine の 0051）。フォルダの選択のダイアログは実機と同じ「フォルダー:」と「フォルダーの選択」で、入力した `%APPDATA%`
-  などを展開し、入力したフォルダを受け付けます（Wine の 0105、0137）。
-- ピン留め: タスクバーのボタンを右クリックして「タスク バーにこのプログラムを表示する」で、Windows のアプリも Linux のアプリも
-  タスクバーに残り、そこから起動できます（ログオフ後も残ります）。実機の既定のピン留め（Internet Explorer など）は置きません。
-- タスク一覧の空いた所の明るい光（大きいアイコンのとき）は実機と同じです（Windows 7 の TaskBand2 の部品。小さいアイコンでは
-  出ません）。
-- フォルダーは、Windows のアプリからも、Wine 自身のプログラム（`wine explorer C:\パス`、`wine start C:\パス`）からも Windows 7 の
-  フォルダーウィンドウで開きます（Wine の 0128）。フォルダーウィンドウのアドレス バーと検索欄の高さは実機と同じです（Wine の 0119）。
-- フォルダーウィンドウのナビゲーション ウィンドウは実機と同じです: 「お気に入り」のダウンロード・デスクトップ・最近表示した場所
-  （prefix の `user-profile.exe` が Links フォルダーに作るリンクと日本語の名前）、ライブラリごとのアイコン（Wine の 0100）。
-  既定のライブラリ（ドキュメント・ピクチャ・ビデオ・ミュージック）も `user-profile.exe` が Windows 7 の shell32 に作らせます。
-  ダウンロードが Linux のフォルダーへのリンクのときは、そこに desktop.ini を置かないため、アイコンは普通のフォルダーです。
-- 詳細ペインなど、アイコンを元の大きさ以外で出すところは Windows 7 と同じく面積平均で縮めます（Wine の 0110）。
-- リスト ビュー（Explorer テーマ）とメニュー バーは、実機と同じくマウスの下の項目を光らせます。無効な窓のメニュー バーの文字は
-  灰色です（Wine の 0131、0117）。
-- Tahoma（MS Shell Dlg 2）などの中の日本語は、実機と同じ大きさと字形です（8 pt のダイアログの文字は MS UI Gothic の
-  12 px のビットマップ。Wine の 0135）。
-- 種類の列のテキスト ファイルは「テキスト ドキュメント」です（Windows 7 のメモ帳の MUI の文字列。メモ帳そのものは Wine のもの）。
-- Alt+Tab は Windows 7 ベーシックの形です。Windows 7 のテーマの `AltTab` クラスで描き（背景、選んだ項目の枠、題の字体と色）、
-  大きさや並びは Windows 7 SP1 の実機に合わせています（1 行に 7 個、行は作業領域に入るだけ）。最初の行の最後に「デスクトップ」が
-  入り、選ぶとすべての窓を最小化します（Windows 7 では、デスクトップを見せたあと元に戻せますが、ここでは窓ごとに戻します）。
-- 窓の枠とキャプションのボタンは Windows 7 ベーシックと同じ大きさです（枠 8 px、最小化・最大化・閉じるのボタン 31x17。Wine の
-  0116。Windows 7 SP1 の実機で同じ位置・大きさの Notepad と画素ごとに比べています）。
-- メニュー（メニュー バーとポップアップ）は Windows 7 のテーマで描きます（Wine の 0117、0129）。項目の大きさや文字の位置、影は
-  実機と画素ごとに同じです（ClearType の色を除く）。Windows 7 の既定どおりキーボードの手掛かりは隠れ、アクセス キーの下線は
-  Alt や F10 でメニューを使う間だけ出ます。
-- システム アイコン（アプリの既定のアイコン、メッセージ ボックスのエラー・警告・情報・質問、盾）は Windows 7 のものです。Windows 7 の
-  user32.dll をデータとしてだけ `C:\w7\res\user32-w7.dll` に置き、Wine の user32 がそこから読みます（Wine の 0132。名前を変えて
-  いるのは、Wine の user32 と取り違えないため）。
-- メッセージ ボックスは Windows 7 の形（白地に下のボタン帯、右寄せのボタン）で、既定のボタンの脈動とプログレス バーの光も
-  Windows 7 と同じです（Wine の 0133）。
-- スタートメニューの右の列の文字は実機と同じく 1 回だけ描きます（Wine の 0127）。
-- Windows のアプリのコントロール（Wine の Common Controls 6）は、ドロップダウン リスト、ステータス バー、タブ、プログレス バー、
-  エディットの枠、トラック バー、リスト ビュー（詳細表示、Explorer テーマの選択と列の線）、フォーカスの点線、文字の位置を Windows 7 に合わせています（Wine の
-  0130、0131）。
-- スタートメニューの「シャットダウン」と、その横のメニューの「ログオフ」「再起動」で、セッションを終えます（XP のシェルと同じく、
-  終了と再起動では session.json の `shutdown_command`・`reboot_command` を実行します）。
+- Starts `C:\w7\w7-explorer.exe` and uses `prefix/win7.py stage`. The Welcome screen is Windows 7's ("Cursors and the logon screen" above).
+- Sets `WIN4WINE_SHELL=win7`. The Wine patches just for Windows 7 (0120, 0121, parts of 0123–0125) only take effect with it.
+- Linux windows are grouped into taskbar buttons per app (X11's `WM_CLASS`, Wayland's app_id) (the proxy gives windows an AppUserModelID).
+  For apps in the Start menu, the jump list's title and icon are the app's, the app can be pinned with "Pin this program to taskbar", and
+  it can be started from the pinned button (`session/linux_apps.py` writes names, commands and icons into `C:\xp\linux-apps\relaunch.tsv`,
+  and the proxy sets the same window properties as Windows 7's shell32 (AppUserModel's RelaunchCommand, RelaunchIconResource,
+  RelaunchDisplayNameResource); the title used to be "proxy").
+- Linux tray icons (StatusNotifierItem and XEmbed) appear in Windows 7's notification area (Wine's 0124).
+- Japanese input is the same fcitx5 + Mozc as in the XP shell. The input mode ("あ" and so on) is shown in the notification area, and in
+  Wine apps composition happens inside the window.
+- Shortcuts that Windows apps create in the Start menu are listed under "All Programs".
+- Open and save dialogs: Windows apps (64-bit and 32-bit) get Windows 7's dialog (the list is drawn by Windows 7's shell32 and
+  explorerframe; the dialog's frame is Wine's comdlg32, given Windows 7's size, layout and font, and the top row's back/forward, the
+  breadcrumb address bar (▸ on each folder lists its subfolders, a click on the empty part lets you type), refresh and the search box are
+  drawn with the same parts as on real hardware: Wine's 0137). Search filters the current folder by name (real hardware searches the
+  Windows Search index, which the prefix does not have). It first opens the "Documents" folder (real hardware opens the Documents library;
+  listing libraries needs Windows Search's components). Apps that use the old-style dialog, like Notepad, also get Windows 7's list
+  (Wine's 0106, 0108). Linux apps (GTK 3, GTK 4, Qt) get their own dialogs. In both, "Documents" (`H:`) is the Linux home, and files with
+  Japanese names can be opened and saved.
+- The Windows key, Ctrl+Esc (from Linux windows too), Win+R, Win+E and Alt+Tab work.
+- Right-clicking the taskbar and opening "Properties" lets you change "Use small icons" (a 30 px tall taskbar) and "Taskbar buttons" (Always
+  combine, hide labels / Combine when taskbar is full / Never combine), as on real hardware. "Apply" or "OK" changes the taskbar at once,
+  and maximized windows (Wine's and Linux's alike) are refitted to the new work area (Wine's 0030, 0111, 0112). The settings stay in the
+  prefix's registry (`TaskbarSmallIcons` and `TaskbarGlomLevel` in `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced`) and
+  carry over to the next session. Linux windows' buttons become labelled buttons too.
+- Quick Launch: as on real hardware, right-click the taskbar → "Toolbars" → "New toolbar" and choose
+  `%APPDATA%\Microsoft\Internet Explorer\Quick Launch`, and it appears on the taskbar (untick "Show Text" and "Show title", unlock the
+  taskbar and move it left for the pre-Vista layout). Right after moving it left, as on real hardware, the Quick Launch band takes the rest
+  of the width and running apps are pushed to the right edge. Dragging the running apps band's grip to the left returns it to a normal width
+  (saved on log off). The folder contains "Show desktop" and "Switch between windows", as for Windows 7's default user (the prefix places
+  them once, extracted from the ISO; EXTRACT_VERSION 6). Toolbars are saved on log off and carry over to the next session. The second
+  "Show desktop" restores the windows, and the window last in use comes back to the foreground (Wine's 0051). The folder chooser dialog has
+  the same "Folder:" and "Select Folder" as on real hardware, expands typed values such as `%APPDATA%`, and accepts a typed folder
+  (Wine's 0105, 0137).
+- Pinning: right-click a taskbar button and choose "Pin this program to taskbar", and Windows apps and Linux apps alike stay on the taskbar
+  and can be started from there (they survive log off). Real hardware's default pins (Internet Explorer and so on) are not created.
+- The bright glow in the empty part of the task list (with large icons) is the same as on real hardware (Windows 7's TaskBand2 part; not
+  shown with small icons).
+- Folders open in Windows 7's folder window both from Windows apps and from Wine's own programs (`wine explorer C:\path`,
+  `wine start C:\path`) (Wine's 0128). The heights of the folder window's address bar and search box are the same as on real hardware
+  (Wine's 0119).
+- The folder window's navigation pane is the same as on real hardware: Favorites with Downloads, Desktop and Recent Places (links and
+  Japanese names that the prefix's `user-profile.exe` creates in the Links folder), and per-library icons (Wine's 0100).
+  `user-profile.exe` also has Windows 7's shell32 create the default libraries (Documents, Pictures, Videos, Music).
+  When Downloads is a link to a Linux folder, no desktop.ini is placed there, so its icon is an ordinary folder.
+- Where icons are shown at other than their own size, such as the details pane, they are shrunk by area averaging, as in Windows 7
+  (Wine's 0110).
+- List views (Explorer theme) and the menu bar highlight the item under the mouse, as on real hardware. Menu bar text of disabled windows
+  is grey (Wine's 0131, 0117).
+- Japanese text in Tahoma (MS Shell Dlg 2) and the like has the same size and glyphs as on real hardware (8 pt dialog text is MS UI
+  Gothic's 12 px bitmap; Wine's 0135).
+- Text files are "Text Document" in the Type column (a string from Windows 7's Notepad MUI; Notepad itself is Wine's).
+- Alt+Tab has Windows 7 Basic's form. It is drawn with the Windows 7 theme's `AltTab` class (background, the frame of the chosen item, the
+  title's font and colour), and its size and arrangement match a real Windows 7 SP1 (7 per row, as many rows as fit the work area).
+  "Desktop" goes at the end of the first row; choosing it minimizes all windows (Windows 7 can restore them after showing the desktop;
+  here they are restored one by one).
+- Window frames and caption buttons are the same size as in Windows 7 Basic (8 px border, 31x17 minimize, maximize and close buttons;
+  Wine's 0116; compared pixel by pixel with a Notepad of the same position and size on a real Windows 7 SP1).
+- Menus (menu bar and popups) are drawn with the Windows 7 theme (Wine's 0117, 0129). Item sizes, text positions and shadows are
+  pixel-for-pixel the same as on real hardware (except for ClearType's colours). As Windows 7's default, keyboard cues are hidden, and
+  access key underlines only show while the menu is used with Alt or F10.
+- System icons (apps' default icon; message boxes' error, warning, information, question; the shield) are Windows 7's. Windows 7's
+  user32.dll is placed, as data only, in `C:\w7\res\user32-w7.dll`, and Wine's user32 reads from it (Wine's 0132; renamed so it is not
+  confused with Wine's user32).
+- Message boxes have Windows 7's form (white with a button band at the bottom, buttons aligned right), and the default button's pulse and
+  the progress bar's glow are also the same as in Windows 7 (Wine's 0133).
+- The text in the Start menu's right column is drawn only once, as on real hardware (Wine's 0127).
+- Windows apps' controls (Wine's Common Controls 6) match Windows 7 for drop-down lists, status bars, tabs, progress bars, edit borders,
+  track bars, list views (details view, the Explorer theme's selection and column lines), the dotted focus rectangle and text positions
+  (Wine's 0130, 0131).
+- "Shut down" in the Start menu, and "Log off" and "Restart" in the menu beside it, end the session (as in the XP shell, shut down and
+  restart run `shutdown_command` and `reboot_command` from session.json).
 
-- 壁紙は、モニターが複数あるときも、実機と同じくモニターごとに描きます（Wine の 0094 の PaintMonitor）。
-- 日本語の prefix では、メモ帳（Wine のもの）の既定のフォントを日本語版の Windows 7 のメモ帳と同じ「ＭＳ ゴシック」12 ポイントに
-  します（利用者が選んだフォントは変えません）。Wine の既定（System）には日本語の字が無く、日本語のフォントの無い Linux では
-  四角になっていました。
-- タスクバーのボタンを指したときの窓の一覧は、実機の Windows 7 ベーシックと同じ見た目です（シェルにはデスクトップの合成が無いと
-  答えます。Wine の 0125）。
-- Wayland のセッション「Windows 7 Shell (Wine, Wayland)」もあります（`setup.sh --shell win7 --wayland`）。モニターごとの倍率が
-  使え、スタート ボタンの縁は compositor が本物の透明度で描きます（[wayland.md](wayland.md)）。
+- The wallpaper is drawn per monitor when there are several, as on real hardware (PaintMonitor in Wine's 0094).
+- In a Japanese prefix, the default font of Notepad (Wine's) is set to "ＭＳ ゴシック" (MS Gothic) 12 pt, the same as Japanese Windows 7's
+  Notepad (a font the user chose is not changed). Wine's default (System) has no Japanese characters, and on Linux without Japanese fonts
+  they showed as boxes.
+- The window list shown when pointing at a taskbar button looks the same as on a real Windows 7 Basic (the shell is told there is no
+  desktop composition; Wine's 0125).
+- There is also a Wayland session, "Windows 7 Shell (Wine, Wayland)" (`setup.sh --shell win7 --wayland`). It can scale per monitor, and the
+  compositor draws the Start button's edge with real transparency ([wayland.md](wayland.md)).
 
-Windows 7 のシェルのために足した Wine のパッチは 0094〜0136 です（[patches.md](patches.md)）。
+The Wine patches added for the Windows 7 shell are 0094–0136 ([patches.md](patches.md)).
 
-## 制限
+## Limits
 
-- Aero の効果（ガラス、ライブ サムネイル、Aero Peek）はありません。デスクトップの合成（DWM）が無いためです。
-- ログオン画面（`--greeter`）の「コンピューターの簡単操作」のボタンは何もしません。
-  左上の入力言語のボタンはありません。
-- 確かめたのは日本語版の Windows 7 Professional SP1（x64）です。英語版は、取り出したファイルの ja-JP の MUI を、Microsoft の英語の言語パック（KB2483139）の en-US のものに入れ替えて確かめました（ログオン画面、「ようこそ」「ログオフしています」、スタートメニュー、フォルダーウィンドウ、ファイルのダイアログ。X11 と Wayland）。字体は Segoe UI、ロケールは `en_US.UTF-8` です。英語版のメディアそのものはまだ試していません。
-- ネットワーク、ヘルプとサポート、コントロール パネルの中身は、Wine にその部品が無いので使えません。
-- スタートメニューの「ロック」「スリープ」「休止状態」は何もしません。
-- Wine は利用者を管理者として動かすので、管理者かどうかを題名に出すアプリ（Notepad++ の「[Administrator]」など）はそう表示します
-  （Windows Vista 以降として動く prefix の Wine で同じです。Windows 7 の DLL によるものではありません）。
+- No Aero effects (glass, live thumbnails, Aero Peek), since there is no desktop composition (DWM).
+- The "Ease of Access" button on the logon screen (`--greeter`) does nothing.
+  There is no input language button at the top left.
+- What was checked is Japanese Windows 7 Professional SP1 (x64). English was checked by replacing the extracted files' ja-JP MUIs with the
+  en-US ones from Microsoft's English language pack (KB2483139) (logon screen, "Welcome" and "Logging off", Start menu, folder windows,
+  file dialogs; X11 and Wayland). The font is Segoe UI and the locale `en_US.UTF-8`. English media itself has not been tried yet.
+- Networking, Help and Support, and the contents of the Control Panel cannot be used, since Wine lacks those parts.
+- "Lock", "Sleep" and "Hibernate" in the Start menu do nothing.
+- Wine runs the user as an administrator, so apps that show whether they run as administrator in their title (Notepad++'s
+  "[Administrator]" and the like) say so (the same with Wine on any prefix that runs as Windows Vista or later; it is not caused by
+  Windows 7's DLLs).

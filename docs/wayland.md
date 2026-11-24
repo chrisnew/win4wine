@@ -1,161 +1,165 @@
-# Wayland のセッション
+# The Wayland session
 
-ログイン画面で選べる 2 つ目のセッション「XP Shell (Wine, Wayland)」（ReactOS のシェルでは「ReactOS Shell (Wine, Wayland)」、
-Windows 7 のシェルでは「Windows 7 Shell (Wine, Wayland)」）の説明です。X11 のウィンドウマネージャー（bridge-wm）の
-代わりに、パッチを当てた labwc（wlroots の compositor）が同じ役を持ちます。X11 のセッションはそのまま残り、動きも変わりません。
+This describes the second session on the login screen, "XP Shell (Wine, Wayland)" ("ReactOS Shell (Wine, Wayland)" for the ReactOS
+shell, "Windows 7 Shell (Wine, Wayland)" for the Windows 7 shell). Instead of the X11 window manager (bridge-wm), a patched labwc (a
+wlroots compositor) takes the same role. The X11 session stays as it is and behaves the same.
 
-**X11 のセッション以上に実験的な機能です。** 作ったばかりで、確かめた範囲は X11 のセッションより狭く、下の「X11 のセッションとの違い・残っていること」の制限があります。どの compositor を選んだか、その比較と最初の試作の結果は [history/wayland-study.md](history/wayland-study.md) にあります。
+**This is even more experimental than the X11 session.** It is new, it has been checked less than the X11 session, and it has the limits
+listed under "Differences from the X11 session, and what is left" below. Which compositor was chosen, the comparison and the first
+prototype's results are in [history/wayland-study.md](history/wayland-study.md).
 
-## 何ができるようになるか
+## What it makes possible
 
-- **モニターごとの倍率**: 100% のモニターと 150% のモニターを同時に使えます。X11 では DPI が画面全体で 1 つでした。
-- **分数の倍率での Linux のアプリ**: GTK、Qt、Chromium、Firefox などが 125% や 150% をそのまま描けます。
-- **XP のシェルはぼけません**: XP のシェルと Wine のアプリは、Xwayland の X11 のクライアントのまま、DPI（LogPixels）で
-  描いたものを出力の 1 画素ずつに表示します。compositor が拡大することはありません。
+- **Per-monitor scaling**: a 100% monitor and a 150% monitor can be used at the same time. On X11 there was a single DPI for the whole screen.
+- **Linux apps at fractional scales**: GTK, Qt, Chromium, Firefox and others can draw at 125% or 150% directly.
+- **The XP shell is not blurred**: the XP shell and Wine apps stay X11 clients of Xwayland, and what they draw at their DPI (LogPixels) is
+  shown one pixel per output pixel. The compositor never scales it.
 
-XP にはモニターごとの DPI が無いので、XP のシェルの DPI は 1 つです。主に使う出力の倍率に合わせてください（倍率 1.5 なら 144）。
+XP has no per-monitor DPI, so the XP shell has a single DPI. Match it to the scale of the output you mainly use (144 for a scale of 1.5).
 
-## 使い方
+## Usage
 
-- `scripts/setup.sh --media ISO --wayland` で、labwc と wlroots をビルドし（`wayland/build.sh`、`.local/labwc-install`）、
-  セッションを登録します（`session/install.sh --wayland`）。`--shell reactos` や `--shell win7` と一緒なら、そのシェルの
-  Wayland のセッションを登録します。`--greeter` と一緒なら、ログオン画面の既定のセッションも Wayland になります。
-- 出力の倍率と位置は `session.json` の `"outputs"`、Win32 の主モニターは `"primary"`（出力の名前）で決めます。
-  例: `"outputs": {"HDMI-A-1": {"scale": 1.5}, "DP-1": {"scale": 1, "position": "2560,0"}}, "primary": "HDMI-A-1"`。
-  `mode`（`wlr-randr --mode` の値）も書けます。出力の名前は `wlr-randr` で見られます。
+- `scripts/setup.sh --media ISO --wayland` builds labwc and wlroots (`wayland/build.sh`, `.local/labwc-install`) and registers the session
+  (`session/install.sh --wayland`). Together with `--shell reactos` or `--shell win7`, it registers that shell's Wayland session.
+  Together with `--greeter`, the logon screen's default session becomes the Wayland one too.
+- The outputs' scale and position are set by `"outputs"` in `session.json`, and Win32's primary monitor by `"primary"` (an output name).
+  Example: `"outputs": {"HDMI-A-1": {"scale": 1.5}, "DP-1": {"scale": 1, "position": "2560,0"}}, "primary": "HDMI-A-1"`.
+  `mode` (a value for `wlr-randr --mode`) can be given too. Output names are shown by `wlr-randr`.
 
-## 部品
+## Parts
 
-| 場所 | 中身 |
+| Path | Contents |
 |---|---|
-| `wayland/upstream.env`, `wayland/build.sh` | labwc 0.8.3 に wlroots 0.18.2 と libsfdo を subproject として静的に組み込んでビルドします（システムの wlroots は使いません） |
-| `wayland/patches/wlroots/0001` | scene の surface を 1/倍率 の大きさで、また一部だけを切り取って表示します。その倍率の出力では 1 画素ずつ描きます |
-| `wayland/patches/wlroots/0002` | XWM が `_NET_WM_STATE_ABOVE`（Win32 の最前面の窓）を落とさずに保ち、変化を知らせます |
-| `wayland/patches/wlroots/0003` | scene の surface を形（X の窓の SHAPE）の中だけ描き、入力もその中だけで受けます。倍率が整数でない出力でも、X の窓を出力の画素の正しい位置に描きます |
-| `wayland/patches/wlroots/0004` | XWM が `_NET_ACTIVE_WINDOW` に、活性化した窓をいつも書きます（その窓のクライアントが先に X のフォーカスを移していたときも） |
-| `wayland/patches/labwc/0001` | `xwayland-scale.c`（Xwayland を出力の画素で動かす）と `win4wine.c`（bridge-wm の役） |
-| `wayland/labwc/` | labwc の設定（Alt+F4 だけのキー、空のメニュー、XP の Luna に近い色の枠） |
-| `wayland/session.sh` | IPC の場所（`WIN4WINE_IPC`）を決めて labwc を起動し、その中で supervisor を動かします。supervisor が終わるとセッションも終わります |
-| `session/supervisor.py` | labwc の中では bridge-wm を起動せず、`wlr-randr` で出力を設定し、主モニターの名前を IPC の `primary` に書きます。Wine には `WIN4WINE_COMPOSITED` を渡します（下の「Windows 7 のシェル」） |
-| Wine 0033, 0088 | Xwayland ではルートの窓から画面を読めないので、XP の影は透明度つきの黒い窓で描き（0033）、ログオフの灰色の画面は各窓の中身から作ります（0088） |
+| `wayland/upstream.env`, `wayland/build.sh` | Builds labwc 0.8.3 with wlroots 0.18.2 and libsfdo linked statically as subprojects (the system's wlroots is not used) |
+| `wayland/patches/wlroots/0001` | Shows scene surfaces at 1/scale size, and cropped to a part. On an output of that scale they are drawn one pixel per pixel |
+| `wayland/patches/wlroots/0002` | The XWM keeps `_NET_WM_STATE_ABOVE` (Win32 topmost windows) instead of dropping it, and reports changes |
+| `wayland/patches/wlroots/0003` | Scene surfaces are drawn only inside their shape (the X window's SHAPE), and take input only inside it. X windows are drawn at the right output pixel even on outputs with a non-integer scale |
+| `wayland/patches/wlroots/0004` | The XWM always writes the activated window into `_NET_ACTIVE_WINDOW` (even when that window's client had already moved the X focus) |
+| `wayland/patches/labwc/0001` | `xwayland-scale.c` (running Xwayland in output pixels) and `win4wine.c` (bridge-wm's role) |
+| `wayland/labwc/` | labwc's configuration (Alt+F4 as the only key, an empty menu, frames in colours close to XP's Luna) |
+| `wayland/session.sh` | Chooses the IPC location (`WIN4WINE_IPC`), starts labwc and runs the supervisor inside it. When the supervisor exits, the session ends |
+| `session/supervisor.py` | Inside labwc it does not start bridge-wm; it sets up the outputs with `wlr-randr` and writes the primary monitor's name to `primary` in the IPC directory. Wine is given `WIN4WINE_COMPOSITED` ("The Windows 7 shell" below) |
+| Wine 0033, 0088 | Under Xwayland the screen cannot be read from the root window, so XP's shadows are drawn as translucent black windows (0033), and the grey log off screen is built from each window's contents (0088) |
 
-## Xwayland を出力の画素で動かす（`xwayland-scale.c`）
+## Running Xwayland in output pixels (`xwayland-scale.c`)
 
-- Xwayland には自前の xdg-output を見せ、各出力を画素の大きさで横に並べます（「X の空間」）。主モニターを先頭（X の 0,0）に
-  置き、Xwayland の RandR の primary にもします。Win32 の 0,0 が主モニターの左上になり、XP のデスクトップのアイコンと壁紙は
-  主モニターに出ます。
-- X の窓は、載っている出力の倍率で 1/倍率 に縮めて置きます（X の 1 画素が出力の 1 画素）。倍率の違う出力にまたがる窓は、
-  出力ごとに切り取った部分を並べます。
-- 窓の位置と大きさの要求、size hints、作業領域（`_NET_WORKAREA` と出力ごとの `_GTK_WORKAREAS_D0`）、押したまま窓の外に
-  出たポインターの位置を、X の空間とレイアウトの座標の間で変換します。
+- Xwayland is shown xdg-outputs of labwc's own, with every output laid out side by side at its pixel size ("X space"). The primary monitor
+  goes first (X's 0,0) and is also made Xwayland's RandR primary. Win32's 0,0 is the primary monitor's top left, and XP's desktop icons and
+  wallpaper are on the primary monitor.
+- X windows are placed shrunk to 1/scale of the output they are on (one X pixel is one output pixel). A window spanning outputs with
+  different scales is shown as parts cropped per output, side by side.
+- Window position and size requests, size hints, the work area (`_NET_WORKAREA` and the per-output `_GTK_WORKAREAS_D0`) and the position
+  of a pointer that left a window while a button was held are converted between X space and layout coordinates.
 
-## bridge-wm の役（`win4wine.c`）
+## bridge-wm's role (`win4wine.c`)
 
-`WIN4WINE_IPC` があるときだけ動きます。
+Only active when `WIN4WINE_IPC` is set.
 
-- proxy.exe との IPC は bridge-wm と同じです（`windows.tsv`、`geometry.tsv`、`frames.tsv`、`*.cmd`、`switch.tsv`、
-  `shellkeys.tsv`、`icon-*.argb`。[architecture.md](architecture.md) の「IPC」）。IPC のファイルは inotify で読み、窓の変化は
-  labwc の中から受けて、まとめて次の idle で書きます。
-- Linux の窓（Wayland の窓と、Wine 以外の X11 の窓）に XP の枠を付けます。枠は窓のすぐ下に重ね、移動・大きさの変更・最大化・
-  最小化・閉じる・ドラッグを窓に結び付けます。最大化の大きさは、枠の分を除いた作業領域です。アイコンは、Wayland の窓は
-  アプリの desktop エントリーから、X11 の窓は `_NET_WM_ICON` から取ります。
-- Wine の窓の種類（`_WIN4WINE_CLASS`、`_WIN4WINE_HWND`）は labwc 自身の X の接続で読みます。XP のデスクトップは一番下、
-  タスクバー・スタートメニュー・最前面の窓（とその所有する窓）は上に置き、X の重なり順も合わせます（Xwayland はポインターの
-  下の窓を X の重なり順で決めるためです）。
-- Alt+Tab は XP の切り替え窓に、Windows キーと Ctrl+Esc は Linux の窓の上でも XP のシェルに送ります。タスクバーの分は
-  作業領域から除きます。
-- 活性化は Wine に合わせます。Wine の窓が消えたときに次に活性化する窓は Wine が選びます。Wine が活性化しないと印を付けた
-  窓（`_NET_WM_USER_TIME` 0）と、最前面の全画面の窓（ログオフの灰色の画面）は、表示しても活性化しません。
-  Wine の窓がキーボードを持つときは、X のフォーカスも直接渡します（Wine は前面でない窓への WM_TAKE_FOCUS を無視します）。
-  wlroots が自分の X の接続で X のフォーカスを外したのが後に届いて、X のフォーカスがどの窓にも無くなったときは、渡し直します。
-  Wine の窓がキーボードを持つ間に、同じ Wine のプロセスが管理外の窓（override-redirect）を出しても、キーボードは移しません。
-  その中の X のフォーカスは Wine が自分で動かします（ReactOS のスタートメニューは、所有者のタスクバーのキーで動きます）。
-  Linux の窓が活性のときは、その枠を `_NET_ACTIVE_WINDOW` に書いて XP の枠を活性の色にします。X のフォーカスは移しません
-  （移すと fcitx5 が XIM で枠を入力先と取り違えます）。
-- Xwayland には relative pointer を見せません。Xwayland はボタンをその装置から送り、その位置は絶対座標の移動（タブレット、
-  仮想マシンのポインター）では動かないので、最初のクリックが別の場所に届いてしまいます。
-- 窓が大きくなるときは、X の窓に frame callback を送ります。最大化で Linux の窓の下に隠れた枠には callback が届かず、
-  Xwayland が新しい大きさを描かないままになるためです。
-- X の窓の形（SHAPE の bounding）を、自前の X の接続で読んで、その中だけを描きます（wlroots 0003）。Xwayland は形の外も
-  そのまま出すので、Wine の窓の領域（SetWindowRgn。XP と Windows 7 の枠の丸い角、Windows 7 のスタートメニューの使わない部分）が
-  黒く出ていました。
-- 位置を持たない Linux の窓（Wayland の窓はいつもそう）は、bridge-wm と同じく Windows の既定の窓の位置（右下へずらした
-  次の位置）に置きます。枠の大きさが分かる前に最大化された窓は、分かったときに合わせ直します。
-- 作業領域は、タスクバーの大きさや位置が変わるとそれに従います（Windows 7 の「小さいアイコンを使う」）。最大化した Linux の窓も
-  それに合わせます。Wine の窓は labwc の並べ直しから外します。Wine が自分で置き、最大化した窓も Wine が合わせ直すためです
-  （タスクバーを作業領域に収めようとして動かすと、作業領域がまた変わって止まらなくなりました）。
-- Wine の管理外の窓（ツールチップなど）は、表示されてもキーボードを取りません（X11 のウィンドウマネージャーと同じ）。
-  Windows 7 のスタートメニューを Esc で閉じた後、スタート ボタンのツールチップが Linux の窓からキーボードを取り、
-  Windows キーが効かなくなっていました。
-- 倍率が整数でない出力でも、X の窓は出力の画素の正しい位置に描きます（wlroots 0003）。レイアウトの座標は整数なので、
-  位置を倍率で掛けて丸めると、X の位置によって 1 画素ずれていました。作業領域の、タスクバーが決める辺も、タスクバーの X の
-  位置からそのまま決めます（レイアウトの座標を通すと、倍率 1.5 で 1 画素タスクバーに重なっていました）。
-- `_NET_ACTIVE_WINDOW` は、活性化した窓をいつも指します（wlroots 0004）。Wine が自分で X のフォーカスを移した窓を後から
-  活性化しても、XWM は「もうフォーカスがある」として何もせず、`_NET_ACTIVE_WINDOW` は前の窓のままでした。Wine はそれを
-  前面の窓とみなして前の窓を活性化し直すので、Windows 7 のタスクバーで最初に開いたジャンプリストがすぐ非活性になり、
-  黒いまま残っていました。
-- タスクバーのクリックで labwc がタスクバーを活性化すると、ほかの Wine のプロセス（メモ帳など）もそれに従ってタスクバーを
-  前面にし、シェルのスレッドに知らせます。シェルがジャンプリストやスタートメニューを出している間に届いたこの知らせで、
-  タスクバーが活性化し直され、出したばかりのものが非活性になっていました（ジャンプリストは黒いまま、XP のスタートメニューは
-  すぐ閉じる）。Wine の 0089 で、知らせが送られた後にそのスレッドが自分の窓を前面にしていれば、知らせを無視します。
-- Linux の窓のアプリ（Wayland の app_id、X11 の `WM_CLASS`）を、X11 の WM と同じく `classes.tsv` に書きます。Windows 7 の
-  タスクバーは、これでアプリの窓を 1 つのボタンにまとめ、ジャンプリストの題をそのアプリの名前にします（以前は窓ごとに
-  別のボタンでした）。
-- X の窓の形は、表示している窓のものだけを覚えます（隠れた窓や消えた窓の形の変化は覚えません。表示するときに読み直します）。
-- 新しく表示された X の窓は、クライアントが描いてから見せます（表示の後の次の更新か、100 ms 後）。Xwayland が表示のときに送る最初の
-  中身は真っ黒な背景なので、Windows 7 のフォルダーウィンドウやスタートメニューが、開くときに 1〜2 コマ黒く出ていました。
-  見せるまでの間も描画の合図（frame done）は送り、Xwayland が次の中身を送れるようにします。Wine がまだ描いていないうちに
-  次の更新が来ることがあり、スタートメニューでは今も時々 1 コマ黒く出ます。
+- The IPC with proxy.exe is the same as bridge-wm's (`windows.tsv`, `geometry.tsv`, `frames.tsv`, `*.cmd`, `switch.tsv`, `shellkeys.tsv`,
+  `icon-*.argb`; "IPC" in [architecture.md](architecture.md)). IPC files are read with inotify; window changes come from inside labwc and
+  are written together at the next idle.
+- Linux windows (Wayland windows, and X11 windows other than Wine's) get XP frames. The frame is stacked just below the window, and move,
+  resize, maximize, minimize, close and drag are tied to the window. The maximized size is the work area minus the frame. Icons come from
+  the app's desktop entry for Wayland windows and from `_NET_WM_ICON` for X11 windows.
+- The kind of a Wine window (`_WIN4WINE_CLASS`, `_WIN4WINE_HWND`) is read over labwc's own X connection. XP's desktop goes at the bottom,
+  the taskbar, the Start menu and topmost windows (and the windows they own) on top, and X's stacking order is kept in step (Xwayland
+  decides the window under the pointer by X's stacking order).
+- Alt+Tab goes to XP's switcher window, and the Windows key and Ctrl+Esc go to the XP shell even over Linux windows. The taskbar's area is
+  taken out of the work area.
+- Activation follows Wine. When a Wine window goes away, Wine chooses the next window to activate. Windows Wine marks as not to be
+  activated (`_NET_WM_USER_TIME` 0) and topmost full-screen windows (the grey log off screen) are not activated when shown.
+  When a Wine window has the keyboard, the X focus is also given to it directly (Wine ignores WM_TAKE_FOCUS to windows that are not in the
+  foreground). If wlroots taking the X focus away over its own X connection arrives late and leaves no window with the X focus, it is given
+  again. While a Wine window has the keyboard, an unmanaged (override-redirect) window shown by the same Wine process does not take the
+  keyboard; Wine moves the X focus within it itself (ReactOS's Start menu works through the keys of its owner, the taskbar).
+  When a Linux window is active, its frame is written into `_NET_ACTIVE_WINDOW` so the XP frame gets the active colour. The X focus is not
+  moved (if it were, fcitx5 would mistake the frame for the input target through XIM).
+- Xwayland is not shown a relative pointer. Xwayland sends buttons from that device, and its position does not move with absolute motion
+  (tablets, virtual machine pointers), so the first click would land somewhere else.
+- When a window grows, a frame callback is sent to the X window. A frame hidden under a Linux window by maximizing gets no callback, and
+  Xwayland would never draw the new size.
+- An X window's shape (SHAPE bounding) is read over its own X connection and only the inside is drawn (wlroots 0003). Xwayland also shows
+  what is outside the shape, so Wine's window regions (SetWindowRgn: the round corners of XP's and Windows 7's frames, the unused part of
+  Windows 7's Start menu) showed black.
+- Linux windows with no position (Wayland windows never have one) are placed, as in bridge-wm, at Windows' default window position (the
+  next one, shifted down and right). A window maximized before its frame size is known is fitted again once it is.
+- The work area follows the taskbar's size and position when they change (Windows 7's "Use small icons"). Maximized Linux windows follow
+  it too. Wine windows are left out of labwc's re-arranging: Wine places them itself and also refits its maximized windows (moving the
+  taskbar to fit it into the work area changed the work area again, endlessly).
+- Windows outside Wine's management (tooltips and the like) do not take the keyboard when shown (as with the X11 window manager).
+  After closing Windows 7's Start menu with Esc, the Start button's tooltip took the keyboard from a Linux window and the Windows key stopped
+  working.
+- On outputs with a non-integer scale, X windows are drawn at the right output pixel (wlroots 0003). Layout coordinates are integers, so
+  multiplying the position by the scale and rounding put windows one pixel off depending on their X position. The edge of the work area
+  that the taskbar decides is likewise taken straight from the taskbar's X position (through layout coordinates it overlapped the taskbar by
+  one pixel at a scale of 1.5).
+- `_NET_ACTIVE_WINDOW` always points to the activated window (wlroots 0004). When a window to which Wine had already moved the X focus was
+  activated later, the XWM did nothing ("it already has focus") and `_NET_ACTIVE_WINDOW` kept the previous window. Wine took that for the
+  foreground window and re-activated the previous window, so in Windows 7's taskbar the first jump list opened turned inactive at once and
+  stayed black.
+- When labwc activates the taskbar on a taskbar click, the other Wine processes (Notepad and so on) follow and bring the taskbar to the
+  foreground, notifying the shell's thread. That notification, arriving while the shell showed a jump list or the Start menu, re-activated
+  the taskbar and made what had just been shown inactive (the jump list stayed black, XP's Start menu closed at once). With Wine's 0089 the
+  notification is ignored if, after it was sent, that thread brought one of its own windows to the foreground.
+- A Linux window's app (Wayland's app_id, X11's `WM_CLASS`) is written into `classes.tsv`, as by the X11 WM. Windows 7's taskbar uses it
+  to group an app's windows into one button and to title the jump list with the app's name (they used to be separate buttons per window).
+- Shapes are remembered only for shown windows (shape changes of hidden or destroyed windows are not tracked; they are read again when
+  shown).
+- A newly shown X window is revealed once the client has drawn it (at the next commit after mapping, or after 100 ms). The first contents
+  Xwayland sends on mapping are a pure black background, so Windows 7's folder windows and Start menu showed black for one or two frames
+  when opening. Frame-done is still sent while waiting, so Xwayland can send the next contents. Sometimes the next commit comes before
+  Wine has drawn, and the Start menu still occasionally shows black for one frame.
 
-## Windows 7 のシェル
+## The Windows 7 shell
 
-- Windows 7 のスタート ボタンとスタートメニューの利用者の画像は、透明度を持つ窓です。X11 のセッションには合成が無いので、
-  Wine がタスクバーやスタートメニューの絵と混ぜて描いています（Wine の 0123）。Wayland のセッションでは compositor が
-  その下にある本当の絵と混ぜるので、supervisor が Wine に `WIN4WINE_COMPOSITED` を渡し、Wine は混ぜずにそのまま渡します。
-  スタート ボタンの縁は、参照用の実機（Windows 7）と 4 画素（最大 2 段階）しか違いません（X11 のセッションでは 199 画素）。
-- タスクバーの設定（小さいアイコン、ボタンの結合）はその場で反映され、作業領域と最大化した窓も従います。
+- Windows 7's Start button and the user picture in its Start menu are translucent windows. The X11 session has no compositing, so Wine
+  blends them with the taskbar's or Start menu's image itself (Wine's 0123). In the Wayland session the compositor blends them with the
+  real image beneath, so the supervisor gives Wine `WIN4WINE_COMPOSITED` and Wine passes them on unblended.
+  The Start button's edge differs from the reference machine (Windows 7) in only 4 pixels (by at most 2 levels); in the X11 session, 199.
+- Taskbar settings (small icons, combining buttons) take effect at once, and the work area and maximized windows follow.
 
-## 確かめたこと
+## What was checked
 
-入れ子の labwc（chroot、出力 2 つ、倍率 1 と 1.5、144 DPI）と、試験用の仮想マシンの実際の出力（DRM、1280×800、
-倍率 1 の 96 DPI と倍率 1.5 の 144 DPI）で確かめています。
+Checked in a nested labwc (chroot, 2 outputs, scales 1 and 1.5, 144 DPI) and on a test VM's real output (DRM, 1280×800, scale 1 at 96 DPI
+and scale 1.5 at 144 DPI).
 
-- XP のシェル: デスクトップ、タスクバー、スタートメニュー、メニューの影、ファイル名を指定して実行、マイ コンピュータ、
-  ログオフのダイアログと灰色の画面。Wine の窓の最大化（作業領域に合います）、元に戻す、ドラッグ。倍率 1.5 でもぼけません。
-- Linux の窓: foot（Wayland）、mousepad（GTK3、Wayland）、xterm（X11）に XP の枠とタスクバーのボタン、アイコンが付きます。
-  枠のドラッグ（最初の 1 回から）、大きさの変更、最大化（枠ごと作業領域に収まります）、元に戻す、最小化、タスクバーからの
-  復元、閉じる。枠の活性の色が窓の活性に従います。
-- キー: Alt+Tab（XP の切り替え窓）、Win+R、Win+E、Ctrl+Esc を Linux の窓の上で。
-- 日本語入力: foot（text-input-v3、fcitx5 + Mozc）と、Wine の「ファイル名を指定して実行」（XIM）で変換して確定できます。
-- 出力 2 つ: XP のデスクトップは主モニターに出て、Wine の窓は両方の出力に出せます。主モニターは `"primary"` で選べます。
-- セッションの終わり: XP のログオフで labwc が終わり、ログイン画面に戻ります。
-- X11 のセッション: 同じ仮想マシンで X11 のセッションに戻し、今までどおり動くことを確かめています。
-- Windows 7 のシェル（2026-10-17）: 入れ子の labwc（出力 1 つ、倍率 1 と 1.5）で、同じ操作をした X11 のセッションと
-  画面を比べています。デスクトップ、スタートメニュー、メモ帳（通常と最大化）、Mousepad（Wayland）
-  の Windows 7 の枠と最大化、Alt+Tab、デスクトップとタスクバーの右クリックのメニュー、ジャンプ リスト、ファイル名を指定して実行、
-  タスク バーのプロパティ、Win+E のフォルダの窓、タスクバーの設定（小さいアイコン・結合）で、違いは時計、カーソル、Mousepad の
-  文字（GTK の Wayland と X11 の描き方の違い）と、X11 のセッションの方が実機と違う所（スタート ボタンと利用者の画像の縁）だけです。
-  倍率 1.5（144 DPI）でも同じです。XP と ReactOS のシェルでは、変更前の labwc と比べ、違いは丸い角と Linux の窓の置き方だけです。
-  試験用の仮想マシンの実際の出力（DRM、1280×800）でも、`setup.sh --shell win7 --wayland --greeter` から、ログオン画面、
-  スタートメニュー、メモ帳と Mousepad（Wayland）、日本語入力（Mousepad は text-input-v3、メモ帳は XIM）、Win+E、Alt+Tab、
-  タスクバーの右クリックのプロパティでの小さいアイコン、ログオフでログオン画面に戻ることを確かめています。
-- 自動の試験: `tests/wayland_compositor.py`（Wine を使わず、Wine の窓の印を付けた X の窓で compositor の規則を確かめます。
-  タスクバーの大きさに従う作業領域、既定の窓の位置、X の窓の形と倍率 1.5 での画素の位置（出力の画素を読みます）、
-  管理外の窓がキーボードを取らないことも含みます）。
-  XP のシェルと proxy を使う確かめ（X11 の `tests/native_frames.py` などに当たるもの）は、まだ手で行っています。
+- XP shell: desktop, taskbar, Start menu, menu shadows, Run, My Computer, the log off dialog and the grey screen. Maximizing Wine windows
+  (they fit the work area), restoring, dragging. No blur at a scale of 1.5.
+- Linux windows: foot (Wayland), mousepad (GTK3, Wayland) and xterm (X11) get XP frames, taskbar buttons and icons. Dragging the frame
+  (from the first time), resizing, maximizing (fits the work area including the frame), restoring, minimizing, restoring from the taskbar,
+  closing. The frame's active colour follows the window's activation.
+- Keys: Alt+Tab (XP's switcher), Win+R, Win+E and Ctrl+Esc over Linux windows.
+- Japanese input: composing and committing works in foot (text-input-v3, fcitx5 + Mozc) and in Wine's Run dialog (XIM).
+- Two outputs: XP's desktop is on the primary monitor, and Wine windows can be on either output. The primary monitor can be chosen with
+  `"primary"`.
+- Ending the session: logging off XP ends labwc and returns to the login screen.
+- X11 session: switched back to the X11 session on the same VM and checked it works as before.
+- Windows 7 shell (2026-10-17): in a nested labwc (one output, scales 1 and 1.5), compared screenshots with the X11 session doing the same:
+  desktop, Start menu, Notepad (normal and maximized), Mousepad (Wayland) with Windows 7 frames and maximized, Alt+Tab, the desktop's and
+  taskbar's context menus, jump lists, Run, Taskbar Properties, the folder window from Win+E, taskbar settings (small icons, combining). The
+  only differences are the clock, the cursor, Mousepad's text (GTK draws differently on Wayland and X11), and where the X11 session differs
+  from the real machine (the edges of the Start button and the user picture). The same at scale 1.5 (144 DPI). For the XP and ReactOS shells,
+  compared with labwc before the change, the only differences are round corners and the placement of Linux windows.
+  On a test VM's real output (DRM, 1280×800), from `setup.sh --shell win7 --wayland --greeter`: the logon screen, Start menu, Notepad and
+  Mousepad (Wayland), Japanese input (text-input-v3 in Mousepad, XIM in Notepad), Win+E, Alt+Tab, small icons through the taskbar's context
+  menu → Properties, and returning to the logon screen on log off.
+- Automated test: `tests/wayland_compositor.py` (without Wine, it checks the compositor's rules with X windows carrying Wine's window
+  marks, including the work area following the taskbar's size, default window positions, X window shapes and pixel positions at a scale of
+  1.5 (reading output pixels), and unmanaged windows not taking the keyboard).
+  Checks that need the XP shell and the proxy (the counterparts of X11's `tests/native_frames.py` and the like) are still done by hand.
 
-## X11 のセッションとの違い・残っていること
+## Differences from the X11 session, and what is left
 
-- ログオフ・終了の灰色の画面: Wayland のアプリの窓は X の窓ではないので写りません（その下にある Wine の窓やデスクトップが
-  写ります）。
-- 主モニター以外の出力: XP と ReactOS のデスクトップの窓は広がりますが、壁紙は主モニターにだけ描かれ、ほかは背景色になります
-  （Windows 7 のシェルは、実機と同じく出力ごとに壁紙を描きます）。
-- X の空間では主モニターが先頭なので、主モニターの左にある出力へ Wine の窓をドラッグする途中は、隣の出力にはみ出した部分が
-  元の出力の倍率で（小さく）描かれます。移し終えれば、その出力の倍率で描かれます。
-- 倍率が整数でない出力では、X の窓は正しい画素に描きますが、ポインターの位置は窓に対して 1 画素未満ずれることがあります
-  （レイアウトの座標が整数のためです）。
-- GTK のアプリの文字の間隔は、X11 のセッションと少し違います（GTK 自身の Wayland と X11 の描き方の違いです）。
-- Linux のアプリのダイアログ（親のある窓）には XP の枠が付かず、labwc の枠（XP の Luna に近い色。
-  `wayland/labwc/themerc-override`）になります（X11 のセッションでは枠が付きません）。
-- GTK4 と libadwaita のアプリはクライアント側の装飾を描くので、XP の枠と二重になるはずです（まだ確かめていません）。
-- labwc のパッチは 1 つの大きなパッチ（`wayland/patches/labwc/0001`）です。Wine のパッチのように目的ごとには分けていません。
+- The grey log off/shut down screen: Wayland apps' windows are not X windows, so they do not appear on it (the Wine windows or desktop
+  beneath them do).
+- Outputs other than the primary: XP's and ReactOS's desktop window extends over them, but the wallpaper is drawn only on the primary monitor
+  and the others show the background colour (the Windows 7 shell draws the wallpaper per output, as on real hardware).
+- In X space the primary monitor comes first, so while dragging a Wine window to an output left of the primary monitor, the part that
+  spills onto the neighbouring output is drawn at the original output's scale (smaller). Once moved, it is drawn at that output's scale.
+- On outputs with a non-integer scale, X windows are drawn at the right pixels, but the pointer's position relative to a window can be off by
+  less than a pixel (layout coordinates are integers).
+- Text spacing in GTK apps differs a little from the X11 session (GTK itself draws differently on Wayland and X11).
+- Dialogs of Linux apps (windows with a parent) get labwc's frame instead of an XP frame (colours close to XP's Luna;
+  `wayland/labwc/themerc-override`); in the X11 session they get no frame.
+- GTK4 and libadwaita apps draw client-side decorations, so they should end up with a double frame together with the XP frame (not yet checked).
+- The labwc patch is one large patch (`wayland/patches/labwc/0001`), not split by purpose like the Wine patches.

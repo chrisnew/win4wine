@@ -1,115 +1,122 @@
-# 設計の要点
+# Design
 
-win4wine の主な判断とその理由を、話題ごとにまとめたものです。調べた内容や試験の詳細は、行った順の記録
-[history/investigations.md](history/investigations.md) にあります（節の名前を括弧で示します）。
+win4wine's main decisions and the reasons for them, by topic. What was investigated and the details of the tests are in the
+chronological record [history/investigations.md](history/investigations.md) (section names are given in parentheses).
 
-## 守っていること
+## Rules the project keeps
 
-- **Windows 由来のバイナリは変えません。** XP の explorer.exe や DLL は ISO から取り出したまま使い、違いは Wine（パッチ）と、
-  その周りの自作の部品（WM、proxy、セッション）で吸収します。
-- **Microsoft のバイナリを逆アセンブルしません。** 挙動は、公開 API の呼び出しの記録（Wine の `+relay` など）、公開文書、
-  実際の XP の上で動かす自作のプローブ（`tests/` の C のプログラム）で調べます。
-- **Microsoft のファイルはリポジトリに入れません。** XP の画素や文字列も入れず、測った規則と数値だけを置きます。
-  文字列や画像は、利用者の ISO から実行時に読みます。
-- **普通の Wine のアプリの挙動は変えません。** XP のシェルのための変更は opt-in（`WIN4WINE_EXTERNAL_SHELL`）に限ります
-  （[patches.md](patches.md)）。
+- **Binaries that come from Windows are not modified.** XP's explorer.exe and DLLs are used exactly as extracted from the ISO;
+  differences are absorbed by Wine (the patches) and by the project's own parts around it (WM, proxy, session).
+- **Microsoft's binaries are not disassembled.** Behaviour is studied through traces of public API calls (Wine's `+relay` and the
+  like), public documentation and the project's own probes running on a real XP (the C programs in `tests/`).
+- **No Microsoft files go into the repository.** Not even XP's pixels or strings: only rules and measured numbers.
+  Strings and images are read at run time from the user's ISO.
+- **Ordinary Wine apps behave as before.** Changes for the XP shell are limited to the opt-in (`WIN4WINE_EXTERNAL_SHELL`)
+  ([patches.md](patches.md)).
 
-## どの部品を XP のものにするか
+## Which parts come from XP
 
-| 部品 | 使うもの | 理由 |
+| Part | Source | Reason |
 |---|---|---|
-| explorer.exe | XP | タスクバー、スタートメニュー、デスクトップの本体です |
-| shell32、browseui、shdocvw、shlwapi | XP | Wine の browseui は XP の explorer が使う機能（序数 107 など）が未実装で、同じ世代の組で使う必要があります（調査 1） |
-| browselc、shdoclc、linkinfo、msgina、mydocs | XP（資源・一部の機能） | 日本語のメニューと文字、ショートカット、ログオフ・終了のダイアログ、アイコン（調査 8・14・36・39） |
-| comctl32 | XP の v6（XP のシェルのプロセスだけ） | Wine の comctl32 では XP の explorer の toolbar が動きません。ボタンなどは Wine のテーマ付きの実装を別名で使います（調査 7、パッチ 0066・0067） |
-| uxtheme | Wine | 利用者の Luna のテーマファイルを Wine の uxtheme で描きます。XP のテーマのサービスは入れません |
-| user32.dll（データとして） | XP（アイコンだけ） | アプリの既定のアイコンやメッセージ ボックスのアイコンを XP のものにします。`C:\xp\res\user32-xp.dll` に置いて資源だけを読みます（パッチ 0141。カーソルもここから取り出しています） |
-| kernel32、ntdll、user32、gdi32 など | Wine | Linux の上で動かす基盤です |
-| mshtml、mscoree | 無効 | IE と .NET は対象外です |
+| explorer.exe | XP | It is the taskbar, the Start menu and the desktop |
+| shell32, browseui, shdocvw, shlwapi | XP | Wine's browseui lacks features XP's explorer uses (ordinal 107 and others); they have to be used as a set from the same generation (investigation 1) |
+| browselc, shdoclc, linkinfo, msgina, mydocs | XP (resources, some features) | Japanese menus and text, shortcuts, the log off/shut down dialogs, icons (investigations 8, 14, 36, 39) |
+| comctl32 | XP's v6 (only in the XP shell's process) | XP's explorer's toolbar does not work with Wine's comctl32. Buttons and the like use Wine's themed implementation under another name (investigation 7, patches 0066, 0067) |
+| uxtheme | Wine | The user's Luna theme file is drawn by Wine's uxtheme. XP's theme service is not installed |
+| user32.dll (as data) | XP (icons only) | Gives apps' default icons and message box icons XP's look. Placed as `C:\xp\res\user32-xp.dll` and only its resources are read (patch 0141; the cursors are extracted from it too) |
+| kernel32, ntdll, user32, gdi32 etc. | Wine | The base that runs on Linux |
+| mshtml, mscoree | Disabled | IE and .NET are out of scope |
 
-XP の DLL を使うのは **xp-explorer.exe のプロセスだけ**です（AppDefaults）。セッション全体を XP の DLL にすると、
-Wine 自身の管理のプロセスや復旧の経路まで XP の DLL に頼ることになるためです（「Override の隔離」）。
+XP's DLLs are used **only in the xp-explorer.exe process** (AppDefaults). If the whole session used XP's DLLs, even Wine's
+own management processes and the recovery path would depend on them ("Override の隔離", isolating the overrides).
 
-## Wine の prefix
+## The Wine prefix
 
-- XP のシェルのための専用の prefix を作ります。COM の登録やレジストリの値は、必要と確かめたものだけを自分で書き
-  （`prefix/registry.py` の registry profile）、実際の XP のレジストリを丸ごと移すことはしません（調査 6）。
-- Wine は自分の版が変わると prefix を更新して登録を書き戻すので、`prefix/stage.py` が更新の印を見て、XP の DLL と登録を
-  入れ直します（調査 13）。
-- prefix は 64-bit（WoW64）です。XP の DLL は `syswow64` に置き、XP のシェルのための登録は 32-bit の側にだけ書きます
-  （「64bit（WoW64）対応」）。
+- A dedicated prefix is created for the XP shell. COM registrations and registry values are written by the project itself, only
+  those confirmed to be needed (the registry profiles in `prefix/registry.py`); a real XP registry is never copied wholesale
+  (investigation 6).
+- When its version changes, Wine updates the prefix and writes its registrations back, so `prefix/stage.py` looks for the update
+  marker and reinstalls XP's DLLs and registrations (investigation 13).
+- The prefix is 64-bit (WoW64). XP's DLLs go in `syswow64`, and the XP shell's registrations are written on the 32-bit side only
+  ("64bit（WoW64）対応", 64-bit support).
 
-## ほかのシェル（ReactOS、Windows 7）
+## Other shells (ReactOS, Windows 7)
 
-XP のシェルと同じ Wine、bridge、supervisor で、ほかの Windows 系のシェルも動かせるようにしています。シェルごとに専用の
-prefix を作り、そのシェルの DLL はそのシェルのプロセスにだけ使わせます（XP と同じ「Override の隔離」）。
+Other Windows-like shells can run on the same Wine, bridge and supervisor as the XP shell. Each shell gets its own prefix, and
+that shell's DLLs are used only in that shell's processes (the same override isolation as XP).
 
-- **ReactOS**（[reactos.md](reactos.md)）: 自由なソフトウェアなので公式のリリースから取得します。登録は ReactOS の DLL 自身の
-  `DllRegisterServer` に書かせます。
-- **Windows 7**（[windows7.md](windows7.md)、実験的）: 64bit のシェルを使います（prefix が WoW64 なので、64bit のまま動かせます）。
-  登録は、XP のように 1 つずつ確かめて手で書くには多すぎる（DirectUI、プロパティ システム、既知のフォルダなど）ので、
-  **使うファイルの部品のマニフェスト**（WinSxS）が登録するものを入れます。インストール済みの Windows のレジストリは移しません。
-  Windows 7 のためだけの Wine の挙動は `WIN4WINE_SHELL=win7` のときだけ効かせ、XP と ReactOS のシェルには影響させません。
-  例外として、アプリのファイルのダイアログを Windows 7 の形にするため、ダイアログが読み込む DLL（shell32 など 10 個）は
-  アプリにも使わせます。Wine 自身のプログラムは Wine の DLL のままで、うまく動かないアプリも Wine の DLL に戻せます
-  （[windows7.md](windows7.md) の「どのプログラムが Windows 7 の DLL を使うか」）。
+- **ReactOS** ([reactos.md](reactos.md)): free software, so it is downloaded from the official release. Registrations are written
+  by the ReactOS DLLs' own `DllRegisterServer`.
+- **Windows 7** ([windows7.md](windows7.md), experimental): the 64-bit shell is used (the prefix is WoW64, so it can stay 64-bit).
+  There are too many registrations to check and write by hand one by one as for XP (DirectUI, the property system, known folders
+  and more), so what **the component manifests of the files used** (WinSxS) register is installed. The registry of an installed
+  Windows is not copied. Wine behaviour just for Windows 7 only takes effect with `WIN4WINE_SHELL=win7` and does not affect the
+  XP and ReactOS shells. The exception: so that apps' file dialogs take Windows 7's form, the DLLs the dialog loads (shell32 and
+  9 others) are used by apps too. Wine's own programs keep Wine's DLLs, and apps that do not work well can be switched back to
+  Wine's DLLs ("Which programs use Windows 7's DLLs" in [windows7.md](windows7.md)).
 
-## Linux のアプリとの統合（bridge）
+## Integrating Linux apps (the bridge)
 
-- **WM は枠を描きません。** Linux の窓の XP の枠は、proxy.exe が作る Win32 の窓に Wine が描きます。XP の見た目を自分で
-  まねて描くのではなく、Wine と利用者のテーマで本物の XP の枠を描くためです（[architecture.md](architecture.md)）。
-- **XP のタスクバーは Linux の窓を Win32 の窓として扱います。** そのために、proxy が窓ごとに代理の窓を持ちます。
-- **WM と proxy はイベントでだけ動きます。** 以前は周期的に確かめていて、枠の追従が遅れていました。X のイベントと
-  inotify、Win32 の WinEvent で起きるようにして、遅れを約 11 ms にしました（「40. WM と proxy のイベント駆動化」）。
-- WM は Python のままです。言語を変えても遅れの原因（周期的な確認と、X への問い合わせ）は残るためです。
-- **枠と Linux の窓は WM が一緒に動かします。** proxy を通すと、ドラッグの 1 歩ごとに、枠が先に動いて空いた部分が
-  黒く見えました。どちらかが動く要求を受けた WM が、同じ処理の中でもう一方も動かします。
-- **Wine の窓の中身は X サーバーに覚えさせます（Composite）。** 下の窓が見えたとき、その窓のプロセスが描き直すまで
-  黒く見えないようにするためです。Linux の窓の枠は、動いている間だけ同じようにします（大きさを変えるたびに画像を作り直すと、
-  大きさの変更が数倍遅くなるため）。合成（影や透明）のための compositing manager は、仮想マシンの CPU の負担を増やすので使いません。
-- **仮想マシンでは X がメモリーに描くようにします（ShadowFB）。** GPU の無い仮想マシンでは、窓を動かすたびに X が
-  仮想のグラフィックカードのメモリーから読み戻し、これが遅いためです（`scripts/setup.sh`）。
+- **The WM does not draw frames.** The XP frame of a Linux window is drawn by Wine on a Win32 window that proxy.exe creates.
+  The point is to draw a real XP frame with Wine and the user's theme instead of imitating XP's look
+  ([architecture.md](architecture.md)).
+- **XP's taskbar treats Linux windows as Win32 windows.** For that, the proxy keeps a stand-in window for each one.
+- **The WM and the proxy run on events only.** They used to poll, and the frames lagged behind. Waking on X events, inotify and
+  Win32 WinEvents brought the lag down to about 11 ms ("40. WM と proxy のイベント駆動化", making the WM and proxy event-driven).
+- The WM stays in Python. Changing the language would not remove the causes of the lag (polling and round trips to X).
+- **The WM moves a frame and its Linux window together.** Going through the proxy, at each step of a drag the frame moved first
+  and the uncovered area showed black. Whichever of the two the WM gets a move request for, it moves the other in the same pass.
+- **The X server keeps the contents of Wine's windows (Composite).** So that a window that becomes visible does not show black
+  until its process repaints it. Linux windows' frames get the same, but only while they move (re-creating the image on every
+  resize makes resizing several times slower). No compositing manager (shadows, transparency) is used, since it adds CPU load in
+  virtual machines.
+- **In virtual machines, X draws into memory (ShadowFB).** Without a GPU, X reads back from the virtual graphics card's memory on
+  every window move, which is slow (`scripts/setup.sh`).
 
-## 日本語入力
+## Japanese input
 
-- fcitx5 と Mozc を使います。Wine とは XIM、GTK と Qt とはそれぞれの入力モジュールでつながります。
-- 起動と環境変数は supervisor が管理し、im-config は使いません。ほかのセッションに影響しないようにするためです
-  （「日本語入力（段階 6）」）。
-- 入力モードは、fcitx5 のアイコンを XP の通知領域に出して示します。
-- 変換中の文字は、XP の IME と同じく入力欄の中に出します（XIM の on-the-spot）。fcitx5 は XIM の利用者に on-the-spot を
-  `~/.config/fcitx5/conf/xim.conf` の `UseOnTheSpot=True` のときだけ出すので、supervisor が（利用者が決めていなければ）書きます。
-  Wine はキャレットの行の下端を fcitx5 に渡し、候補の窓はその下に出ます（パッチ 0035）。xterm などは今までどおり over-the-spot です。
+- fcitx5 and Mozc are used. They connect to Wine through XIM, and to GTK and Qt through their input modules.
+- Startup and environment variables are managed by the supervisor, not im-config, so that other sessions are not affected
+  ("日本語入力（段階 6）", Japanese input, stage 6).
+- The input mode is shown by putting fcitx5's icon in XP's notification area.
+- Text being composed is shown inside the input field, as with XP's IME (XIM on-the-spot). fcitx5 only gives XIM clients
+  on-the-spot when `UseOnTheSpot=True` is set in `~/.config/fcitx5/conf/xim.conf`, so the supervisor writes it (unless the user
+  has set it). Wine passes the bottom of the caret's line to fcitx5, and the candidate window appears below it (patch 0035).
+  xterm and the like stay over-the-spot.
 
-## ログイン画面
+## The login screen
 
-- greeter は自作です（Python、GTK 3、cairo、Pango）。XP の logonui.exe と msgina.dll は動かさず、資源（画像と文字列）だけを読みます。
-  パスワードを扱う場所で Microsoft のコードを動かさないためです。
-- 文字は GDI の置き方をまねて描き、配置は実際の XP の画面で測った数値に合わせています（「ログイン画面（段階 9）」）。
+- The greeter is the project's own (Python, GTK 3, cairo, Pango). XP's logonui.exe and msgina.dll are not run; only their
+  resources (images and strings) are read, so that no Microsoft code runs where passwords are handled.
+- Text is drawn imitating GDI's placement, and the layout matches numbers measured on a real XP's screen
+  ("ログイン画面（段階 9）", the login screen, stage 9).
 
 ## DPI
 
-- XP と同じく `LogPixels` 1 つで決めます。XP には DPI の仮想化が無く、どのアプリも自分で大きく描くので、Wine の画像の拡大
-  （ぼける）を止め、XP のシェルのプロセスを system DPI aware にしています（パッチ 0061）。
-- アイコンやカーソルの大きさなど、XP が独自の規則を持つものは、実際の XP を 96〜216 DPI にして測りました（「DPI の拡大」）。
-- Linux のアプリには同じ DPI を `Xft.dpi` などで渡します。
+- As in XP, a single `LogPixels` decides it. XP has no DPI virtualization and every app scales its own drawing, so Wine's bitmap
+  scaling (which blurs) is turned off and the XP shell's processes are made system DPI aware (patch 0061).
+- Things for which XP has its own rules, such as icon and cursor sizes, were measured on a real XP set to 96–216 DPI
+  ("DPI の拡大", DPI scaling).
+- Linux apps get the same DPI through `Xft.dpi` and the like.
 
 ## Wayland
 
-- X11 ではモニターごとの倍率が使えないため、2 つ目のセッションとして、labwc を改変した Wayland の compositor を用意しました
-  （試験中）。比べた方式と試作の結果は [history/wayland-study.md](history/wayland-study.md) にあります。
-- 自作せず labwc を改変したのは、Xwayland の扱い（XWM）、出力、入力、Wayland のプロトコルを wlroots と labwc に任せ、
-  bridge-wm の役（XP の枠、重なり順、IPC）だけを足せば済むからです。
-- XP のシェルと Wine は Xwayland の X11 のクライアントのままにします。XP の Explorer は自分で決めた画面座標に窓を置くので、
-  位置を決められない Wayland のクライアント（winewayland.drv）では再現できません。
-- XP のシェルは出力の 1 画素ずつに表示し、compositor に拡大させません（拡大するとぼけます）。DPI は X11 のセッションと同じく
-  `LogPixels` 1 つで決めます。
-- X11 のセッションは変えません。Wine のパッチで Wayland のために足したものは、X の root の窓を読めないときだけ別の道を通ります。
-- 仕組みと残っていることは [wayland.md](wayland.md) にあります。
+- X11 cannot scale per monitor, so a second session was added: a Wayland compositor made by modifying labwc (in testing).
+  The approaches compared and the prototype's results are in [history/wayland-study.md](history/wayland-study.md).
+- labwc was modified rather than writing a compositor from scratch because Xwayland handling (XWM), outputs, input and the
+  Wayland protocols can be left to wlroots and labwc, and only bridge-wm's role (XP frames, stacking order, IPC) has to be added.
+- The XP shell and Wine stay X11 clients of Xwayland. XP's Explorer places windows at screen coordinates it chooses itself,
+  which a Wayland client (winewayland.drv), unable to choose its position, cannot reproduce.
+- The XP shell is shown one pixel per output pixel and is not scaled by the compositor (scaling blurs). DPI is decided by a single
+  `LogPixels`, as in the X11 session.
+- The X11 session is unchanged. What the Wine patches add for Wayland only takes another path when X's root window cannot be read.
+- How it works and what is left is in [wayland.md](wayland.md).
 
-## 実際の XP との比べ方
+## Comparing with a real XP
 
-- 参照用に本物の XP（日本語版 SP3 と英語版 SP3）の VM を使い、公開 API の値と画面の画素を比べます。
-- 測るのは寸法、色、規則などの数値だけで、XP の画素そのものはリポジトリに入れません。
-- 試験は `tests/` にあり、同じプローブを実際の XP と Wine の両方で動かして結果を比べます（[development.md](development.md)）。
-- コントロールやメッセージ ボックスは、同じ窓を実際の XP と XP のセッションの両方に出して画素で比べ、Wine の側を XP に合わせています
-  （パッチ 0063、0138〜0142。Windows 7 は 0129〜0135）。
+- Real XP VMs (Japanese SP3 and English SP3) serve as the reference; public API values and screen pixels are compared.
+- Only numbers (dimensions, colours, rules) are measured; XP's pixels themselves never go into the repository.
+- The tests are in `tests/`; the same probe runs on a real XP and on Wine and the results are compared
+  ([development.md](development.md)).
+- Controls and message boxes are compared pixel by pixel by showing the same window on a real XP and in the XP session, and
+  Wine's side is adjusted to match XP (patches 0063, 0138–0142; for Windows 7, 0129–0135).

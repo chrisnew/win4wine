@@ -1,26 +1,26 @@
-# ドキュメント
+# Documentation
 
-| 文書 | 内容 |
+| Document | Contents |
 |---|---|
-| [architecture.md](architecture.md) | 仕組み。部品の役割、WM と proxy と IPC、Linux の窓の XP の枠、トレイ、セッション、ログイン画面、DPI |
-| [design.md](design.md) | 設計の要点。どの部品を XP のものにしたか、守っていることとその理由 |
-| [patches.md](patches.md) | Wine の 154 本のパッチの一覧、opt-in の判定、並び順、書式、足し方 |
-| [development.md](development.md) | 開発の手順。chroot でのビルド、試験、手作業での導入、既存の環境の更新 |
-| [reactos.md](reactos.md) | ReactOS のシェル。XP の ISO の代わりに ReactOS の explorer を使うセッション、取得とライセンス、prefix、制限 |
-| [windows7.md](windows7.md) | Windows 7 のシェル（実験的）。Windows 7 の ISO から作るセッション、取り出すファイル、部品のマニフェストからのレジストリ、prefix、制限 |
-| [wayland.md](wayland.md) | Wayland のセッション（試験中）。パッチを当てた labwc、モニターごとの倍率、X11 のセッションとの違い |
-| [original-features.md](original-features.md) | XP には無いオリジナル機能（既定はオフ）。窓の寄せ（`window_snap`） |
+| [architecture.md](architecture.md) | How it works: what each part does, the WM, the proxy and their IPC, XP frames for Linux windows, the tray, the session, the login screen, DPI |
+| [design.md](design.md) | The design in brief: which parts were taken from XP, the rules the project keeps and why |
+| [patches.md](patches.md) | The list of Wine's 154 patches, the opt-in check, their order and format, how to add one |
+| [development.md](development.md) | How to develop: building in the chroot, tests, installing by hand, updating an existing setup |
+| [reactos.md](reactos.md) | The ReactOS shell: a session that uses ReactOS's explorer instead of the XP ISO; getting it, its licence, the prefix, limits |
+| [windows7.md](windows7.md) | The Windows 7 shell (experimental): a session built from a Windows 7 ISO; the files it takes, the registry from the components' manifests, the prefix, limits |
+| [wayland.md](wayland.md) | The Wayland session (in testing): the patched labwc, per-monitor scaling, how it differs from the X11 session |
+| [original-features.md](original-features.md) | Features XP does not have (off by default): window snapping (`window_snap`) |
 
-使い方と導入は、リポジトリの [README](../README.md) と [INSTALL.md](../INSTALL.md) にあります。
+How to use and install it is in the repository's [README](../README.md) and [INSTALL.md](../INSTALL.md).
 
-## 記録（history/）
+## Records (history/)
 
-開発の途中で書いた記録です。書いた時点の内容と文体のままにしてあります。今の説明は上の文書にあります。
+Notes written during development. They are kept as they were written, in Japanese; the documents above describe the current state.
 
-| 文書 | 内容 |
+| Document | Contents |
 |---|---|
-| [history/investigations.md](history/investigations.md) | 調査と判断の記録（行った順）。不具合の原因、実際の XP で測った値、採らなかった方法 |
-| [history/patch-history.md](history/patch-history.md) | パッチの追加と番号の振り直しの経緯、以前の番号との対応表 |
-| [history/wayland-study.md](history/wayland-study.md) | Wayland の compositor の比較と、最初の試作の結果 |
+| [history/investigations.md](history/investigations.md) | Investigations and decisions, in the order they were made: causes of bugs, values measured on a real XP, approaches that were rejected |
+| [history/patch-history.md](history/patch-history.md) | How patches were added and renumbered, with a table from old numbers to new ones |
+| [history/wayland-study.md](history/wayland-study.md) | A comparison of Wayland compositors and the results of the first prototype |
 
-記録に出てくる「段階 N」は、開発の作業の区切り（2026-10 の段階 1〜11）です。
+"Stage N" in the records is a unit of development work (stages 1–11, October 2026).

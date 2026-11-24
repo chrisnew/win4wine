@@ -19,3 +19,6 @@ __pycache__/
 *.ex_
 *.tt_
 /devnotes/
+
+# Machine-specific Claude instructions
+/CLAUDE.local.md

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/images/screenshot.png" alt="win4wine: Debian 13 の上で動く Windows XP のシェルと、Linux と Windows のアプリ" width="800" />
+  <img src="docs/images/screenshot-en.png" alt="win4wine: the English Windows XP shell with Linux and Windows applications on Debian 13" width="800" />
 </p>
 <p align="center">
-  <strong>Linux のデスクトップを、Windows XP のシェルで。</strong>
+  <strong>Your Linux desktop, with the Windows XP shell.</strong>
 </p>
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-LGPL--2.1--or--later-blue?style=flat" alt="License: LGPL-2.1-or-later"></a>
@@ -10,101 +10,19 @@
   <img src="https://img.shields.io/badge/Wine-11.0-8B0000?style=flat" alt="Wine 11.0">
   <img src="https://img.shields.io/badge/status-experimental-orange?style=flat" alt="Status: experimental">
 </p>
-<p align="center">
-  <strong>日本語</strong> ·
-  <a href=".github/readme/README.en.md">English</a>
-</p>
+
+A personal fork of [mikuta0407/win4wine](https://github.com/mikuta0407/win4wine), tuned for an old Asus EeePC and taking its own direction.
 
 > [!IMPORTANT]
-> **個人の実験的なプロジェクトです。** 日常の作業環境として使えるほど完成してはいません。
-> 動作を確かめているのは、**新しくインストールした Debian 13** に導入スクリプトで入れた場合だけです。
-> すでに使っている環境（ほかのデスクトップ環境やディスプレイマネージャが入っているものなど）への導入は試していません。
-> 試すときは、仮想マシンや試験用のマシンをおすすめします。
+> **This is a personal, experimental project**, not a finished product for daily use.
+> It has only been tested on a **freshly installed Debian 13** set up with the installation script.
+> Installing it on a system already in use (with another desktop environment or display manager, for example) has not been tried.
+> A virtual machine or a spare machine is recommended.
 
-## これは何？
+## Install
 
-Windows XP の `explorer.exe` を、パッチを当てた Wine の上で **Linux のデスクトップシェル**として動かすプロジェクトです。
-タスクバー、スタートメニュー、デスクトップ、フォルダウィンドウは XP 本物のものです。Linux のアプリも、XP の枠とタスクバーで扱えます。
-
-Microsoft のファイルは同梱していません。お手元の XP の ISO から、必要なファイルだけを取り出して使います。
-
-XP の ISO が無い方は、XP のシェルの代わりに **[ReactOS](https://reactos.org/) のシェル**（Windows 2000 風のクラシックの見た目）でも
-試せます。ReactOS は自由なソフトウェアなので、導入スクリプトが公式のリリースから取得します（[docs/reactos.md](docs/reactos.md)）。
-
-Windows 7 の ISO があれば、**Windows 7 のシェル**（Windows 7 ベーシックの見た目）でも試せます。まだ実験的な試作です（[docs/windows7.md](docs/windows7.md)）。
-
-## できること
-
-- **XP のシェル**: Luna（またはクラシック）のタスクバー、スタートメニュー、デスクトップ、マイ コンピュータ、フォルダウィンドウ。
-- **Linux アプリとの統合**: Linux のウィンドウに XP の枠が付き、タスクバー、Alt+Tab、最小化・最大化が XP と同じように動きます。
-  Linux のアプリは「すべてのプログラム」に並びます。
-- **通知領域**: Linux のトレイアイコン（StatusNotifierItem と XEmbed）が XP の通知領域に出ます。
-  XP 自身のネットワーク・バッテリー・音量のアイコンと、そのフライアウト（音量、電源メーター、ワイヤレス ネットワーク接続の状態）も
-  出ます。NetworkManager と PipeWire / PulseAudio の状態から作ります（[AshesTom さんのフォーク](https://github.com/AshesTom/win4wine)の XP Explorer から）。
-  ワイヤレス ネットワークの一覧から、初めてのネットワークにも XP のネットワーク キーの画面で接続できます。メニューや画面の文字は ISO の XP のファイルから読みます。
-- **XP Explorer からの追加**: フォルダの左のタスク ペイン、画面のプロパティ（Windows XP とクラシックのテーマ、スタイルと配色。
-  配色は ISO の HIVEDEF.INF と themeui.dll から作ります）、画像の縮小版とプレビュー、XP のサウンド（起動、ログオン、ログオフも）、
-  ネットワーク接続、Internet Explorer 6、Windows Media Player 9、スタートメニューの左の列（インターネット、電子メール、
-  よく使うプログラム）。どれもお手元の ISO のファイルで動きます（`prefix/extras.py`）。
-- **キーボードの配列**: 最初は Linux のシステムの配列（`localectl`）です。コントロール パネルの「地域と言語のオプション」→
-  「言語」→「詳細」（XP 自身のもの）で入力言語を足したり既定を変えたりすると、セッションの配列（Wayland では labwc、
-  X11 では setxkbmap）がすぐに従います。2 つ以上なら XP と同じ左 Alt+Shift で切り替わります（`session/keyboard.py`）。
-- **日本語入力**: fcitx5 + Mozc です。Ctrl+Space（または全角/半角）で切り替えます。GTK、Qt、Wine のアプリで使えます。
-- **日本語版と英語版の XP**: どちらの ISO でも動きます。言語は ISO から自動で判断し、字体（英語版は Tahoma など）、
-  ロケール、ようこそ画面をその XP に合わせます（英語版では日本語入力は設定しません）。
-- **Windows のアプリ**: WoW64 の Wine 11.0 で、32bit と 64bit のアプリが動きます。端末で `wine setup.exe` と打つと、
-  インストーラーが作るショートカットは XP のスタートメニューに入ります。
-- **XP のようこそ画面**: LightDM の greeter として、XP のようこそ画面とログオフの画面を出せます（任意）。
-  シェルが起動するまでは XP と同じ大きな「ようこそ」の画面を出します。
-- **XP のキー操作**: Windows キー、Ctrl+Esc、Win+R、Win+E が使えます。
-- **クイック起動**: タスクバーの右クリック →「ツール バー」→「クイック起動」で出せます（XP と ReactOS。Windows 7 は実機と同じく
-  「新規ツール バー」でクイック起動のフォルダを選びます）。スタートメニューから Linux のアプリのショートカットも置けます。
-  「デスクトップの表示」も実機と同じく、もう一度押すと窓が元に戻ります。
-- **画面の拡大（DPI）**: XP と同じ「DPI 設定」で、文字や部品を大きくできます（96・120・144 など）。
-- **落ちても戻れる**: XP のシェルが繰り返し落ちると、Wine 標準の explorer と xterm に切り替わります。
-- **Wayland のセッション（任意・X11 のセッション以上に実験的）**: X11 のウィンドウマネージャーの代わりに、パッチを当てた labwc で
-  動かすセッションです（XP、ReactOS、Windows 7 のシェル）。モニターごとの倍率や 125%・150% などの倍率が使え、シェルはぼけずに描かれます。
-  Wayland のアプリにもシェルの枠が付きます。作ったばかりで、確かめた範囲は X11 のセッションより狭く、既知の制限もあります（[docs/wayland.md](docs/wayland.md)）。
-  ふだん試すなら X11 のセッションをおすすめします。
-- **ReactOS のシェル（任意）**: XP の ISO の代わりに ReactOS 0.4.16 の explorer で動かすセッションです。日本語と英語に対応します。
-  XP のシェルと並べて入れられます。
-- **Windows 7 のシェル（任意・実験的）**: Windows 7 SP1 x64 の explorer で動かすセッションです（Windows 7 ベーシックの見た目。
-  Aero のガラスはまだありません）。スタートメニュー、タスクバー、通知領域、フォルダの窓が動き、Linux のアプリもアプリごとに
-  タスクバーにまとまります。確かめたのは日本語版と、その文字を英語の言語パックのものに入れ替えた英語版です。
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/images/screenshot-classic.png" alt="クラシックのテーマの XP のシェルと Linux のアプリ" width="400" /><br />
-      XP のクラシック（<code>--theme classic</code>）
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/images/screenshot-reactos.png" alt="ReactOS のシェルと Linux のアプリ" width="400" /><br />
-      ReactOS のシェル（<code>--shell reactos</code>。XP の ISO は要りません）
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/images/screenshot-win7.png" alt="Windows 7 のシェルのスタートメニューと、Linux と Windows のアプリ" width="400" /><br />
-      Windows 7 のシェル（<code>--shell win7</code>。実験的）
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/images/screenshot-win7-small.png" alt="小さいアイコンでラベル付きのタスクバーの Windows 7 のシェル" width="400" /><br />
-      タスクバーの「小さいアイコンを使う」と「結合しない」（すぐに切り替わります）
-    </td>
-  </tr>
-  <tr>
-    <td align="center" colspan="2">
-      <img src="docs/images/screenshot-win7-logon.png" alt="Windows 7 のログオン画面で利用者を選ぶところ" width="400" /><br />
-      Windows 7 のログオン画面（<code>--greeter</code>）
-    </td>
-  </tr>
-</table>
-
-## 試してみる
-
-1. Windows XP Professional SP3（x86）の ISO（日本語版か英語版）を**ご自身で**用意してください。
-2. 新しくインストールした Debian 13 に、ログインして使う利用者として入り、次を実行します。
+1. Get a Windows XP Professional SP3 (x86) ISO (Japanese or English) **yourself**.
+2. On a freshly installed Debian 13, run as the user who will log in:
 
 ```sh
 git clone https://github.com/mikuta0407/win4wine.git ~/win4wine
@@ -112,71 +30,154 @@ cd ~/win4wine
 scripts/setup.sh --media /path/to/WindowsXPSP3.iso --greeter
 ```
 
-3. 再起動すると、XP のようこそ画面からそのまま XP のシェルに入ります。
+3. Reboot. The XP Welcome screen logs you straight into the XP shell.
 
-XP の ISO が無いときは、ReactOS のシェルで試せます（ISO は要りません）。
+Without an XP ISO, try the ReactOS shell instead (no ISO needed):
 
 ```sh
-scripts/setup.sh --shell reactos --lang ja   # 英語なら --lang en
+scripts/setup.sh --shell reactos --lang en   # or --lang ja
 ```
 
-ログイン画面でセッション「ReactOS Shell (Wine, X11)」を選びます。
+and choose the session "ReactOS Shell (Wine, X11)" at the login screen.
 
-Windows 7 のシェル（実験的）は、Windows 7 SP1 x64 の ISO から作ります。
+With a Windows 7 SP1 x64 ISO, the Windows 7 shell (experimental) can be set up the same way:
 
 ```sh
 scripts/setup.sh --shell win7 --media /path/to/Windows7SP1x64.iso
 ```
 
-ログイン画面でセッション「Windows 7 Shell (Wine, X11)」を選びます。
+and choose the session "Windows 7 Shell (Wine, X11)".
 
-詳しい手順とオプションは 🔗 [導入手順（INSTALL.md）](INSTALL.md) にあります。Wine をソースからビルドするので、4 コアで 1 時間半ほどかかります。
-テーマ（XP のクラシックなど）と文字の大きさは、後から変えられます（[見た目と文字の大きさを変える](INSTALL.md#見た目と文字の大きさを変える)）。
+Details: 🔗 [installation guide (INSTALL.md)](INSTALL.md). Building Wine takes about 90 minutes on 4 cores.
+The theme (XP's classic one, for example) and the text size can be changed later ([Changing the look and the text size](INSTALL.md#changing-the-look-and-the-text-size)).
 
-## 注意
+## What it is
+
+It runs Windows XP's own `explorer.exe` on a patched Wine as the **desktop shell of Linux**.
+The taskbar, Start menu, desktop and folder windows are XP's real ones, and Linux applications get XP's frames and taskbar buttons.
+
+No Microsoft files are included. Only the files that are needed are extracted locally from your own ISO.
+
+Without an XP ISO, the session can run **[ReactOS](https://reactos.org/)'s shell** instead (a Windows 2000-like classic look).
+ReactOS is free software, so the setup script downloads it from its official release ([docs/reactos.md](docs/reactos.md)).
+
+With a Windows 7 ISO, it can also run **Windows 7's shell** (the Windows 7 Basic look). It is an experimental prototype
+([docs/windows7.md](docs/windows7.md)).
+
+## What it does
+
+- **XP's shell**: Luna (or Classic) taskbar, Start menu, desktop, My Computer and folder windows.
+- **Linux applications**: Linux windows get XP's frames; the taskbar, Alt+Tab, minimize and maximize work as on XP.
+  Linux applications are listed under All Programs.
+- **Notification area**: Linux tray icons (StatusNotifierItem and XEmbed) show up in XP's notification area,
+  beside XP's own network, battery and volume icons and their flyouts (Volume, Power Meter, Wireless Network
+  Connection Status), fed by NetworkManager and PipeWire or PulseAudio (from XP Explorer in [AshesTom's fork](https://github.com/AshesTom/win4wine)).
+  The wireless network list connects to new networks too, through XP's network key dialog. Their menus and windows
+  read their words from your ISO's XP files.
+- **From XP Explorer**: the folder task pane, Display Properties (the Windows XP and Windows Classic themes, styles and
+  color schemes; the schemes are made from your ISO's HIVEDEF.INF and themeui.dll), image thumbnails and previews,
+  XP's sounds (startup, logon and logoff too),
+  Network Connections, Internet Explorer 6, Windows Media Player 9, and the Start menu's left column (Internet,
+  E-mail and the most used programs), all from your own ISO's files (`prefix/extras.py`).
+- **Keyboard layout**: the Linux system's (`localectl`) at first. Add input languages or change the default in
+  Control Panel, Regional and Language Options, Languages, Details (XP's own), and the session's layout (labwc on
+  Wayland, setxkbmap on X11) follows at once; with two or more, Left Alt+Shift switches them as on XP
+  (`session/keyboard.py`).
+- **Japanese input**: fcitx5 + Mozc, toggled with Ctrl+Space (or Zenkaku/Hankaku), in GTK, Qt and Wine applications.
+- **Japanese or English XP**: either ISO works. The language is detected from the ISO, and the fonts (Tahoma and others on
+  English XP), the locale and the Welcome screen follow that XP (no Japanese input is set up for English XP).
+- **Windows applications**: a WoW64 Wine 11.0 runs 32-bit and 64-bit programs. Run `wine setup.exe` in a terminal and
+  the installer's shortcuts land in XP's Start menu.
+- **XP Welcome screen**: an optional LightDM greeter that shows XP's Welcome and log-off screens.
+  While the shell starts, XP's big "welcome" screen is shown.
+- **XP's keys**: the Windows key, Ctrl+Esc, Win+R and Win+E.
+- **Quick Launch**: right-click the taskbar, Toolbars, Quick Launch (XP and ReactOS; on Windows 7, as on the real one, New
+  Toolbar with the Quick Launch folder). Shortcuts to Linux applications from the Start menu can go there too, and Show
+  Desktop gives the windows back when used again, as on Windows.
+- **Recovery**: if the XP shell keeps crashing, the session falls back to Wine's own explorer and an xterm.
+- **Wayland session (optional, even more experimental than the X11 session)**: a patched labwc instead of the X11 WM
+  (XP, ReactOS and Windows 7 shells), with a scale per monitor and scales such as 125% or 150%; the shell stays crisp,
+  and Wayland applications get the shell's frames too. It is new, tested less than the X11 session and has known limits ([docs/wayland.md](docs/wayland.md)). The X11 session is the one to try first.
+- **ReactOS shell (optional)**: the session with ReactOS 0.4.16's explorer instead of XP's, in Japanese or English; it can be set
+  up beside the XP shell.
+- **Windows 7 shell (optional, experimental)**: the session with Windows 7 SP1 x64's explorer (the Windows 7 Basic look; no Aero
+  glass yet). The Start menu, taskbar, notification area and folder windows work, and Linux applications are grouped per
+  application on the taskbar. Tested with Japanese Windows 7, and in English with its strings replaced by the English language pack's.
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/images/screenshot-classic-en.png" alt="The XP shell with the classic theme and Linux applications" width="400" /><br />
+      XP's classic theme (<code>--theme classic</code>)
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/images/screenshot-reactos-en.png" alt="The ReactOS shell and Linux applications" width="400" /><br />
+      The ReactOS shell (<code>--shell reactos</code>; no XP ISO needed)
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/images/screenshot-win7-en.png" alt="The Windows 7 shell's Start menu with Linux and Windows applications" width="400" /><br />
+      The Windows 7 shell (<code>--shell win7</code>; experimental)
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/images/screenshot-win7-small-en.png" alt="The Windows 7 shell with the taskbar's small icons and labels" width="400" /><br />
+      The taskbar's "Use small icons" and "Never combine" (applies at once)
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="docs/images/screenshot-win7-logon.png" alt="Choosing a user on the Windows 7 logon screen" width="400" /><br />
+      The Windows 7 logon screen (<code>--greeter</code>)
+    </td>
+  </tr>
+</table>
+
+## Caution
 
 > [!WARNING]
-> - **Windows XP（と Windows 7）の ISO はご自身で入手してください。** このリポジトリにも導入スクリプトにも、Microsoft のファイルを
->   取得する処理はありません。ISO と取り出したファイルの扱いは、Microsoft の使用許諾に従ってください。
-> - **利用は自己責任でお願いします。** データの損失や不具合について、作者は責任を負いません。
-> - Microsoft とも Wine プロジェクトとも関係のない、非公式のプロジェクトです。
-> - 確かめているのは日本語版と英語版の XP SP3（x86）だけです。ほかの言語の XP も英語版と同じ設定で入れるので動くかもしれませんが、
->   一切試していません（`setup.sh` は警告を出して続けます）。
+> - **Obtain the Windows XP (and Windows 7) ISO yourself.** Neither this repository nor its scripts download any Microsoft files.
+>   Follow Microsoft's license terms for the ISO and the files extracted from it.
+> - **Use at your own risk.** The author is not responsible for data loss or any other problems.
+> - This is an unofficial project, not affiliated with Microsoft or the Wine project.
+> - Only the Japanese and the English XP SP3 (x86) have been tested. XP in other languages is set up the same way as English XP
+>   and might work, but it has not been tested at all (`setup.sh` warns and goes on).
 
-## 仕組み
+## How it works
 
 ```text
-LightDM ─ XP のようこそ画面 (greeter/)
-   └─ XP Shell セッション (session/supervisor.py)
-        ├─ Wine 11.0 + 154 本のパッチ (wine/patches/)
-        │    └─ XP の explorer.exe, shell32.dll, …（ISO から取り出したもの。ReactOS や Windows 7 のシェルではそれらのもの）
-        ├─ bridge-wm: X11 のウィンドウマネージャー + Win32 の代理ウィンドウ (bridge-wm/)
-        │    （Wayland のセッションでは、ウィンドウマネージャーの代わりにパッチを当てた labwc。wayland/）
-        └─ fcitx5 + Mozc, トレイの仲介 (bridge-wm/tray.py)
+LightDM ─ XP Welcome greeter (greeter/)
+   └─ XP Shell session (session/supervisor.py)
+        ├─ Wine 11.0 + 154 patches (wine/patches/)
+        │    └─ XP's explorer.exe, shell32.dll, … (extracted from the ISO; ReactOS's or Windows 7's in their sessions)
+        ├─ bridge-wm: an X11 WM + Win32 proxy windows (bridge-wm/)
+        │    (Wayland session: a patched labwc instead of the WM, wayland/)
+        └─ fcitx5 + Mozc, tray bridge (bridge-wm/tray.py)
 ```
 
-仕組みや設計の詳しい説明は [docs/](docs/README.md) にまとめています。
+The design documents are listed in [docs/README.md](docs/README.md).
 
-## 似たプロジェクト
+## Similar projects
 
-- [loss32](https://loss32.org/): Wine の上の Win32 のソフトウェアだけでデスクトップを作る Linux ディストリビューションの計画です。
-  ReactOS の部品も使います。win4wine が XP 本物のシェルを Debian の上で動かすのに対し、loss32 は自由なソフトウェアだけで作ります。
+- [loss32](https://loss32.org/): a planned Linux distribution whose desktop is made only of Win32 software on Wine,
+  with parts of ReactOS. While win4wine runs XP's own shell on Debian, loss32 is built from free software only.
 
-## 守っていること
+## Ground rules
 
-- Windows 由来のバイナリには手を加えません。違いは Wine とその周辺で吸収します。
-- Microsoft のバイナリを逆アセンブルしません。挙動は公開 API と、実際の XP の上で動かす自作のプローブで調べています。
-- Microsoft のファイル、取り出したもの、Wine の prefix は、Git 管理外の `localres/` と `.local/` にだけ置きます。
+- Binaries from Windows are never modified; differences are handled in Wine and around it.
+- Microsoft binaries are never disassembled. Behavior is studied through public APIs and our own probes on a real XP.
+- Microsoft files, extracted files and prefixes live only in `localres/` and `.local/`, which Git ignores.
 
-## 貢献してくださった方
+## Contributors
 
-- [AshesTom](https://github.com/AshesTom) さん（[フォーク](https://github.com/AshesTom/win4wine)）: XP の画面のプロパティ、
-  サウンド、キーボードの配列、通知領域の XP のアイコン、スタートメニューの左の列、Internet Explorer 6 と Windows Media Player 9、
-  起動中のようこそ画面、タイトルバーのアニメーションと小さいアイコン、Arch Linux への対応、`xp.sh` など。
+- [AshesTom](https://github.com/AshesTom) ([fork](https://github.com/AshesTom/win4wine)): XP's Display Properties,
+  sounds, keyboard layouts, XP's own notification area icons, the Start menu's left column, Internet Explorer 6 and
+  Windows Media Player 9, the welcome screen while the shell starts, caption animation and small icons, Arch Linux
+  support, `xp.sh` and more.
 
-## ライセンス
+## License
 
-[LGPL-2.1-or-later](LICENSE)（Wine と同じ）です。対象はこのリポジトリのコードとパッチだけです。
-ただし `wayland/patches/labwc/` は labwc と同じ GPL-2.0-only、`wayland/patches/wlroots/` は wlroots と同じ MIT です。
-Windows XP と Windows 7 のファイルと、スクリーンショットに写っている XP と Windows 7 の画面の著作権は Microsoft にあります。
-ReactOS のシェルで使う ReactOS のファイルは、ReactOS のライセンス（GPL-2.0-or-later、DLL の多くは LGPL-2.1-or-later）に従います。
+[LGPL-2.1-or-later](LICENSE), the same as Wine. It covers only the code and patches in this repository,
+except `wayland/patches/labwc/` (GPL-2.0-only, as labwc) and `wayland/patches/wlroots/` (MIT, as wlroots).
+The Windows XP and Windows 7 files, and the XP and Windows 7 screens in the screenshots, are copyrighted by Microsoft.
+The ReactOS files that the ReactOS shell uses are under ReactOS's licenses (GPL-2.0-or-later; most of its DLLs LGPL-2.1-or-later).

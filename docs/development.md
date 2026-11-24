@@ -1,142 +1,143 @@
-# 開発
+# Development
 
-使うだけなら、[INSTALL.md](../INSTALL.md) の `scripts/setup.sh` で足ります。この文書は、パッチや bridge を変えて試すときの手順です。
+To just use win4wine, `scripts/setup.sh` from [INSTALL.md](../INSTALL.md) is enough. This document covers how to change and test the patches or the bridge.
 
-## リポジトリの構成
+## Repository layout
 
-| 場所 | 中身 |
+| Path | Contents |
 |---|---|
-| `wine/` | 基にする Wine（`upstream.env`）、パッチ（`patches/` と `series`）、ビルド（`build.sh`）、パッチの適用（`patch-state.py`） |
-| `bridge-wm/` | X11 の WM（`wm.py`）、Win32 の代理（`proxy.c`）、トレイの仲介（`tray.py`）、調査用の道具（`inspect.c`） |
-| `wayland/` | Wayland のセッション: labwc と wlroots の版（`upstream.env`）、パッチ（`patches/`）、ビルド（`build.sh`）、labwc の設定（`labwc/`）、起動（`session.sh`） |
-| `session/` | セッションの起動と見張り（`supervisor.py`）、Linux のアプリのスタートメニュー（`linux_apps.py`）、セッションの外から使う `win4wine-wine`（`wine.py`。Wine の環境は `wineenv.py`）、セッションの登録 |
-| `prefix/` | prefix の作成（`create.py`）、更新（`stage.py`）、見た目と DPI（`display.py`）、レジストリの設定（registry profile） |
-| `extract/` | ISO から必要なファイルだけを取り出す（`extract.py`）、XP の言語の判断（`media.py`） |
-| `greeter/` | LightDM の XP のようこそ画面、ログオン・ログオフの画面、XP のカーソル |
-| `scripts/` | まとめて入れる（`setup.sh`）、開発用の chroot（`debian.sh`）、コミット前の検査 |
-| `tests/` | 統合試験と、Wine と実際の XP の両方で動かす公開 API のプローブ（C） |
-| `localres/`, `.local/` | ISO、取り出したファイル、prefix、ビルド、ログ、画面。**Git の管理外です** |
+| `wine/` | The Wine it is based on (`upstream.env`), the patches (`patches/` and `series`), the build (`build.sh`), applying the patches (`patch-state.py`) |
+| `bridge-wm/` | The X11 WM (`wm.py`), the Win32 proxy (`proxy.c`), the tray broker (`tray.py`), a tool for investigations (`inspect.c`) |
+| `wayland/` | The Wayland session: labwc and wlroots versions (`upstream.env`), patches (`patches/`), the build (`build.sh`), labwc's configuration (`labwc/`), startup (`session.sh`) |
+| `session/` | Starting and watching the session (`supervisor.py`), the Start menu of Linux apps (`linux_apps.py`), `win4wine-wine` for use outside the session (`wine.py`; the Wine environment is in `wineenv.py`), registering the session |
+| `prefix/` | Creating the prefix (`create.py`), updating it (`stage.py`), appearance and DPI (`display.py`), registry settings (registry profiles) |
+| `extract/` | Taking only the needed files from the ISO (`extract.py`), detecting the XP language (`media.py`) |
+| `greeter/` | The XP Welcome screen for LightDM, the log on/log off screens, XP's cursors |
+| `scripts/` | Installing everything (`setup.sh`), the development chroot (`debian.sh`), the pre-commit check |
+| `tests/` | Integration tests, and probes of public APIs (C) that run both on Wine and on a real XP |
+| `localres/`, `.local/` | ISOs, extracted files, prefixes, builds, logs, screenshots. **Not tracked by Git** |
 
-## Git の設定
+## Git setup
 
 ```sh
 git config core.hooksPath .githooks
 ```
 
-コミット前の検査（`scripts/check-staged.py`）は、`localres/`・`.local/` のファイル、PE、レジストリのハイブ、字体、NUL を含む
-バイナリを拒否します（`git add -f` でも拒否します）。例外は `docs/images/` の PNG（README のスクリーンショット）だけです。
+The pre-commit check (`scripts/check-staged.py`) refuses files under `localres/` and `.local/`, PE files, registry hives, fonts
+and binaries containing NUL bytes (even with `git add -f`). The only exception is PNGs in `docs/images/` (the README screenshot).
 
-## chroot での開発環境
+## Development environment in a chroot
 
-ホストで git、sudo、debootstrap が使え、15 GB 以上の空きが要ります。chroot は `.local/debian` に作られ、中の `/work` がこのリポジトリです。
+The host needs git, sudo and debootstrap, and at least 15 GB free. The chroot is created in `.local/debian`; `/work` inside it is this repository.
 
 ```sh
 scripts/debian.sh init
 scripts/debian.sh run /bin/bash
 ```
 
-chroot の中で次のように作ります。
+Inside the chroot, build like this:
 
 ```sh
 cd /work
-./wine/build.sh > .local/wine-build.log 2>&1    # Wine の取得、パッチ、ビルド
-# 進み具合を見るなら: scripts/progress.py .local/wine-build.log Wine -- ./wine/build.sh
-./bridge-wm/build.sh                            # .local/bridge（proxy.exe、linux-launch.exe など）
-./tests/build.sh                                # プローブ
+./wine/build.sh > .local/wine-build.log 2>&1    # fetch, patch and build Wine
+# to watch progress: scripts/progress.py .local/wine-build.log Wine -- ./wine/build.sh
+./bridge-wm/build.sh                            # .local/bridge (proxy.exe, linux-launch.exe, ...)
+./tests/build.sh                                # the probes
 ./extract/extract.py localres/WindowsXPSP3.iso .local/assets
 Xvfb :95 -screen 0 1280x800x24 -nolisten tcp > .local/xvfb.log 2>&1 &
 export DISPLAY=:95 WINE=/work/.local/wine-install/bin/wine
 ./prefix/create.py .local/assets .local/prefix-dev --home /home/builder --wine "$WINE"
 ```
 
-- `wine/build.sh` は `WINE_SOURCE`、`WINE_BUILD`、`WINE_INSTALL`、`JOBS` で場所と並列数を変えられます。
-  Wine は新しい WoW64 の方式（`--enable-archs=i386,x86_64`）でビルドするので、i386 のライブラリは要りません。
-- パッチを変えたら、**新しいソースとビルドディレクトリで configure から**ビルドして確かめてください。使い回したビルド
-  ディレクトリでは古いオブジェクトが残り、漏れ（ヘッダーの登録など）に気づけません。
-- `extract.py` と `create.py` は、出力先がすでにあると止まります。やり直すときは別の名前で作ってください。
-- `wayland/build.sh` は labwc を取得し、wlroots と libsfdo を subproject として取得してパッチを当て、静的に組み込みます
-  （`LABWC_SOURCE`、`LABWC_BUILD`、`LABWC_INSTALL`、`JOBS`）。chroot には `scripts/setup.sh` の `--wayland` のパッケージが
-  要ります。入れ子で試すときは、chroot の Xvfb の上で `WLR_BACKENDS=x11 WLR_X11_OUTPUTS=2 WLR_RENDERER=pixman` として
-  `wayland/session.sh LABWC --config CONFIG` を動かします（出力の名前は `X11-1`、`X11-2`）。
+- `wine/build.sh` takes `WINE_SOURCE`, `WINE_BUILD`, `WINE_INSTALL` and `JOBS` for the locations and the number of parallel jobs.
+  Wine is built in the new WoW64 mode (`--enable-archs=i386,x86_64`), so no i386 libraries are needed.
+- After changing a patch, check it with a build **from configure, in a fresh source and build directory**. A reused build
+  directory keeps old objects, and you will miss omissions (such as a header that was not registered).
+- `extract.py` and `create.py` stop if the output already exists. To redo one, create it under a different name.
+- `wayland/build.sh` fetches labwc, fetches wlroots and libsfdo as subprojects, patches them and links them statically
+  (`LABWC_SOURCE`, `LABWC_BUILD`, `LABWC_INSTALL`, `JOBS`). The chroot needs the packages of `scripts/setup.sh --wayland`.
+  To test it nested, run `wayland/session.sh LABWC --config CONFIG` on the chroot's Xvfb with
+  `WLR_BACKENDS=x11 WLR_X11_OUTPUTS=2 WLR_RENDERER=pixman` (the outputs are named `X11-1` and `X11-2`).
 
-## パッチ
+## Patches
 
 ```sh
-python3 wine/patch-state.py SOURCE wine/patches --apply   # 未改変の Wine 11.0 に全部当たるか
+python3 wine/patch-state.py SOURCE wine/patches --apply   # do they all apply to an unmodified Wine 11.0?
 ```
 
-labwc と wlroots のパッチも同じ道具で確かめられます（`wine/patch-state.py SOURCE wayland/patches/labwc --apply`。
-wlroots は `SOURCE/subprojects/wlroots` に `wayland/patches/wlroots` を当てます）。
+The labwc and wlroots patches can be checked with the same tool (`wine/patch-state.py SOURCE wayland/patches/labwc --apply`;
+for wlroots, apply `wayland/patches/wlroots` to `SOURCE/subprojects/wlroots`).
 
-一覧、並び、書式、opt-in の判定は [patches.md](patches.md) にあります。`.local/wine-upstream` を直接変えたものを成果物にせず、
-必ずパッチにしてください。
+The list, order, format and the opt-in check are in [patches.md](patches.md). Never ship a change made directly in
+`.local/wine-upstream`: always turn it into a patch.
 
-## 試験
+## Tests
 
-| 試験 | 内容 |
+| Test | What it covers |
 |---|---|
-| `tests/wm_integration.py` | WM 単体（Alt+Tab、フォーカス、最小化、Windows キーの受け渡し） |
-| `tests/wine_restore.py` | Win32 から最小化して元に戻した Wine の窓が、もう一度表示される（`WINE` と `WINEPREFIX` を渡します） |
-| `tests/bridge_integration.py` | WM と proxy と XP のシェル |
-| `tests/native_frames.py` | Linux のウィンドウの XP の枠（Luna とクラシック） |
-| `tests/xterm_redraw.py`, `tests/wm_latency.py` | 再描画と遅れ |
-| `tests/wayland_compositor.py` | Wayland のセッションの labwc を Wine なしで（入れ子、倍率 1.5）: X の空間、作業領域、IPC、枠の対応、重なり順、最大化、最前面。`DISPLAY`（Xvfb）と `LABWC` を渡します |
-| `tests/tray_host.py` | トレイの仲介（StatusNotifierItem と XEmbed） |
-| `tests/linux_apps.py` | Linux のアプリのスタートメニュー |
-| `tests/recovery_integration.py CONFIG.json` | シェルが落ちたときの切り替え |
-| `tests/reactos_session.py CONFIG.json` | ReactOS のシェルのセッション: タスクバーとデスクトップ、`explorer.exe` で開くフォルダ（0090）、ログオフ（0024） |
-| `tests/reactos_greeter.py ASSETS [OUTDIR]` | ReactOS のログイン画面の配置（英語と日本語）。ASSETS は `extract/reactos.py` が取り出したもの |
-| `tests/greeter_layout.py ASSETS`, `tests/cursor_theme.py ASSETS` | ようこそ画面の配置（96・120・144 DPI）、カーソル（32 と 64） |
-| `tests/patch_state.py`, `tests/font_*.py`, `tests/workarea.py`, `tests/dpi_settings.py` | 単体の試験 |
-| `tests/xp_language.py [ja=ASSETS] [en=ASSETS]` | 日本語版と英語版の XP で変わるレジストリの設定と、取り出したファイルの言語の判断 |
-| `tests/*.c` | 公開 API のプローブ。同じものを Wine と実際の XP で動かして数値を比べます（DPI は `dpi-metrics.c`、`char-widths-dpi.c`、`caption-glyph-dpi.c`、`text-bits-dpi.c`） |
+| `tests/wm_integration.py` | The WM alone (Alt+Tab, focus, minimizing, passing on the Windows key) |
+| `tests/wine_restore.py` | A Wine window minimized and restored from Win32 is shown again (pass `WINE` and `WINEPREFIX`) |
+| `tests/bridge_integration.py` | The WM, the proxy and the XP shell together |
+| `tests/native_frames.py` | XP frames on Linux windows (Luna and Classic) |
+| `tests/xterm_redraw.py`, `tests/wm_latency.py` | Redrawing and latency |
+| `tests/wayland_compositor.py` | The Wayland session's labwc without Wine (nested, scale 1.5): X space, work area, IPC, frame mapping, stacking order, maximizing, always on top. Pass `DISPLAY` (Xvfb) and `LABWC` |
+| `tests/tray_host.py` | The tray broker (StatusNotifierItem and XEmbed) |
+| `tests/linux_apps.py` | The Start menu of Linux apps |
+| `tests/recovery_integration.py CONFIG.json` | Switching over when the shell crashes |
+| `tests/reactos_session.py CONFIG.json` | The ReactOS shell session: taskbar and desktop, folders opened with `explorer.exe` (0090), log off (0024) |
+| `tests/reactos_greeter.py ASSETS [OUTDIR]` | The ReactOS login screen's layout (English and Japanese). ASSETS is what `extract/reactos.py` extracted |
+| `tests/greeter_layout.py ASSETS`, `tests/cursor_theme.py ASSETS` | The Welcome screen's layout (96, 120 and 144 DPI), the cursors (32 and 64) |
+| `tests/patch_state.py`, `tests/font_*.py`, `tests/workarea.py`, `tests/dpi_settings.py` | Unit tests |
+| `tests/xp_language.py [ja=ASSETS] [en=ASSETS]` | The registry settings that differ between Japanese and English XP, and detecting the language of extracted files |
+| `tests/*.c` | Probes of public APIs. The same program runs on Wine and on a real XP and the numbers are compared (DPI: `dpi-metrics.c`, `char-widths-dpi.c`, `caption-glyph-dpi.c`, `text-bits-dpi.c`) |
 
-## ウィンドウの中で試す（`xp.sh`）
+## Trying it in a window (`xp.sh`)
 
-Arch / CachyOS などで、いま使っているデスクトップ（KDE など）を離れずに XP のセッションを試すための入口です。
-システムのファイルには触れません（必要なパッケージは足りないときに表示します）。
-
-```sh
-./xp.sh setup /path/to/WindowsXP-SP3.iso   # Wine、bridge、取り出し、prefix（setup.sh と同じ .local/ に作る）
-./xp.sh run 1280x800                       # Xephyr の窓の中で本物のセッション（supervisor.py）を動かす
-./xp.sh log proxy                          # 動いているセッションのログ（既定は xp-shell）
-./xp.sh kill                               # セッションと prefix のプロセスを止める
-```
-
-`run` のセッションは自分の D-Bus で動き（tray.py がデスクトップの StatusNotifierWatcher を取らない）、スタートメニューの
-「終了」はその窓のセッションを終えるだけです（`shutdown_command` を `true` にします）。`XP_PREFIX`、`XP_LOG`、`XP_DISPLAY`、
-`XP_WINEDEBUG` で、別の prefix、ログの場所、X のディスプレイ、Wine のデバッグ チャンネルを選べます。
-
-## 手作業での導入
-
-`setup.sh` を使わずに入れるときは、Wine、bridge、取り出したファイル、prefix を上と同じに作り、`~/.config/win4wine/session.json` を
-書いてください（キーは [INSTALL.md](../INSTALL.md#設定configwin4winesessionjson)）。
+An entry point for trying the XP session on Arch / CachyOS and similar systems without leaving your current desktop (KDE etc.).
+It does not touch system files (it tells you which packages are missing).
 
 ```sh
-./session/install.sh                         # /usr/local/bin/xp-shell-session と xsessions の登録
-./session/install.sh --wayland .local/labwc-install/bin/labwc   # 任意: Wayland のセッションも（labwc は wayland/build.sh で）
-./greeter/install.sh /absolute/path/assets   # 任意: ようこそ画面
+./xp.sh setup /path/to/WindowsXP-SP3.iso   # Wine, bridge, extraction, prefix (in the same .local/ as setup.sh)
+./xp.sh run 1280x800                       # run the real session (supervisor.py) inside a Xephyr window
+./xp.sh log proxy                          # the running session's log (default: xp-shell)
+./xp.sh kill                               # stop the session and the prefix's processes
 ```
 
-`session/install.sh` が入れる起動用のスクリプトはこのチェックアウトを指すので、チェックアウトを移したら入れ直してください。
+A `run` session has its own D-Bus (so tray.py does not take the desktop's StatusNotifierWatcher), and "Turn Off Computer"
+in the Start menu only ends that window's session (`shutdown_command` is set to `true`). `XP_PREFIX`, `XP_LOG`, `XP_DISPLAY`
+and `XP_WINEDEBUG` choose another prefix, log location, X display and Wine debug channels.
 
-## 既存の環境を更新する
+## Installing by hand
 
-1. セッションを止め、wineserver が終わったことを確かめます。
-2. Wine の install を入れ替えます。
-3. `./prefix/stage.py --wine "$WINE" "$WINEPREFIX"` を実行します。wine.inf の更新を見て wineboot、XP の COM の再登録、
-   registry profile の適用、XP の DLL の配置を行います。セッションの起動時にも自動で動きます。
-4. `bridge-wm/build.sh` で bridge を作り直し、セッションを起動し直します。
+To install without `setup.sh`, build Wine, the bridge, the extracted files and the prefix as above, and write
+`~/.config/win4wine/session.json` (the keys are in [INSTALL.md](../INSTALL.md#settings-configwin4winesessionjson)).
 
-見た目と DPI は、セッションを止めてから `prefix/display.py --theme luna|classic --menu xp|classic --dpi N` で変えます（`--theme` は XP のテーマと同じく壁紙も変えます。classic はなし、luna は Bliss）。N は XP と
-同じく 96（通常）、120（大きいサイズ）、またはカスタムの 19〜480 です。セッションは同じ DPI を Linux のアプリにも渡します
-（`Xft.dpi`、fontconfig、カーソルの大きさ、192 以上では GTK の `GDK_SCALE`。`session/dpi.py`）。ようこそ画面の DPI は
-`/etc/win4wine/greeter.json` の `"dpi"` で決めます（XP でもマシン全体の設定です）。
+```sh
+./session/install.sh                         # /usr/local/bin/xp-shell-session and the xsessions entry
+./session/install.sh --wayland .local/labwc-install/bin/labwc   # optional: the Wayland session too (labwc from wayland/build.sh)
+./greeter/install.sh /absolute/path/assets   # optional: the Welcome screen
+```
 
-## 既存の XP のハイブから取り込む
+The launcher scripts that `session/install.sh` installs point at this checkout, so reinstall them if you move the checkout.
 
-`python3-hivex` を入れ、読み取り専用で変換します。名前空間の CLSID と NLS の限られた値だけを扱い、サービス、ドライバ、
-ログオン、製品情報は移しません。
+## Updating an existing setup
+
+1. Stop the session and make sure wineserver has exited.
+2. Replace the Wine install.
+3. Run `./prefix/stage.py --wine "$WINE" "$WINEPREFIX"`. It checks whether wine.inf changed and runs wineboot, re-registers
+   XP's COM servers, applies the registry profiles and places XP's DLLs. It also runs automatically when the session starts.
+4. Rebuild the bridge with `bridge-wm/build.sh` and start the session again.
+
+To change appearance and DPI, stop the session and run `prefix/display.py --theme luna|classic --menu xp|classic --dpi N`
+(`--theme` also changes the wallpaper, as XP's themes do: none for classic, Bliss for luna). N is, as in XP, 96 (Normal),
+120 (Large size), or a custom 19–480. The session passes the same DPI to Linux apps (`Xft.dpi`, fontconfig, the cursor size,
+and GTK's `GDK_SCALE` at 192 and above; `session/dpi.py`). The Welcome screen's DPI is set by `"dpi"` in
+`/etc/win4wine/greeter.json` (in XP, too, it is a machine-wide setting).
+
+## Importing from an existing XP hive
+
+Install `python3-hivex` and convert read-only. Only the namespace CLSIDs and a limited set of NLS values are handled;
+services, drivers, logon and product information are not carried over.
 
 ```sh
 ./prefix/hive-to-reg.py --software .../SOFTWARE --system .../SYSTEM --output .local/shell-hive.reg

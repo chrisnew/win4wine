@@ -1,12 +1,12 @@
-# オリジナル機能
+# Original features
 
-win4wine は XP の見た目と動きをそのまま再現するのが基本ですが、XP には無い機能もいくつか足しています。
-どれも既定ではオフで、`session.json`（ReactOS のシェルなら `reactos-session.json`）で選んだときだけ動きます。
-オフのときの動きは XP と同じです。
+win4wine's baseline is reproducing XP's look and behaviour as it is, but it adds a few features XP does not have.
+All of them are off by default and only work when chosen in `session.json` (`reactos-session.json` for the ReactOS shell).
+When they are off, behaviour is the same as XP's.
 
-## 窓の寄せ（`window_snap`）
+## Window snapping (`window_snap`)
 
-Windows 7 の Aero Snap のように、窓を画面の左右の半分に寄せたり、最大化したりできます。
+Like Windows 7's Aero Snap, windows can be snapped to the left or right half of the screen, or maximized.
 
 ```json
 {
@@ -14,37 +14,38 @@ Windows 7 の Aero Snap のように、窓を画面の左右の半分に寄せ�
 }
 ```
 
-次にログインしたときから効きます。XP のシェルと ReactOS のシェル、X11 と Wayland のセッションのどれでも使えます。
-Wine の窓にも、Linux のアプリの窓（XP の枠を付けたもの）にも同じように効きます。
+It takes effect from the next login. It works in the XP shell and the ReactOS shell, in both the X11 and the Wayland session,
+and the same way for Wine windows and for Linux apps' windows (the ones with an XP frame).
 
-### 操作
+### Controls
 
-| 操作 | 動き |
+| Action | Effect |
 |---|---|
-| Win+← / Win+→ | 前面の窓を、作業領域（タスクバーを除いた範囲）の左／右の半分に寄せます。反対向きを押すと、寄せる前の位置と大きさに戻ります。同じ向きをもう一度押すと、隣のモニターの近い側の半分へ移ります |
-| Win+↑ | 最大化します |
-| Win+↓ | 最大化していれば元に戻し、寄せていれば寄せる前に戻し、どちらでもなければ最小化します |
-| タイトルバーを画面の左／右の端へドラッグ | その側の半分に寄せます。端に着いている間は、行き先を XP のドラッグの枠と同じ網掛けで示します |
-| タイトルバーを画面の上端へドラッグ | 最大化します |
-| 寄せた窓のタイトルバーをドラッグ | 寄せる前の大きさに戻って、そのまま動かせます |
-| 最大化した窓のタイトルバーをドラッグ | 少し動かすと元の大きさに戻って、そのまま動かせます（XP では最大化した窓は動かせません） |
+| Win+← / Win+→ | Snaps the foreground window to the left/right half of the work area (the screen minus the taskbar). The opposite direction restores the position and size from before the snap. The same direction again moves it to the near half of the next monitor |
+| Win+↑ | Maximizes |
+| Win+↓ | Restores a maximized window, returns a snapped window to its pre-snap state, otherwise minimizes |
+| Dragging the title bar to the screen's left/right edge | Snaps to that half. While at the edge, the target is shown with the same hatched outline as XP's drag frame |
+| Dragging the title bar to the screen's top edge | Maximizes |
+| Dragging a snapped window's title bar | Returns to the pre-snap size and keeps moving |
+| Dragging a maximized window's title bar | After a small move it returns to its normal size and keeps moving (in XP, maximized windows cannot be moved) |
 
-左右の端は、画面全体の外側の端だけです。モニターとモニターの境目では寄せません。
+Only the outer edges of the whole screen count as left and right edges; nothing snaps at the border between monitors.
 
-### 仕組み
+### How it works
 
-- **キー**: proxy（`bridge-wm/proxy.c`）が Win+矢印を `RegisterHotKey` で受け取ります。Linux の窓にフォーカスがあるときは、
-  WM（Wayland では labwc）が Win+R などと同じ経路で矢印キーを proxy に渡します。
-- **X11 のドラッグ**: タイトルバーのドラッグは Wine の移動のループが行います。Wine のパッチ 0038 で、ループが
-  EVENT_SYSTEM_MOVESIZESTART/END（Windows と同じ通知）を送るようにし、proxy がそれを受けて行き先の枠を出し、離したときに寄せます。
-  寄せた窓の大きさを引き剥がしたときに戻すのと、最大化した窓を元の大きさに戻すのは、ドラッグ中の窓を外から変えられないので
-  Wine のループの中で行います。
-- **Wayland**: 元の大きさの窓のドラッグは labwc が行い、labwc 自身の寄せ（snapping）を使います。どの窓を寄せたかは labwc だけが
-  覚え、proxy は Win+矢印を labwc に頼みます。ドラッグ中の行き先は labwc が proxy に知らせ、proxy が X11 と同じ網掛けの枠で示します。
+- **Keys**: the proxy (`bridge-wm/proxy.c`) receives Win+arrow with `RegisterHotKey`. When a Linux window has focus, the WM
+  (labwc on Wayland) passes the arrow keys to the proxy the same way it passes Win+R and the like.
+- **Dragging on X11**: title bar drags are done by Wine's move loop. Wine patch 0038 makes the loop send
+  EVENT_SYSTEM_MOVESIZESTART/END (the same notifications as Windows); the proxy receives them, shows the target outline and snaps
+  on release. Restoring a snapped window's size when it is pulled away, and restoring a maximized window to its normal size, are
+  done inside Wine's loop, because a window being dragged cannot be changed from outside.
+- **Wayland**: dragging a normal-sized window is done by labwc, using labwc's own snapping. Only labwc remembers which windows are
+  snapped, and the proxy asks labwc to handle Win+arrow. During a drag labwc tells the proxy the target, and the proxy shows it
+  with the same hatched outline as on X11.
 
-詳しくは [architecture.md](architecture.md) の「キー操作」と、[patches.md](patches.md) の 0038 にあります。
+Details are in "Keyboard" in [architecture.md](architecture.md) and 0038 in [patches.md](patches.md).
 
-### 制限
+### Limits
 
-- 試作です。隣のモニターへ移す操作は、モニター 1 台の環境でしか確かめていません。
-- 寄せた窓の大きさを変えると、寄せた状態ではなくなります（Windows 7 と同じ）。
+- A prototype. Moving to the next monitor has only been checked with a single monitor.
+- Resizing a snapped window ends its snapped state (as in Windows 7).
