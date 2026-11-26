@@ -154,3 +154,4 @@
 0154-user32-external-xp-shell-icon-file.patch
 0155-ntdll-unix-process-handles.patch
 0156-dlls-window-property-cache.patch
+0157-opengl32-batch-immediate-mode.patch
