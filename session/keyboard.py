@@ -83,8 +83,14 @@ def klids_for(settings):
     return klids or ['00000409']
 
 
+def unescape(text):
+    r"""A string of user.reg without Wine's escapes (\\, \" and \xNNNN)."""
+    return re.sub(r'\\(x[0-9a-fA-F]{1,4}|.)',
+                  lambda m: chr(int(m.group(1)[1:], 16)) if len(m.group(1)) > 1 else m.group(1), text)
+
+
 def registry_values(prefix, key):
-    """The values of an HKCU key in the prefix's user.reg (Wine's text format)."""
+    """The string values of an HKCU key in the prefix's user.reg (Wine's text format)."""
     header = '[' + key.replace('\\', '\\\\') + ']'
     values, inside = {}, False
     try:
@@ -93,11 +99,12 @@ def registry_values(prefix, key):
         return values
     for line in lines:
         if line.startswith('['):
-            inside = line.split(' ', 1)[0].lower() == header.lower()
+            # The key's name, which may hold spaces, then the time it was written.
+            inside = line[:line.rfind(']') + 1].lower() == header.lower()
         elif inside:
-            m = re.match(r'"([^"]*)"="([^"]*)"', line)
+            m = re.match(r'"((?:[^"\\]|\\.)*)"=(?:str\(2\):)?"((?:[^"\\]|\\.)*)"$', line)
             if m:
-                values[m.group(1)] = m.group(2)
+                values[unescape(m.group(1))] = unescape(m.group(2))
     return values
 
 
