@@ -1,17 +1,326 @@
 # Plan: screen savers and a lock screen
 
 Status (2026-11-27): phases 0 to 3 are written and checked in a Debian 13 container (the whole XP session on Xvfb with the
-patched Wine), **not yet on the EeePC**. What is left is under "Left to do". How it works now:
+patched Wine), **not yet on the EeePC**. Next: "Deployment on the EeePC". How it works now:
 [docs/architecture.md](../docs/architecture.md), "Screen savers and the lock screen"; the sections below are the plan as it was.
 
-## Left to do
+## Deployment on the EeePC (next session starts here)
 
-- On the EeePC (ask first): deploy (checkout, `bridge-wm/build.sh`, the new Wine, `scripts/setup.sh` for prefix `VERSION` 7,
-  `greeter/install.sh` for `/etc/pam.d/win4wine-lock`, then log in again) and log it in `tools/eeepc/LOG.md`.
-- Measure there: CPU and frame rate of each screen saver (phase 1.1), the time from Win+L to the lock screen and its CPU while the
-  caret blinks, wakeups at idle before and after, and whether the lid's suspend locks first. If the lock screen starts too slowly,
-  start it ahead of time and keep it waiting.
-- Decide after measuring whether a full-screen game should hold the screen saver off (XP does not skip it; not done).
+State on 2026-11-27: the code is on `origin/eeepc` up to a3abf37 (the commits after it only change this plan). The development
+machine's `.local/wine-install` is built with patches up to 0159. Nothing was changed on the EeePC; it stopped answering SSH
+(`No route to host`) at the end of that session, so it may need waking. `IDEAS.md` holds the user's own uncommitted notes: leave
+it out of commits.
+
+**Rules.** It is the user's live machine: get a go-ahead before step 2, and ask again before ending the session or killing
+anything. The user has to be at the EeePC for steps 3 and 7 to 10. `sudo` may want a password (`ssh 192.168.1.9 sudo -n true` tells);
+then the user runs the `sudo` steps (`ssh -t`, or at the machine). Keep one SSH shell open from step 4 on: it is the way back if
+the login screen or the lock screen traps you.
+
+Commands run on the EeePC in `~/win4wine` unless they say "development machine". Commands that use the display need
+`export DISPLAY=:0 XAUTHORITY=~/.Xauthority`.
+
+### 1. Before anything changes (read only)
+
+```sh
+git status --short; git rev-parse --short HEAD      # clean? note the commit for the way back
+sudo -n true; echo $?; df -h ~
+dpkg -l libx11-dev libxext-dev python3-gi python3-gi-cairo gir1.2-gtk-3.0 | grep -c ^ii     # 5
+ls /etc/pam.d/win4wine-lock /etc/X11/xorg.conf.d/ 2>&1
+localectl status
+grep -A1 -i '^\[boot\]' .local/prefix/drive_c/windows/system.ini
+```
+
+**Baseline** for "no more wakeups than before": copy the sampling script (below) to `/tmp/w4w-sample.py`, have the user leave the
+machine alone in the old session, and keep the output: `python3 /tmp/w4w-sample.py 60 20` (waits 20 s, so that the SSH login's
+network traffic is over, then samples 60 s).
+
+### 2. Update the checkout
+
+```sh
+git fetch fork && git checkout -B eeepc fork/eeepc
+python3 session/keyboard.py env ~/win4wine/.local/prefix        # compare with localectl status
+python3 -c "import sys, pathlib; sys.path.insert(0, 'session'); import screen; print(screen.settings(pathlib.Path('.local/prefix')))"
+```
+
+- The keyboard line is the layout the **next login will really apply** (the fixed bug in `session/keyboard.py`). If it is not the
+  keyboard the user types on, fix it before any password is typed on the lock screen: XP's Regional and Language Options, or
+  `localectl`'s layout added to `HKCU\Keyboard Layout\Preload`.
+- The settings line: with `secure=True` and a screen saver set, the first idle time after the login locks the screen. Steps 6
+  and 7 make sure the password check works before that.
+
+### 3. Log off
+
+The user logs off XP (Start, Log Off) and stays at the login screen. Everything up to step 7 happens logged off.
+
+### 4. Install the new Wine
+
+On the **development machine** (the checkout on `eeepc`, clean apart from `IDEAS.md`):
+
+```sh
+wine/container-build.sh --deploy 192.168.1.9
+```
+
+It must end with "now has this Wine". If it says the session still runs, log off and run it again. **Do not run it again after it
+succeeded**: that would overwrite `.local/wine-install-old` (the way back) with the new Wine.
+
+```sh
+cat .local/wine-install/win4wine-patches; python3 wine/patch-state.py --digest wine/patches     # the same
+pgrep -x wineserver || echo stopped
+```
+
+### 5. Back up the prefix's registry
+
+```sh
+b=.local/backup-$(date +%F); mkdir -p $b
+cp .local/prefix/*.reg .local/prefix/drive_c/windows/system.ini $b/
+cp .local/prefix/.xp-extras $b/ 2>/dev/null; ls -l $b
+```
+
+### 6. `setup.sh` (bridge, prefix, greeter, PAM)
+
+```sh
+scripts/setup.sh --media ~/Images/en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso --greeter
+```
+
+Expected: no new packages (log any it installs); Wine "Built" (**if it starts compiling Wine, stop it**: step 4 did not take);
+the bridge builds `wm` and `idle-watch` with no "no screen saver" warning; "Adding the XP Explorer additions" (`extras.py`,
+`VERSION` 7); the Welcome screen installed. `extras.py` applies XP's defaults again (sounds, Explorer settings, theme
+registrations), so the user's changes to those may come back to XP's defaults; step 5's copies are the way back. This is also the
+open check of phase 0 (`setup.sh` on a prefix it updates).
+
+```sh
+ls -l /etc/pam.d/win4wine-lock .local/bridge/wm .local/bridge/idle-watch
+cat .local/prefix/.xp-extras                                   # starts with 7
+```
+
+### 7. Check the password and the login screen before relying on them
+
+The user runs this and types their password; it must print `True`, and `False` for a wrong one (about 2 s):
+
+```sh
+python3 -c "import sys, getpass; sys.path.insert(0, 'greeter'); import pamauth; print(pamauth.check('win4wine-lock', getpass.getuser(), getpass.getpass()))"
+```
+
+**If it is not `True`, do not go on**: `sudo rm /etc/pam.d/win4wine-lock` (the session then does not lock) and find out why.
+
+The LightDM greeter's input code was refactored and only tried against stand-ins, never under LightDM. With no session running:
+`sudo systemctl restart lightdm`. At the login screen try the mouse, the arrow keys, a wrong password and "Turn off computer"
+(then Cancel). If it is broken: `sudo greeter/install.sh --remove && sudo systemctl restart lightdm` (the usual greeter; this also
+removes the PAM file).
+
+### 8. Log in and check
+
+```sh
+pgrep -af 'idle-watc[h]|logind-watc[h]|supervisor\.p[y]'          # all three
+tail -n +1 ~/.local/state/win4wine/{idle-watch,logind}.log; grep -i -E 'lock|idle|logind' ~/.xsession-errors | tail
+DISPLAY=:0 XAUTHORITY=~/.Xauthority xset q | tail -12           # blanking 0, DPMS off time 0
+systemd-inhibit --list | grep -i win4wine                       # the delay lock for sleep
+setxkbmap -query
+python3 tests/screen_guard.py && python3 tests/logind_watch.py
+```
+
+Ways out of a lock screen that does not take the password (ask first):
+
+- ends the whole session: `pkill -TERM -f 'session/supervisor\.p[y]'`
+- keeps the session: `sudo mv /etc/pam.d/win4wine-lock /root/ && pkill -f 'xp-loc[k]'` (started again, it finds no PAM file and
+  gives up). Put the file back with `greeter/install.sh`.
+- switch it off: `"lock_screen": false` (also `"screen_saver": false`) in `~/.config/win4wine/session.json`, then log in again.
+
+### 9. Try it at the machine
+
+| Do | Expect |
+|---|---|
+| Win+L from the desktop, from Notepad, from a Linux terminal | Welcome screen with "N programs running"; no "l" typed anywhere |
+| Click the tile, type a wrong password, then the right one | XP's balloon; then unlocked, the focus back where it was, no Start menu |
+| While locked: Alt+Tab, Win+D, volume keys | Nothing gets past (volume keys do nothing: note whether that bothers) |
+| `rundll32.exe user32.dll,LockWorkStation` in Start, Run | Locks |
+| Screen Saver tab: pick one, wait 1 minute, Apply; reopen the tab | The choice is still shown; it starts after a minute (up to 30 s late right after a change) |
+| "On resume, password protect": move the mouse within 5 s, then after more than 5 s | No password; then the Welcome screen, with no glimpse of the desktop |
+| A screen saver over the locked screen (lock, wait) | Saver shows; moving the mouse returns to the Welcome screen |
+| A game or video in full screen, left alone past the wait time | Note what happens (XP would start the saver) |
+| `loginctl lock-session N` (N from `loginctl list-sessions`) | Locks |
+| Close the lid, wait, open it | Asleep and awake again, the Welcome screen first, the keyboard works. See `logind.log` |
+| Lock, then `pkill -f 'xp-loc[k]'` over SSH | The lock screen comes back |
+| Start, Log Off | Log off as before, nothing left running |
+
+Optionally the probe of patches 0158 and 0159 (it puts the settings back):
+
+```sh
+i686-w64-mingw32-gcc -std=c11 -O2 tests/screen-saver.c -o /tmp/screen-saver-test.exe -luser32 -ladvapi32
+DISPLAY=:0 XAUTHORITY=~/.Xauthority python3 session/wine.py /tmp/screen-saver-test.exe
+```
+
+### 10. Measure
+
+All with `export DISPLAY=:0 XAUTHORITY=~/.Xauthority`; the screenshots with `tools/eeepc/shot.py`.
+
+1. **Idle**, as in step 1: `python3 /tmp/w4w-sample.py 60 20` with the wait time longer than 2 minutes. No more wakeups than the
+   baseline; `idle-watch`, `logind-watch` and `supervisor.py` near 0.
+2. **Screen savers**: the saver script (below) as `/tmp/w4w-savers.py`, run from `~/win4wine`. It gives each one's CPU, whether its
+   window covers the screen and whether mouse movement ends it. Frame rate by eye, or `tools/eeepc/capture.py`.
+3. **Time to lock**: the lock script (below), `python3 /tmp/w4w-locktime.py`; the user unlocks after each of 3 runs. **Over about
+   1 s: start the lock screen ahead of time** (a standby mode in `greeter/xp-lock.py` that has drawn and waits on stdin for "lock",
+   started by `session/screen.py` after the shell; check its memory in the sample's RSS column).
+4. **CPU while the caret blinks**: lock, click the tile, then `python3 /tmp/w4w-sample.py 20 5`; see `xp-lock.py` and `Xorg`.
+
+### 11. Record
+
+- `tools/eeepc/LOG.md`, an entry for the deployment (what, why, result with the numbers, undo) and "Current state": the Wine row
+  (patches up to 0159), a row for `/etc/pam.d/win4wine-lock`, the reinstalled greeter, the prefix's `extras.py` `VERSION` 7 (which
+  replaces the row about the screen savers copied by hand), and any package `setup.sh` installed.
+- Numbers in `tools/eeepc/README.md`; known problems in `BUGS.md` (local only); this plan's status.
+- Commit and push (`eeepc`).
+
+### The way back
+
+```sh
+# logged off, wineserver stopped
+git checkout -B eeepc <commit from step 1>
+rm -rf .local/wine-install && mv .local/wine-install-old .local/wine-install
+cp .local/backup-<date>/*.reg .local/prefix/ && cp .local/backup-<date>/system.ini .local/prefix/drive_c/windows/
+cp .local/backup-<date>/.xp-extras .local/prefix/ 2>/dev/null
+bridge-wm/build.sh && rm -f .local/bridge/idle-watch
+greeter/install.sh .local/assets && sudo rm -f /etc/pam.d/win4wine-lock      # the old greeter
+```
+
+To switch off only the new features, the two `session.json` settings above are enough.
+
+### Scripts for steps 1 and 10
+
+`/tmp/w4w-sample.py SECONDS [DELAY]`: CPU, wakeups and memory of the user's processes and Xorg.
+
+```python
+import os, sys, time
+
+seconds, delay = float(sys.argv[1]), float(sys.argv[2]) if len(sys.argv) > 2 else 0
+
+
+def sample():
+    found = {}
+    for pid in filter(str.isdigit, os.listdir('/proc')):
+        try:
+            base = f'/proc/{pid}'
+            command = open(base + '/cmdline', 'rb').read().replace(b'\0', b' ').decode(errors='replace').strip()
+            if os.stat(base).st_uid != os.getuid() and 'Xorg' not in command or int(pid) == os.getpid():
+                continue
+            stat = open(base + '/stat').read().rsplit(') ', 1)[1].split()
+            switches = 0
+            for task in os.listdir(base + '/task'):
+                with open(f'{base}/task/{task}/status') as status:
+                    switches += sum(int(line.split()[1]) for line in status if 'ctxt_switches' in line)
+            rss = int(stat[21]) * os.sysconf('SC_PAGE_SIZE') // 1048576
+            found[pid] = (int(stat[11]) + int(stat[12]), switches, rss, command[-70:])
+        except OSError:
+            pass
+    return found
+
+
+time.sleep(delay)
+before = sample()
+time.sleep(seconds)
+after = sample()
+rows = [((after[p][0] - before[p][0]) / os.sysconf('SC_CLK_TCK') / seconds * 100,
+         (after[p][1] - before[p][1]) / seconds, after[p][2], p, after[p][3]) for p in after if p in before]
+print(f'all: {sum(r[0] for r in rows):.1f}% of one CPU, {sum(r[1] for r in rows):.0f} wakeups/s')
+print('  CPU%  wakes/s  RSS MB     pid  command')
+ours = ('idle-watch', 'logind-watch', 'supervisor.py', 'xp-lock')
+for row in sorted(rows, reverse=True, key=lambda r: (r[0], r[1])):
+    if row[0] >= 0.5 or row[1] >= 2 or any(name in row[4] for name in ours):
+        print('{:6.1f} {:8.1f} {:7} {:>7}  {}'.format(*row))
+```
+
+`/tmp/w4w-savers.py`, run from `~/win4wine` (it moves the pointer; nobody touches the machine meanwhile):
+
+```python
+import os, subprocess, sys, time
+from Xlib import X, display
+from Xlib.ext import xtest
+
+d = display.Display()
+root = d.screen().root
+screen = root.get_geometry()
+
+
+def move(x):
+    xtest.fake_input(d, X.MotionNotify, x=x, y=x // 2)
+    d.sync()
+
+
+def window(name):
+    shown = []  # the viewable top-level windows, bottom to top
+    for w in root.query_tree().children:
+        try:
+            if w.get_attributes().map_state == X.IsViewable:
+                shown.append(w)
+        except Exception:
+            pass
+    for position, w in enumerate(shown):
+        try:
+            names = w.get_wm_class()
+            if names and names[0].lower() == name:
+                g = w.get_geometry()
+                return f'{g.width}x{g.height} at {g.x},{g.y}, {len(shown) - position - 1} windows above'
+        except Exception:
+            pass
+    return 'no window'
+
+
+for name in sys.argv[1:] or ['logon', 'scrnsave', 'ssstars', 'ssmarque', 'ssmyst', 'ssbezier', 'ssmypics',
+                             'sspipes', 'ss3dfo', 'sstext3d', 'ssflwbox']:
+    move(300)
+    saver = subprocess.Popen([sys.executable, 'session/wine.py', rf'C:\windows\syswow64\{name}.scr', '/s'],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(15)
+    print(f'== {name}: screen {screen.width}x{screen.height}; {window(name + ".scr")}', flush=True)
+    subprocess.run([sys.executable, '/tmp/w4w-sample.py', '10'])
+    for x in (400, 600, 500):
+        move(x)
+        time.sleep(0.3)
+    try:
+        saver.wait(timeout=10)
+        print('ended by the mouse', flush=True)
+    except subprocess.TimeoutExpired:
+        print('DID NOT END: end it by hand', flush=True)
+        break
+    time.sleep(3)
+```
+
+`/tmp/w4w-locktime.py` (it locks the screen):
+
+```python
+import glob, os, time
+from Xlib import X, display
+
+d = display.Display()
+root = d.screen().root
+
+
+def shown():
+    for w in root.query_tree().children:
+        try:
+            if w.get_wm_name() == 'win4wine-lock' and w.get_attributes().map_state == X.IsViewable:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+ipc = glob.glob(f'/run/user/{os.getuid()}/win4wine-{os.getuid()}-*')[0]
+assert not shown(), 'locked already'
+time.sleep(5)
+start = time.monotonic()
+with open(ipc + '/lock-request.tmp', 'w') as request:
+    request.write('lock\n')
+os.replace(ipc + '/lock-request.tmp', ipc + '/lock-request')
+while not shown():
+    assert time.monotonic() - start < 30, 'not locked after 30 s: see ~/.local/state/win4wine/lock.log'
+    time.sleep(0.05)
+print(f'lock screen after {time.monotonic() - start:.2f} s')
+```
+
+## Left to do after the deployment
+
+- Decide, from what step 9 shows, whether a full-screen game should hold the screen saver off (XP does not skip it; not done).
 - Fast User Switching is still off, so the checkbox reads "On resume, password protect". Turning it on would also add "Switch
   User" to XP's Log Off dialog, which has nothing behind it yet.
 - Not done: hardening against VT switches (2.5, only if wanted), "Switch User" (3.4), phase 4 (only if needed).
