@@ -30,7 +30,7 @@ import xp_schemes
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / '.local/bridge'
 # Bumped when apply() changes; setup.sh applies it again on existing prefixes.
-VERSION = '6'
+VERSION = '7'
 MARKER = '.xp-extras'
 HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe')
 # XP's Regional and Language Options and what it loads (assets/intl), native
@@ -131,6 +131,18 @@ def regedit(wine, prefix, text):
         # The 32-bit regedit writes the view that the 32-bit XP shell reads.
         subprocess.run([wine, r'C:\windows\syswow64\regedit.exe', '/S', 'Z:' + str(reg).replace('/', '\\')],
                        env=env, check=True)
+
+
+def screen_saver_mapping(wine, prefix):
+    """Display Properties writes the chosen screen saver to system.ini's [boot]
+    and reads it from the registry: Windows keeps that entry in the registry
+    (IniFileMapping), which Wine follows once it is set up."""
+    env = dict(os.environ, WINEPREFIX=str(prefix), WINEDEBUG='-all', WINEDLLOVERRIDES='mscoree,mshtml=')
+    env.pop('WINEARCH', None)
+    # Wine reads the mapping from the 64-bit view only.
+    subprocess.run([wine, 'reg', 'add',
+                    r'HKLM\Software\Microsoft\Windows NT\CurrentVersion\IniFileMapping\system.ini\boot',
+                    '/v', 'SCRNSAVE.EXE', '/d', r'USR:Control Panel\Desktop', '/f', '/reg:64'], env=env, check=True)
 
 
 def stop(wine, prefix):
@@ -240,6 +252,7 @@ def apply(prefix, wine):
     print('* XP Explorer additions: registry', flush=True)
     regedit(wine, prefix, registry(xpx).text())
     regedit(wine, prefix, xpx.xp_registrations(assets))
+    screen_saver_mapping(wine, prefix)
     if (assets / 'intl/input.dll').is_file():
         for text in keyboard_layouts(assets):
             regedit(wine, prefix, text)

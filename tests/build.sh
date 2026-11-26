@@ -48,6 +48,7 @@ compile "$out/rebar-bands-test.exe" -municode "$root/tests/rebar-bands.c" -luser
 compile "$out/number-format-test.exe" -municode "$root/tests/number-format.c"
 compile "$out/notify-broadcast-test.exe" -municode "$root/tests/notify-broadcast.c" -luser32
 compile "$out/dm-reposition-test.exe" -municode "$root/tests/dm-reposition.c" -luser32
+compile "$out/screen-saver-test.exe" "$root/tests/screen-saver.c" -luser32 -ladvapi32
 compile "$out/shell-item-images-test.exe" -municode "$root/tests/shell-item-images.c" -lshell32 -lole32 -luuid -lgdi32
 compile "$out/caption-ncactivate-test.exe" "$root/tests/caption-ncactivate.c" -lgdi32 -luser32
 compile "$out/cleartype-test.exe" -municode "$root/tests/cleartype.c" -luser32 -lgdi32 -ladvapi32
