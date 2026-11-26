@@ -52,6 +52,11 @@ checks that they still give the same state (see [development.md](development.md)
 - Keeps the desktop at the bottom and the taskbar and Start menu on top. A top-level WorkerW is not treated as the desktop: XP's and
   Windows 7's "Show Desktop" minimizes the windows, moves the desktop icons into a WorkerW and raises that above the windows (checked on
   real hardware). Win32 topmost windows (`_NET_WM_STATE_ABOVE`) and the windows they own go above the taskbar.
+- Gives full screen (`_NET_WM_STATE_FULLSCREEN`): a Linux window that asks for it (or maps with it) covers the whole screen without a
+  border, and leaves it for the rectangle it had. Its XP frame stays at that rectangle under it (`geometry.tsv` gives the proxy that
+  one), so its taskbar button stays, and frame moves, the proxy's `geometry` commands and the window's own requests do not move it
+  meanwhile; maximizing or restoring it then changes only the rectangle it returns to. Wine sizes its own full screen windows. As on
+  XP, the active full screen window (Linux or Wine), with the windows it owns, covers the taskbar; topmost windows stay above it.
 - Builds the work area (`_NET_WORKAREA`) from the taskbar's position.
 - Activates windows on click. Clicking the desktop or the taskbar gives it the keyboard.
   Windows owned by a raised window (`WM_TRANSIENT_FOR`; modal dialogs and the like) are kept above it, as in Windows.

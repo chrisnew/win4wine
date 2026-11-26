@@ -103,6 +103,8 @@ struct client
     enum kind kind;
     int hidden, framed, icon_dirty, placed, moving, redirected;
     int has_restore, restore[4];
+    /* A native client in EWMH full screen, and its rectangle without it */
+    int fullscreen, fullscreen_restore[4];
     int has_size, size[2];
     int geometry[5]; /* x, y, width, height, border width */
     int has_extents, extents[4]; /* left, right, top, bottom */
@@ -121,7 +123,7 @@ struct client
     X_(_NET_SUPPORTING_WM_CHECK) X_(_NET_WM_NAME) X_(UTF8_STRING) X_(_NET_SUPPORTED) X_(_NET_CLIENT_LIST) \
     X_(_NET_CLIENT_LIST_STACKING) X_(_NET_ACTIVE_WINDOW) X_(_NET_WORKAREA) X_(_NET_NUMBER_OF_DESKTOPS) \
     X_(_NET_CURRENT_DESKTOP) X_(_NET_WM_STATE) X_(_NET_WM_STATE_HIDDEN) X_(_NET_WM_STATE_MAXIMIZED_VERT) \
-    X_(_NET_WM_STATE_MAXIMIZED_HORZ) X_(_NET_WM_STATE_ABOVE) X_(_NET_WM_WINDOW_TYPE) \
+    X_(_NET_WM_STATE_MAXIMIZED_HORZ) X_(_NET_WM_STATE_ABOVE) X_(_NET_WM_STATE_FULLSCREEN) X_(_NET_WM_WINDOW_TYPE) \
     X_(_NET_WM_WINDOW_TYPE_DESKTOP) X_(_NET_WM_WINDOW_TYPE_DOCK) X_(_NET_WM_ICON) X_(_NET_FRAME_EXTENTS) \
     X_(_NET_CLOSE_WINDOW) X_(_NET_WM_STRUT) X_(_NET_WM_STRUT_PARTIAL) X_(_WIN4WINE_CLASS) X_(_WIN4WINE_HWND) \
     X_(WM_STATE) X_(WM_PROTOCOLS) X_(WM_TAKE_FOCUS) X_(WM_DELETE_WINDOW) X_(WM_CHANGE_STATE) \
@@ -860,6 +862,43 @@ static void configure_rect(struct client *c, int x, int y, int width, int height
     configure(c, &values);
 }
 
+/* Cover the whole screen with native client C, without a border. */
+static void fit_fullscreen(struct client *c)
+{
+    xcb_get_geometry_reply_t *g = get_geometry(root);
+    struct values values = {0};
+    if (!g) return;
+    set_value(&values, XCB_CONFIG_WINDOW_X, 0);
+    set_value(&values, XCB_CONFIG_WINDOW_Y, 0);
+    set_value(&values, XCB_CONFIG_WINDOW_WIDTH, g->width);
+    set_value(&values, XCB_CONFIG_WINDOW_HEIGHT, g->height);
+    set_value(&values, XCB_CONFIG_WINDOW_BORDER_WIDTH, 0);
+    free(g);
+    if (memcmp(c->geometry, values.v, sizeof(c->geometry))) configure(c, &values);
+}
+
+/* Put native client C in full screen or take it out (Wine sizes its own).
+ *
+ * Its frame stays where it was, under the client: geometry.tsv gives the
+ * proxy the rectangle without full screen, so the taskbar button and the
+ * frame are kept and the client returns into the frame afterwards. */
+static void set_fullscreen(struct client *c, int on)
+{
+    if (c->kind != KIND_NORMAL || c->hwnd || !on == !c->fullscreen) return;
+    if (on)
+    {
+        memcpy(c->fullscreen_restore, c->geometry, sizeof(c->fullscreen_restore));
+        c->fullscreen = 1;
+        fit_fullscreen(c);
+    }
+    else
+    {
+        c->fullscreen = 0;
+        configure_rect(c, c->fullscreen_restore[0], c->fullscreen_restore[1], c->fullscreen_restore[2],
+                       c->fullscreen_restore[3]);
+    }
+}
+
 static void add_followed(struct client *c, const int rect[4])
 {
     if (!c->followed_set) c->followed_count = 0;
@@ -1263,7 +1302,7 @@ static void restack(void)
      * sits immediately below its native client, so Wine draws the XP caption
      * and resize borders while the native pixels cover its unused client area. */
     int before_count, raised_count = 0, topmost_count = 0, n = 0;
-    xcb_window_t *before = stacking(&before_count);
+    xcb_window_t *before = stacking(&before_count), fullscreen = XCB_NONE;
     xcb_window_t *raised = xmalloc(sizeof(*raised) * (2 * client_count + 1));
     xcb_window_t *topmost = xmalloc(sizeof(*topmost) * (client_count + 1));
     uint32_t *ids;
@@ -1283,6 +1322,31 @@ static void restack(void)
             configure_stack(clients[i]->id, XCB_STACK_MODE_ABOVE);
             raised[raised_count++] = clients[i]->id;
         }
+    /* The active full screen window covers the taskbar, as on XP, with the
+     * windows it owns (a dialog of it may be the active one); topmost
+     * windows stay above it. */
+    {
+        struct client *c = find_client(active);
+        for (int depth = 0; c && c->kind == KIND_NORMAL && !c->hidden && depth <= client_count; depth++)
+        {
+            if (has_atom(c->id, A._NET_WM_STATE, A._NET_WM_STATE_FULLSCREEN)) fullscreen = c->id;
+            c = c->owner ? find_client(c->owner) : NULL;
+        }
+    }
+    if (fullscreen)
+    {
+        configure_stack(fullscreen, XCB_STACK_MODE_ABOVE);
+        raised[raised_count++] = fullscreen;
+        for (int i = 0; i < client_count; i++)
+        {
+            struct client *c = clients[i];
+            if (c->kind == KIND_NORMAL && !c->hidden && c->owner == fullscreen && c->id != fullscreen)
+            {
+                configure_stack(c->id, XCB_STACK_MODE_ABOVE);
+                raised[raised_count++] = c->id;
+            }
+        }
+    }
     /* Win32 topmost windows (EWMH above), such as XP's dimmed shut down
      * screen, cover the topmost taskbar; keep their transients above them. */
     for (int i = 0; i < client_count; i++)
@@ -1537,6 +1601,8 @@ static void manage(xcb_window_t w)
             height != client->geometry[3])
             configure_rect(client, x, y, width, height);
     }
+    /* Mapped in full screen (mpv --fs, SDL games); kept again when it is mapped after a withdrawal */
+    if (has_atom(w, A._NET_WM_STATE, A._NET_WM_STATE_FULLSCREEN)) set_fullscreen(client, 1);
     set_wm_state(w, 1);
     xcb_map_window(conn, w);
     if (client->kind == KIND_NORMAL || client->kind == KIND_POPUP) focus(w);
@@ -1554,6 +1620,25 @@ static void maximize(xcb_window_t w, int restore)
     {
         /* Wine's owner thread supplies its computed outer rectangle. Only
          * acknowledge EWMH state here; resizing it races restore placement. */
+        edit_net_wm_state(w, atoms, 2, atoms, restore ? 0 : 2);
+        focus(w);
+        return;
+    }
+    if (c->fullscreen)
+    {
+        /* Maximized or restored under full screen: the rectangle it leaves
+         * full screen for changes (sync_frames fits it to the maximized
+         * frame), and the client keeps covering the screen. */
+        if (!restore && !c->has_restore)
+        {
+            memcpy(c->restore, c->fullscreen_restore, sizeof(c->restore));
+            c->has_restore = 1;
+        }
+        else if (restore && c->has_restore)
+        {
+            memcpy(c->fullscreen_restore, c->restore, sizeof(c->restore));
+            c->has_restore = 0;
+        }
         edit_net_wm_state(w, atoms, 2, atoms, restore ? 0 : 2);
         focus(w);
         return;
@@ -1800,9 +1885,11 @@ static void write_geometry(void)
     for (int i = 0; i < client_count; i++)
     {
         struct client *c = clients[i];
+        /* In full screen, where its frame stays: the rectangle without it. */
+        const int *g = c->fullscreen ? c->fullscreen_restore : c->geometry;
         if (c->kind == KIND_NORMAL && !c->hwnd)
-            text_printf(&t, "%x %d %d %d %d %d %d %d %d %d\n", c->id, c->geometry[0], c->geometry[1], c->geometry[2],
-                        c->geometry[3], c->has_restore, area[0], area[1], area[2], area[3]);
+            text_printf(&t, "%x %d %d %d %d %d %d %d %d %d\n", c->id, g[0], g[1], g[2], g[3], c->has_restore, area[0],
+                        area[1], area[2], area[3]);
     }
     if (!same_text(t.data, previous_geometry))
     {
@@ -2395,7 +2482,13 @@ static void sync_frames(void)
                         y = ny > area[1] + top ? ny : area[1] + top;
                     }
                     else cascade(left, top, &x, &y);
-                    if (x != nx || y != ny || width != nwidth || height != nheight)
+                    if (native->fullscreen)
+                    {
+                        /* Mapped in full screen: placed so for when it leaves it. */
+                        int placed[4] = {x, y, width, height};
+                        memcpy(native->fullscreen_restore, placed, sizeof(placed));
+                    }
+                    else if (x != nx || y != ny || width != nwidth || height != nheight)
                         configure_rect(native, x, y, width, height);
                     native->framed = 1;
                 }
@@ -2414,7 +2507,8 @@ static void sync_frames(void)
                                      area[2] - left - right + 2 * bx, area[3] - top - bottom + 2 * by};
                     if (wanted[2] < 1) wanted[2] = 1;
                     if (wanted[3] < 1) wanted[3] = 1;
-                    if (memcmp(native->geometry, wanted, sizeof(wanted)))
+                    if (native->fullscreen) memcpy(native->fullscreen_restore, wanted, sizeof(wanted));
+                    else if (memcmp(native->geometry, wanted, sizeof(wanted)))
                         configure_rect(native, wanted[0], wanted[1], wanted[2], wanted[3]);
                 }
             }
@@ -2483,7 +2577,8 @@ static void frame_moves(struct client *frame, const struct values *values)
 static void follow_frame(xcb_window_t frame_id, const struct values *values)
 {
     struct client *native = find_client(frame_native(frame_id)), *frame = find_client(frame_id);
-    if (!native || !frame || native->hidden || native->has_restore || !native->has_extents) return;
+    if (!native || !frame || native->hidden || native->has_restore || native->fullscreen || !native->has_extents)
+        return;
     int left = native->extents[0], right = native->extents[1], top = native->extents[2], bottom = native->extents[3];
     int x = value_or(values, XCB_CONFIG_WINDOW_X, frame->geometry[0]);
     int y = value_or(values, XCB_CONFIG_WINDOW_Y, frame->geometry[1]);
@@ -2508,7 +2603,7 @@ static void follow_native(xcb_window_t native_id)
     struct client *native = find_client(native_id), *frame;
     xcb_window_t frame_id = native_frame(native_id);
     if (!native || !frame_id || !(frame = find_client(frame_id))) return;
-    if (native->hidden || native->has_restore || !native->has_extents) return;
+    if (native->hidden || native->has_restore || native->fullscreen || !native->has_extents) return;
     int left = native->extents[0], right = native->extents[1], top = native->extents[2], bottom = native->extents[3];
     int wanted[4] = {native->geometry[0] - left, native->geometry[1] - top, native->geometry[2] + left + right,
                      native->geometry[3] + top + bottom};
@@ -2601,7 +2696,7 @@ static void commands(void)
         }
         else if (c && c->kind == KIND_NORMAL && !c->hwnd)
         {
-            if (!strcmp(op, "geometry") && n == 6)
+            if (!strcmp(op, "geometry") && n == 6 && !c->fullscreen)
             {
                 long long g[4];
                 int ok = 1;
@@ -2725,7 +2820,13 @@ static void handle_event(xcb_generic_event_t *ev)
         if (e->value_mask & XCB_CONFIG_WINDOW_SIBLING) set_value(&values, XCB_CONFIG_WINDOW_SIBLING, e->sibling);
         if (e->value_mask & XCB_CONFIG_WINDOW_STACK_MODE)
             set_value(&values, XCB_CONFIG_WINDOW_STACK_MODE, e->stack_mode);
-        if (c)
+        if (c && c->fullscreen)
+        {
+            /* A client in full screen keeps covering the screen; it is told so. */
+            values.mask &= XCB_CONFIG_WINDOW_SIBLING | XCB_CONFIG_WINDOW_STACK_MODE;
+            configure(c, &values);
+        }
+        else if (c)
         {
             int moves = e->value_mask & (XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y | XCB_CONFIG_WINDOW_WIDTH |
                                          XCB_CONFIG_WINDOW_HEIGHT);
@@ -2879,7 +2980,12 @@ static void handle_event(xcb_generic_event_t *ev)
     {
         xcb_configure_notify_event_t *e = (void *)ev;
         struct client *c;
-        if (e->window == root) workarea();
+        if (e->window == root)
+        {
+            workarea();
+            for (int i = 0; i < client_count; i++)
+                if (clients[i]->fullscreen) fit_fullscreen(clients[i]);
+        }
         else if (!send_event && (c = find_client(e->window)))
         {
             c->geometry[0] = e->x;
@@ -2939,6 +3045,13 @@ static void handle_event(xcb_generic_event_t *ev)
                 }
             }
             set_property(e->window, A._NET_WM_STATE, XCB_ATOM_ATOM, states, n);
+            if (values[1] == A._NET_WM_STATE_FULLSCREEN || values[2] == A._NET_WM_STATE_FULLSCREEN)
+            {
+                int fullscreen = 0;
+                for (int i = 0; i < n; i++) fullscreen |= states[i] == A._NET_WM_STATE_FULLSCREEN;
+                set_fullscreen(c, fullscreen);
+                restack();
+            }
             if (values[1] == A._NET_WM_STATE_ABOVE || values[2] == A._NET_WM_STATE_ABOVE) restack();
             for (int k = 1; k < 3; k++)
                 maximize_change |= values[k] == A._NET_WM_STATE_MAXIMIZED_VERT ||
@@ -3081,7 +3194,7 @@ static void setup_wm(void)
             A._NET_SUPPORTED, A._NET_SUPPORTING_WM_CHECK, A._NET_CLIENT_LIST, A._NET_CLIENT_LIST_STACKING,
             A._NET_ACTIVE_WINDOW, A._NET_WORKAREA, A._NET_NUMBER_OF_DESKTOPS, A._NET_CURRENT_DESKTOP,
             A._NET_WM_STATE, A._NET_WM_STATE_HIDDEN, A._NET_WM_STATE_MAXIMIZED_VERT,
-            A._NET_WM_STATE_MAXIMIZED_HORZ, A._NET_WM_STATE_ABOVE, A._NET_WM_WINDOW_TYPE,
+            A._NET_WM_STATE_MAXIMIZED_HORZ, A._NET_WM_STATE_ABOVE, A._NET_WM_STATE_FULLSCREEN, A._NET_WM_WINDOW_TYPE,
             A._NET_WM_WINDOW_TYPE_DESKTOP, A._NET_WM_WINDOW_TYPE_DOCK, A._NET_WM_ICON, A._NET_FRAME_EXTENTS,
             A._NET_CLOSE_WINDOW, A._NET_WM_STRUT, A._NET_WM_STRUT_PARTIAL,
         };

@@ -119,7 +119,7 @@ class Manager:
                      '_NET_CLIENT_LIST_STACKING', '_NET_ACTIVE_WINDOW', '_NET_WORKAREA',
                      '_NET_NUMBER_OF_DESKTOPS', '_NET_CURRENT_DESKTOP', '_NET_WM_STATE',
                      '_NET_WM_STATE_HIDDEN', '_NET_WM_STATE_MAXIMIZED_VERT', '_NET_WM_STATE_MAXIMIZED_HORZ',
-                     '_NET_WM_STATE_ABOVE',
+                     '_NET_WM_STATE_ABOVE', '_NET_WM_STATE_FULLSCREEN',
                      '_NET_WM_WINDOW_TYPE', '_NET_WM_WINDOW_TYPE_DESKTOP', '_NET_WM_WINDOW_TYPE_DOCK',
                      '_NET_WM_ICON', '_NET_FRAME_EXTENTS', '_NET_CLOSE_WINDOW', '_NET_WM_STRUT', '_NET_WM_STRUT_PARTIAL']
         self.setprop(self.root, '_NET_SUPPORTED', Xatom.ATOM, [self.atom(a) for a in supported])
@@ -224,7 +224,8 @@ class Manager:
             r = w.get_geometry()
             self.clients[w.id] = {'w': w, 'hidden': False, 'kind': self.kind(w), 'restore': None, 'size': None,
                                   'geometry': (r.x, r.y, r.width, r.height, r.border_width),
-                                  'framed': False, 'icon_dirty': True, 'extents': None}
+                                  'framed': False, 'icon_dirty': True, 'extents': None,
+                                  'fullscreen': None}
             w.change_attributes(event_mask=X.PropertyChangeMask | X.FocusChangeMask)
             # Left and right clicks activate a window, as on XP (a right click
             # on the desktop opens its menu, which then needs the keyboard).
@@ -254,6 +255,9 @@ class Manager:
             x, y = max(ax, min(x, ax+awidth-width)), max(ay, min(y, ay+aheight-height))
             if (x, y, width, height) != client['geometry'][:4]:
                 self.configure(client, x=x, y=y, width=width, height=height)
+        # Mapped in full screen (mpv --fs, SDL games); kept again when it is mapped after a withdrawal
+        if self.atom('_NET_WM_STATE_FULLSCREEN') in self.prop(w, '_NET_WM_STATE'):
+            self.set_fullscreen(client, True)
         self.setprop(w, 'WM_STATE', self.atom('WM_STATE'), [1, 0])
         w.map()
         if client['kind'] in ('normal', 'popup'):
@@ -306,6 +310,29 @@ class Manager:
         c['geometry'] = (values.get('x', x), values.get('y', y), values.get('width', width),
                          values.get('height', height), values.get('border_width', border))
         self.configure_notify(c['w'])
+
+    def fit_fullscreen(self, c):
+        """Cover the whole screen with native client C, without a border."""
+        r = self.root.get_geometry()
+        if c['geometry'] != (0, 0, r.width, r.height, 0):
+            self.configure(c, x=0, y=0, width=r.width, height=r.height, border_width=0)
+
+    def set_fullscreen(self, c, on):
+        """Put native client C in full screen or take it out (Wine sizes its own).
+
+        Its frame stays where it was, under the client: geometry.tsv gives the
+        proxy the rectangle without full screen ('fullscreen'), so the taskbar
+        button and the frame are kept and the client returns into the frame
+        afterwards."""
+        if c['kind'] != 'normal' or c['hwnd'] or bool(on) == (c['fullscreen'] is not None):
+            return
+        if on:
+            c['fullscreen'] = c['geometry'][:4]
+            self.fit_fullscreen(c)
+        else:
+            x, y, width, height = c['fullscreen']
+            c['fullscreen'] = None
+            self.configure(c, x=x, y=y, width=width, height=height)
 
     def redraw_native(self, w):
         # Wine keeps its own window surfaces. Native clients (notably xterm on
@@ -591,6 +618,24 @@ class Manager:
             if c['kind'] == 'dock' and not c['hidden']:
                 c['w'].configure(stack_mode=X.Above)
                 raised.add(c['w'].id)
+        # The active full screen window covers the taskbar, as on XP, with the
+        # windows it owns (a dialog of it may be the active one); topmost
+        # windows stay above it.
+        fullscreen = None
+        c = self.clients.get(self.active)
+        for _ in range(len(self.clients) + 1):
+            if not c or c['kind'] != 'normal' or c['hidden']:
+                break
+            if self.atom('_NET_WM_STATE_FULLSCREEN') in self.prop(c['w'], '_NET_WM_STATE'):
+                fullscreen = c['w'].id
+            c = self.clients.get(c['owner']) if c['owner'] else None
+        if fullscreen:
+            self.clients[fullscreen]['w'].configure(stack_mode=X.Above)
+            raised.add(fullscreen)
+            for i, c in list(self.clients.items()):
+                if c['kind'] == 'normal' and not c['hidden'] and c['owner'] == fullscreen and i != fullscreen:
+                    c['w'].configure(stack_mode=X.Above)
+                    raised.add(i)
         # Win32 topmost windows (EWMH above), such as XP's dimmed shut down
         # screen, cover the topmost taskbar; keep their transients above them.
         above = self.atom('_NET_WM_STATE_ABOVE')
@@ -718,6 +763,21 @@ class Manager:
             self.setprop(w, '_NET_WM_STATE', Xatom.ATOM, list(states))
             self.focus(w)
             return
+        if c['fullscreen'] is not None:
+            # Maximized or restored under full screen: the rectangle it leaves
+            # full screen for changes (sync_frames fits it to the maximized
+            # frame), and the client keeps covering the screen.
+            if not restore and c['restore'] is None:
+                c['restore'] = c['fullscreen']
+            elif restore and c['restore'] is not None:
+                c['fullscreen'], c['restore'] = c['restore'], None
+            atoms = {self.atom('_NET_WM_STATE_MAXIMIZED_VERT'), self.atom('_NET_WM_STATE_MAXIMIZED_HORZ')}
+            states = set(self.prop(w, '_NET_WM_STATE')) - atoms
+            if not restore:
+                states.update(atoms)
+            self.setprop(w, '_NET_WM_STATE', Xatom.ATOM, list(states))
+            self.focus(w)
+            return
         if restore and c['restore']:
             x, y, width, height = c['restore']
             c['restore'] = None
@@ -829,7 +889,10 @@ class Manager:
                             y = max(ny, self.area[1]+top)
                         else:
                             x, y = self.cascade(left, top)
-                        if (x, y, width, height) != (nx, ny, nwidth, nheight):
+                        if native['fullscreen'] is not None:
+                            # Mapped in full screen: placed so for when it leaves it.
+                            native['fullscreen'] = (x, y, width, height)
+                        elif (x, y, width, height) != (nx, ny, nwidth, nheight):
                             self.configure(native, x=x, y=y, width=width, height=height)
                         native['framed'] = True
                     if native['extents'] != [left, right, top, bottom]:
@@ -839,7 +902,9 @@ class Manager:
                         x, y, width, height = self.area
                         bx, by = clips.get(native_id, (0, 0))
                         wanted = (x+left-bx, y+top-by, max(1, width-left-right+2*bx), max(1, height-top-bottom+2*by))
-                        if native['geometry'][:4] != wanted:
+                        if native['fullscreen'] is not None:
+                            native['fullscreen'] = wanted
+                        elif native['geometry'][:4] != wanted:
                             self.configure(native, x=wanted[0], y=wanted[1], width=wanted[2], height=wanted[3])
                 if native['geometry'][4]:
                     self.configure(native, border_width=0)
@@ -882,7 +947,8 @@ class Manager:
         client moves first: where it already covers the frame's client
         area, the frame's move exposes nothing that Wine must paint."""
         native = self.clients.get(self.frames[frame_id])
-        if not native or native['hidden'] or native['restore'] is not None or not native['extents']:
+        if not native or native['hidden'] or native['restore'] is not None or native['fullscreen'] is not None or \
+                not native['extents']:
             return
         left, right, top, bottom = native['extents']
         x, y, width, height, _ = self.clients[frame_id]['geometry']
@@ -903,7 +969,8 @@ class Manager:
         takes the frame's new position from the X server as from any WM."""
         native = self.clients[native_id]
         frame = next((self.clients.get(f) for f, n in self.frames.items() if n == native_id), None)
-        if not frame or native['hidden'] or native['restore'] is not None or not native['extents']:
+        if not frame or native['hidden'] or native['restore'] is not None or native['fullscreen'] is not None or \
+                not native['extents']:
             return
         left, right, top, bottom = native['extents']
         x, y, width, height, _ = native['geometry']
@@ -917,7 +984,8 @@ class Manager:
         geometries = []
         for i, c in self.clients.items():
             if c['kind'] == 'normal' and not c['hwnd']:
-                x, y, width, height, _ = c['geometry']
+                # In full screen, where its frame stays: the rectangle without it.
+                x, y, width, height = c['fullscreen'] or c['geometry'][:4]
                 geometries.append(f'{i:x} {x} {y} {width} {height} {int(c["restore"] is not None)} {self.area[0]} {self.area[1]} {self.area[2]} {self.area[3]}\n')
         text = ''.join(geometries)
         if text != self.previous_geometry:
@@ -1001,7 +1069,9 @@ class Manager:
                     # Alt+Tab chose this window, which may also be a Wine one.
                     self.focus(c['w'])
                 elif c and c['kind'] == 'normal' and not c['hwnd']:
-                    if op == 'geometry' and len(args) == 4:
+                    if op == 'geometry' and c['fullscreen'] is not None:
+                        pass
+                    elif op == 'geometry' and len(args) == 4:
                         x, y, width, height = map(int, args)
                         wanted = (x, y, width, height)
                         # Rectangles that follow_frame has already applied
@@ -1064,7 +1134,10 @@ class Manager:
                        (X.CWBorderWidth, 'border_width'), (X.CWSibling, 'sibling'), (X.CWStackMode, 'stack_mode'))
                       if e.value_mask & bit}
             c = self.clients.get(e.window.id)
-            if c:
+            if c and c['fullscreen'] is not None:
+                # A client in full screen keeps covering the screen; it is told so.
+                self.configure(c, **{k: v for k, v in values.items() if k in ('sibling', 'stack_mode')})
+            elif c:
                 moves = e.value_mask & (X.CWX | X.CWY | X.CWWidth | X.CWHeight)
                 if moves and e.window.id in self.frames:
                     self.frame_moves(c, values)
@@ -1157,6 +1230,9 @@ class Manager:
         elif e.type == X.ConfigureNotify:
             if e.window.id == self.root.id:
                 self.workarea()
+                for c in list(self.clients.values()):
+                    if c['fullscreen'] is not None:
+                        self.fit_fullscreen(c)
             elif not e.send_event and e.window.id in self.clients:
                 c = self.clients[e.window.id]
                 c['geometry'] = (e.x, e.y, e.width, e.height, e.border_width)
@@ -1184,6 +1260,9 @@ class Manager:
                     else:
                         states.discard(atom)
                 self.setprop(e.window, '_NET_WM_STATE', Xatom.ATOM, list(states))
+                if self.atom('_NET_WM_STATE_FULLSCREEN') in values[1:3]:
+                    self.set_fullscreen(self.clients[e.window.id], self.atom('_NET_WM_STATE_FULLSCREEN') in states)
+                    self.restack()
                 if self.atom('_NET_WM_STATE_ABOVE') in values[1:3]:
                     self.restack()
                 maximize_atoms = {self.atom('_NET_WM_STATE_MAXIMIZED_VERT'), self.atom('_NET_WM_STATE_MAXIMIZED_HORZ')}
