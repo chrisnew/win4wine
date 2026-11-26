@@ -98,6 +98,7 @@ class Manager:
         # Their frames are redirected only while they move (frame_moves).
         self.redirect = redirect and self.d.has_extension('Composite')
         self.previous_classes = None
+        self.previous_owners = None
         self.overlays = {}  # override-redirect Windows 7 shell windows kept above the taskbar and Start menu
         # Mapped override-redirect top-level windows: Wine's menus (the Start
         # menu's All Programs cascades), tooltips and other popups that place
@@ -820,9 +821,10 @@ class Manager:
                             ax, ay, awidth, aheight = self.area
                             x = ax + left + max(0, (awidth-left-right-width) // 2)
                             y = ay + top + max(0, (aheight-top-bottom-height) // 2)
-                        elif self.positioned(native):
-                            # Keep an explicit position, but keep the first
-                            # caption visible above content placed at 0,0.
+                        elif native['owner'] or self.positioned(native):
+                            # Keep an explicit position (a dialog's: centred on
+                            # its owner), but keep the first caption visible
+                            # above content placed at 0,0.
                             x = max(nx, self.area[0]+left)
                             y = max(ny, self.area[1]+top)
                         else:
@@ -927,6 +929,7 @@ class Manager:
     def snapshot(self):
         lines = []
         classes = []
+        owners = []
         focused = self.d.get_input_focus().focus
         # An XP menu can take focus without changing the EWMH active client.
         # Do not keep stealing Win32 foreground from that menu back to a proxy.
@@ -939,8 +942,12 @@ class Manager:
             focused_id = 0
         for i, c in self.clients.items():
             w = c['w']
-            if c['kind'] != 'normal' or c['hwnd'] or c['owner']:
+            if c['kind'] != 'normal' or c['hwnd']:
                 continue
+            # Owned windows (dialogs) get a frame too, owned by their
+            # owner's frame as in XP, so without a taskbar button.
+            if c['owner']:
+                owners.append(f'{i:x}\t{c["owner"]:x}\n')
             if c['icon_dirty']:
                 # The caption's 16x16 icon beside the big one; the proxy
                 # reads both when the big file changes, so it goes last.
@@ -966,6 +973,13 @@ class Manager:
             temp.write_text(text, encoding='utf-8')
             temp.replace(self.ipc / 'classes.tsv')
             self.previous_classes = text
+        # Before windows.tsv, which the proxy reads it with.
+        text = ''.join(owners)
+        if text != self.previous_owners:
+            temp = self.ipc / 'owners.tmp'
+            temp.write_text(text, encoding='utf-8')
+            temp.replace(self.ipc / 'owners.tsv')
+            self.previous_owners = text
         text = ''.join(lines)
         if text != self.previous_snapshot:
             temp = self.ipc / 'windows.tmp'

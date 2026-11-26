@@ -148,7 +148,7 @@ static int client_count, client_capacity;
 static xcb_window_t active;
 static int area[4];
 static int area_known;
-static char *previous_snapshot, *previous_geometry, *previous_classes;
+static char *previous_snapshot, *previous_geometry, *previous_classes, *previous_owners;
 
 /* self.frames: frame (proxy) window -> native client, in insertion order */
 static struct { xcb_window_t frame, native; } *frames;
@@ -2172,7 +2172,7 @@ static void update_icons(struct client *c)
 
 static void snapshot(void)
 {
-    struct text lines = {0}, classes = {0};
+    struct text lines = {0}, classes = {0}, owners = {0};
     xcb_window_t focused = input_focus(), focused_id;
     /* An XP menu can take focus without changing the EWMH active client.
      * Do not keep stealing Win32 foreground from that menu back to a proxy. */
@@ -2181,10 +2181,14 @@ static void snapshot(void)
     focused_id = focused > XCB_INPUT_FOCUS_POINTER_ROOT ? focused : 0;
     text_add(&lines, "", 0);
     text_add(&classes, "", 0);
+    text_add(&owners, "", 0);
     for (int i = 0; i < client_count; i++)
     {
         struct client *c = clients[i];
-        if (c->kind != KIND_NORMAL || c->hwnd || c->owner) continue;
+        if (c->kind != KIND_NORMAL || c->hwnd) continue;
+        /* Owned windows (dialogs) get a frame too, owned by their owner's
+         * frame as in XP, so without a taskbar button. */
+        if (c->owner) text_printf(&owners, "%x\t%x\n", c->id, c->owner);
         if (c->icon_dirty)
         {
             update_icons(c);
@@ -2198,6 +2202,12 @@ static void snapshot(void)
         write_ipc("classes.tmp", "classes.tsv", classes.data, classes.length);
         replace_text(&previous_classes, classes.data);
     }
+    /* Before windows.tsv, which the proxy reads it with. */
+    if (!same_text(owners.data, previous_owners))
+    {
+        write_ipc("owners.tmp", "owners.tsv", owners.data, owners.length);
+        replace_text(&previous_owners, owners.data);
+    }
     if (!same_text(lines.data, previous_snapshot))
     {
         write_ipc("windows.tmp", "windows.tsv", lines.data, lines.length);
@@ -2205,6 +2215,7 @@ static void snapshot(void)
     }
     free(lines.data);
     free(classes.data);
+    free(owners.data);
 }
 
 /* Python's int(TEXT, BASE) for one whitespace-free field */
@@ -2375,10 +2386,11 @@ static void sync_frames(void)
                         x = area[0] + left + (spare_x > 0 ? spare_x / 2 : 0);
                         y = area[1] + top + (spare_y > 0 ? spare_y / 2 : 0);
                     }
-                    else if (positioned(native))
+                    else if (native->owner || positioned(native))
                     {
-                        /* Keep an explicit position, but keep the first
-                         * caption visible above content placed at 0,0. */
+                        /* Keep an explicit position (a dialog's: centred on
+                         * its owner), but keep the first caption visible
+                         * above content placed at 0,0. */
                         x = nx > area[0] + left ? nx : area[0] + left;
                         y = ny > area[1] + top ? ny : area[1] + top;
                     }

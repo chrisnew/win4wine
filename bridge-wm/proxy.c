@@ -758,60 +758,105 @@ static void client_app_id(struct client *c)
     c->app_id = atom;
 }
 
+/* The owners of owned Linux windows (dialogs), from owners.tsv: XID TAB OWNER. */
+static struct { unsigned long xid, owner; } owners[MAX_CLIENTS];
+static unsigned owner_count;
+
+static void read_owners(void)
+{
+    WCHAR path[MAX_PATH + 32];
+    char line[64];
+    FILE *file;
+    owner_count = 0;
+    swprintf(path, MAX_PATH + 32, L"%ls\\owners.tsv", directory);
+    if (!(file = _wfopen(path, L"rb"))) return;
+    while (owner_count < MAX_CLIENTS && fgets(line, sizeof(line), file))
+        if (sscanf(line, "%lx\t%lx", &owners[owner_count].xid, &owners[owner_count].owner) == 2) owner_count++;
+    fclose(file);
+}
+
+static unsigned long owner_of(unsigned long xid)
+{
+    unsigned i;
+    for (i = 0; i < owner_count; ++i) if (owners[i].xid == xid) return owners[i].owner;
+    return 0;
+}
+
 static void snapshot(void)
 {
     WCHAR path[MAX_PATH + 32];
     char line[4096];
     FILE *file;
-    unsigned i, activations = 0;
+    unsigned i, pass, activations = 0;
     struct client *activated[MAX_CLIENTS];
     swprintf(path, MAX_PATH + 32, L"%ls\\windows.tsv", directory);
     file = _wfopen(path, L"rb");
     if (!file) return; /* A missing snapshot is not an empty client list. */
+    read_owners();
     for (i = 0; i < MAX_CLIENTS; ++i) clients[i].seen = 0;
     syncing = 1;
-    while (fgets(line, sizeof(line), file))
+    /* Owned windows after their owners, whose frames own theirs: pass 0 takes
+     * the others, the next ones each a level of dialogs, and the last the
+     * owned windows whose owner has no frame (they get one of their own). */
+    for (pass = 0; pass < 4; ++pass)
     {
-        unsigned long xid;
-        int hidden, active, offset = 0;
-        WCHAR title[1024];
-        struct client *c = NULL;
-        if (sscanf(line, "%lx\t%d\t%d\t%n", &xid, &hidden, &active, &offset) != 3 || !offset) continue;
-        line[strcspn(line, "\r\n")] = 0;
-        if (!MultiByteToWideChar(CP_UTF8, 0, line + offset, -1, title, 1024)) continue;
-        for (i = 0; i < MAX_CLIENTS; ++i) if (clients[i].xid == xid) { c = &clients[i]; break; }
-        if (!c) for (i = 0; i < MAX_CLIENTS; ++i) if (!clients[i].xid) { c = &clients[i]; break; }
-        if (!c) continue;
-        if (!c->xid)
+        rewind(file);
+        while (fgets(line, sizeof(line), file))
         {
-            c->xid = xid;
-            c->hwnd = CreateWindowExW(WS_EX_APPWINDOW, L"Win4WineProxy", title,
-                WS_OVERLAPPEDWINDOW, -32000, -32000, 1, 1, NULL, NULL, GetModuleHandleW(NULL), (void *)(uintptr_t)xid);
-            if (!c->hwnd) { c->xid = 0; continue; }
-            client_app_id(c);
-            /* before the taskbar sees the window: Windows 7's keeps the icon of an
-             * application's first window for its button */
+            unsigned long xid, owner;
+            int hidden, active, offset = 0;
+            WCHAR title[1024];
+            struct client *c = NULL, *owner_frame;
+            if (sscanf(line, "%lx\t%d\t%d\t%n", &xid, &hidden, &active, &offset) != 3 || !offset) continue;
+            owner = owner_of(xid);
+            if (!pass != !owner) continue;
+            owner_frame = owner ? find_client(owner) : NULL;
+            if (owner_frame && !owner_frame->seen) owner_frame = NULL;
+            if (pass && ((c = find_client(xid)) && c->seen)) continue;
+            if (pass && pass < 3 && !owner_frame) continue;
+            c = NULL;
+            line[strcspn(line, "\r\n")] = 0;
+            if (!MultiByteToWideChar(CP_UTF8, 0, line + offset, -1, title, 1024)) continue;
+            for (i = 0; i < MAX_CLIENTS; ++i) if (clients[i].xid == xid) { c = &clients[i]; break; }
+            if (!c) for (i = 0; i < MAX_CLIENTS; ++i) if (!clients[i].xid) { c = &clients[i]; break; }
+            if (!c) continue;
+            if (!c->xid)
+            {
+                c->xid = xid;
+                /* As an XP dialog: owned by its owner's frame, so without a
+                 * taskbar button, and with only a close button. */
+                if (owner_frame)
+                    c->hwnd = CreateWindowExW(0, L"Win4WineProxy", title, WS_CAPTION | WS_SYSMENU | WS_THICKFRAME,
+                        -32000, -32000, 1, 1, owner_frame->hwnd, NULL, GetModuleHandleW(NULL), (void *)(uintptr_t)xid);
+                else
+                    c->hwnd = CreateWindowExW(WS_EX_APPWINDOW, L"Win4WineProxy", title, WS_OVERLAPPEDWINDOW,
+                        -32000, -32000, 1, 1, NULL, NULL, GetModuleHandleW(NULL), (void *)(uintptr_t)xid);
+                if (!c->hwnd) { c->xid = 0; continue; }
+                client_app_id(c);
+                /* before the taskbar sees the window: Windows 7's keeps the icon of an
+                 * application's first window for its button */
+                client_icon(c);
+                place_new_frame(c);
+                ShowWindow(c->hwnd, SW_SHOWNOACTIVATE);
+            }
+            c->seen = 1;
             client_icon(c);
-            place_new_frame(c);
-            ShowWindow(c->hwnd, SW_SHOWNOACTIVATE);
-        }
-        c->seen = 1;
-        client_icon(c);
-        WCHAR old[1024];
-        GetWindowTextW(c->hwnd, old, 1024);
-        if (wcscmp(old, title)) { SetWindowTextW(c->hwnd, title); notify(HSHELL_REDRAW, c->hwnd); }
-        if (hidden == c->hidden && !!IsIconic(c->hwnd) != c->hidden)
-        {
-            command(IsIconic(c->hwnd) ? "minimize" : "activate", xid);
-            continue; /* Wait for X11 to acknowledge a direct ShowWindow operation. */
-        }
-        c->hidden = hidden;
-        if (hidden && !IsIconic(c->hwnd)) ShowWindow(c->hwnd, SW_SHOWMINNOACTIVE);
-        else if (!hidden && IsIconic(c->hwnd)) ShowWindow(c->hwnd, SW_SHOWNOACTIVATE);
-        if (active != c->active)
-        {
-            c->active = active; /* before WM_NCACTIVATE, which proxy_proc checks */
-            activated[activations++] = c;
+            WCHAR old[1024];
+            GetWindowTextW(c->hwnd, old, 1024);
+            if (wcscmp(old, title)) { SetWindowTextW(c->hwnd, title); notify(HSHELL_REDRAW, c->hwnd); }
+            if (hidden == c->hidden && !!IsIconic(c->hwnd) != c->hidden)
+            {
+                command(IsIconic(c->hwnd) ? "minimize" : "activate", xid);
+                continue; /* Wait for X11 to acknowledge a direct ShowWindow operation. */
+            }
+            c->hidden = hidden;
+            if (hidden && !IsIconic(c->hwnd)) ShowWindow(c->hwnd, SW_SHOWMINNOACTIVE);
+            else if (!hidden && IsIconic(c->hwnd)) ShowWindow(c->hwnd, SW_SHOWNOACTIVATE);
+            if (active != c->active)
+            {
+                c->active = active; /* before WM_NCACTIVATE, which proxy_proc checks */
+                activated[activations++] = c;
+            }
         }
     }
     fclose(file);

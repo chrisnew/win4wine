@@ -95,6 +95,7 @@ same directory and then renamed, so readers never see a half-written file. Each 
 | File | Writer → reader | Contents |
 |---|---|---|
 | `windows.tsv` | WM → proxy | The list of Linux windows. One line per window: `XID(hex) TAB minimized(0/1) TAB active(0/1) TAB title` |
+| `owners.tsv` | WM → proxy | The owner of each owned (transient) Linux window in `windows.tsv`: `XID TAB OWNER-XID`. Written before `windows.tsv` |
 | `geometry.tsv` | WM → proxy | `XID x y width height maximized(0/1) workarea-x workarea-y workarea-width workarea-height` (the position of the Linux window's contents) |
 | `frames.tsv` | proxy → WM | `HWND XID left right top bottom maximized minimized border-x border-y` (the size of the frame's margins) |
 | `PID-NUMBER.cmd` | proxy → WM | `activate`, `minimize`, `close`, `maximize`, `restore` and an XID, or `geometry XID x y width height`, or `switch XID`. The WM reads each process's files in number order |
@@ -129,8 +130,10 @@ same directory and then renamed, so readers never see a half-written file. Each 
   directly with `WM_NCACTIVATE`: like Windows, Wine refuses SetForegroundWindow from a process that did not receive the last input,
   and input goes to the Linux window, so the stand-in often cannot become the Win32 foreground window.
   As in XP, Luna frames too are drawn by their `WM_NCACTIVATE` state rather than by which window is in the foreground (patch 0069).
-- Transient (dialog) Linux windows get no frame and no taskbar button. Ones larger than the work area (GTK's file chooser on a small
-  screen) are shrunk to fit it, and ones with no requested position (GTK 4) are centred on their parent.
+- Transient (dialog) Linux windows get a frame owned by their owner's frame, as XP's owned windows: no taskbar button, no Alt+Tab
+  entry, only a close button. The proxy creates them after their owners' frames (`owners.tsv`); one whose owner has no frame gets an
+  ordinary frame. They keep the place they mapped at instead of cascading. Ones larger than the work area (GTK's file chooser on a
+  small screen) are shrunk to fit it, and ones with no requested position (GTK 4) are centred on their parent.
 
 ## Icons
 
