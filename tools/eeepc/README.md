@@ -48,6 +48,8 @@ On 2026-11-23, a 60 Hz drag of an xterm by its XP caption cost about 40% of a co
 - **Rewriting wm.py in C:** `miniwm.c` does the same drag-step work in 0.68 ms against 5.2–5.4 ms for `wm.py` (2026-11-24),
   about 8 times less. That would take drags from roughly 38% to 5% of a core. Most of `wm.py`'s cost is python-xlib;
   `write_geometry` runs on every step and also wakes the proxy.
-- **Idle wakeups still open** (see [BUGS.md](../../BUGS.md)): xptray's volume check starts a process every 2 s. The taskbar's
+- **Fixed 2026-11-26:** xptray reads the volume from a helper on `pactl subscribe` instead of starting processes every 2 s
+  (52 → 19 wakeups a second), and Wine 0155 stops each Unix program start from leaking two files (xptray held 6224 fds after two days).
+- **Idle wakeups still open** (see [BUGS.md](../../BUGS.md)): the taskbar's
   notification area repaints whenever xptray's network icon lights up for traffic, and each repaint makes 27
   `GetProp("UxSubclassInfo")` server round trips (comctl32 subclassing).
