@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/inotify.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
@@ -48,6 +49,7 @@
 #define XK_Super_L 0xffeb
 #define XK_Super_R 0xffec
 #define XK_a 0x61
+#define XK_l 0x6c
 #define XK_z 0x7a
 #define XK_0 0x30
 #define XK_9 0x39
@@ -127,7 +129,7 @@ struct client
     X_(_NET_WM_WINDOW_TYPE_DESKTOP) X_(_NET_WM_WINDOW_TYPE_DOCK) X_(_NET_WM_ICON) X_(_NET_FRAME_EXTENTS) \
     X_(_NET_CLOSE_WINDOW) X_(_NET_WM_STRUT) X_(_NET_WM_STRUT_PARTIAL) X_(_WIN4WINE_CLASS) X_(_WIN4WINE_HWND) \
     X_(WM_STATE) X_(WM_PROTOCOLS) X_(WM_TAKE_FOCUS) X_(WM_DELETE_WINDOW) X_(WM_CHANGE_STATE) \
-    X_(_XSETTINGS_SETTINGS) X_(MANAGER)
+    X_(_XSETTINGS_SETTINGS) X_(MANAGER) X_(_WIN4WINE_LOCK)
 
 static struct
 {
@@ -160,6 +162,9 @@ static xcb_window_t *unmanaged;
 static int unmanaged_count, unmanaged_capacity;
 static xcb_window_t *overlays; /* override-redirect Windows 7 shell windows kept above the taskbar and Start menu */
 static int overlay_count, overlay_capacity;
+/* The lock screen's override-redirect window (greeter/xp-lock.py), 0 without one */
+static xcb_window_t lock_window;
+static xcb_window_t lock_top; /* the window keep_lock put on top: it, or a screen saver */
 
 static int cascade_slot;
 static struct
@@ -173,14 +178,14 @@ static struct
 static xcb_keycode_t min_keycode, max_keycode;
 static int keysyms_per_keycode;
 static xcb_keysym_t *keymap;
-static xcb_keycode_t tab_code, escape_code, f4_code;
+static xcb_keycode_t tab_code, escape_code, f4_code, l_code;
 static xcb_keycode_t alt_codes[32], super_codes[2];
 static int alt_count, super_count;
 static struct { xcb_keycode_t code; const char *script; } volume_codes[ARRAY_SIZE(volume_keys)];
 static int volume_count;
 
 static int shell_keys;
-static int shell_combo_active, shell_combo[64], shell_combo_count;
+static int shell_combo_active, shell_combo[64], shell_combo_count, shell_combo_locks;
 static int switching, switch_value, switch_session;
 
 static int xerror; /* a request with a reply failed (an XError in wm.py) */
@@ -1050,6 +1055,37 @@ static void raise_overlays(void)
     for (int i = 0; i < overlay_count; i++) configure_stack(overlays[i], XCB_STACK_MODE_ABOVE);
 }
 
+/* Whether client C is a screen saver's window: its program is a .scr. */
+static int is_screen_saver(const struct client *c)
+{
+    size_t length = strlen(c->wm_class);
+    return c->kind == KIND_NORMAL && length > 4 && !strcasecmp(c->wm_class + length - 4, ".scr");
+}
+
+/* Keep the lock screen above every window, whatever is mapped or raised,
+ * except a screen saver that covers the screen: that one stays above it. */
+static void keep_lock(void)
+{
+    xcb_get_geometry_reply_t *g;
+    xcb_window_t saver = XCB_NONE;
+    if (!lock_window || !(g = get_geometry(root))) return;
+    for (int i = 0; i < client_count; i++)
+    {
+        struct client *c = clients[i];
+        if (!c->hidden && is_screen_saver(c) && c->geometry[2] >= g->width && c->geometry[3] >= g->height)
+            saver = c->id;
+    }
+    free(g);
+    lock_top = saver ? saver : lock_window;
+    if (saver)
+    {
+        uint32_t list[2] = {saver, XCB_STACK_MODE_BELOW};
+        configure_stack(saver, XCB_STACK_MODE_ABOVE);
+        xcb_configure_window(conn, lock_window, XCB_CONFIG_WINDOW_SIBLING | XCB_CONFIG_WINDOW_STACK_MODE, list);
+    }
+    else configure_stack(lock_window, XCB_STACK_MODE_ABOVE);
+}
+
 static void restack(void);
 static void workarea(void);
 
@@ -1175,6 +1211,7 @@ static void focus(xcb_window_t w)
         keep_unmanaged_above(before, before_count, &w, 1);
         free(before);
         raise_overlays();
+        keep_lock();
         if (has_atom(w, A.WM_PROTOCOLS, A.WM_TAKE_FOCUS)) take_focus_message(w, XCB_CURRENT_TIME);
         xcb_set_input_focus(conn, REVERT_TO_POINTER_ROOT, w, XCB_CURRENT_TIME);
         return;
@@ -1209,6 +1246,19 @@ static void focus_visible(void)
         }
     xcb_set_input_focus(conn, REVERT_TO_POINTER_ROOT, root, XCB_CURRENT_TIME);
     set_one(root, A._NET_ACTIVE_WINDOW, XCB_ATOM_WINDOW, 0);
+}
+
+/* The lock screen went: the keyboard goes back to the window that had it,
+ * the active one, or else XP's desktop, as after unlocking XP. */
+static void lock_gone(void)
+{
+    struct client *c = find_client(active);
+    lock_window = XCB_NONE;
+    if (!c || c->hidden)
+        for (int i = 0; i < client_count; i++)
+            if (clients[i]->kind == KIND_DESKTOP) c = clients[i];
+    if (c && !c->hidden) focus(c->id);
+    else focus_visible();
 }
 
 static void minimize(xcb_window_t w)
@@ -1378,6 +1428,7 @@ static void restack(void)
         }
     keep_unmanaged_above(before, before_count, raised, raised_count);
     raise_overlays();
+    keep_lock();
     free(before);
     free(raised);
     free(topmost);
@@ -1798,6 +1849,19 @@ static void switch_event(uint8_t type, xcb_keycode_t detail, uint16_t state)
     else if (type == XCB_KEY_RELEASE && is_alt(detail)) end_switch('c');
 }
 
+/* Win+L, which XP's Explorer leaves to Windows itself: ask the session to
+ * lock the screen (session/screen.py). */
+static int is_lock_key(xcb_keycode_t detail, uint16_t state)
+{
+    return detail == l_code && l_code &&
+           !(state & (XCB_MOD_MASK_SHIFT | XCB_MOD_MASK_CONTROL | XCB_MOD_MASK_1));
+}
+
+static void request_lock(void)
+{
+    write_ipc("lock-request.tmp", "lock-request", "lock\n", 5);
+}
+
 /* A Windows key or Ctrl+Esc press, frozen by the WM's synchronous grab.
  *
  * Under a native client, Wine has none of these keys, and a window that
@@ -1825,15 +1889,21 @@ static void shell_key(xcb_key_press_event_t *e)
         {
             shell_combo_active = 1;
             shell_combo_count = 0;
+            shell_combo_locks = 0;
         }
     }
     xcb_allow_events(conn, mode, e->time);
 }
 
 /* A key while the WM holds the keyboard for the Windows key. */
-static void shell_combo_event(uint8_t type, xcb_keycode_t detail)
+static void shell_combo_event(uint8_t type, xcb_keycode_t detail, uint16_t state)
 {
-    if (type == XCB_KEY_PRESS && !is_super(detail))
+    if (type == XCB_KEY_PRESS && is_lock_key(detail, state))
+    {
+        shell_combo_locks = 1;
+        request_lock();
+    }
+    else if (type == XCB_KEY_PRESS && !is_super(detail))
     {
         xcb_keysym_t keysym = keycode_to_keysym(detail, 0);
         int vk = -1;
@@ -1846,7 +1916,8 @@ static void shell_combo_event(uint8_t type, xcb_keycode_t detail)
     }
     else if (type == XCB_KEY_RELEASE && is_super(detail))
     {
-        write_shell_keys("windows", shell_combo, shell_combo_count);
+        /* After Win+L the Windows key alone would open the Start menu. */
+        if (!shell_combo_locks) write_shell_keys("windows", shell_combo, shell_combo_count);
         shell_combo_active = 0;
     }
 }
@@ -2773,6 +2844,14 @@ static void handle_event(xcb_generic_event_t *ev)
         xcb_map_notify_event_t *e = (void *)ev;
         struct client *c;
         if (e->override_redirect) unmanaged_add(e->window);
+        if (e->override_redirect)
+        {
+            xcb_get_property_reply_t *r =
+                get_property(e->window, A._WIN4WINE_LOCK, XCB_GET_PROPERTY_TYPE_ANY, 1);
+            if (r && r->type != XCB_ATOM_NONE) lock_window = e->window;
+            free(r);
+        }
+        keep_lock();
         if (e->override_redirect && !in_list(overlays, overlay_count, e->window))
         {
             xcb_get_property_reply_t *r =
@@ -2847,6 +2926,7 @@ static void handle_event(xcb_generic_event_t *ev)
     {
         xcb_destroy_notify_event_t *e = (void *)ev;
         list_remove(overlays, &overlay_count, e->window);
+        if (lock_window && e->window == lock_window) lock_gone();
         unmanage(e->window);
         break;
     }
@@ -2855,6 +2935,7 @@ static void handle_event(xcb_generic_event_t *ev)
         xcb_unmap_notify_event_t *e = (void *)ev;
         struct client *c;
         list_remove(unmanaged, &unmanaged_count, e->window);
+        if (lock_window && e->window == lock_window) lock_gone();
         c = find_client(e->window);
         /* A minimized client that withdraws itself sends only the synthetic
          * UnmapNotify (XWithdrawWindow); Wine 11 restores a minimized window
@@ -2949,11 +3030,18 @@ static void handle_event(xcb_generic_event_t *ev)
         {
             /* The WM holds the keyboard until the Windows key is released;
              * repeated presses of that key are ignored there. */
-            shell_combo_event(type, e->detail);
+            shell_combo_event(type, e->detail, e->state);
         }
         else if (type == XCB_KEY_PRESS &&
                  (is_super(e->detail) || (e->detail == escape_code && e->state & XCB_MOD_MASK_CONTROL)))
             shell_key(e);
+        else if (type == XCB_KEY_PRESS && e->state & XCB_MOD_MASK_4 && is_lock_key(e->detail, e->state))
+        {
+            /* Wine gets the key too (and drops it, patch 0159): it saw the
+             * Windows key go down, and would open the Start menu for it alone. */
+            request_lock();
+            xcb_allow_events(conn, XCB_ALLOW_REPLAY_KEYBOARD, e->time);
+        }
         else if (switching) switch_event(type, e->detail, e->state);
         else if (type == XCB_KEY_PRESS && e->detail == f4_code)
         {
@@ -3001,6 +3089,12 @@ static void handle_event(xcb_generic_event_t *ev)
                 if (c->kind == KIND_NORMAL && !c->hidden) redraw_native(e->window);
             }
         }
+        /* A window put above the lock screen or the screen saver over it, or
+         * a screen saver that now covers the screen. */
+        if (lock_window && e->window != lock_window && e->window != root &&
+            (e->above_sibling == lock_window || e->above_sibling == lock_top ||
+             ((c = find_client(e->window)) && is_screen_saver(c))))
+            keep_lock();
         break;
     }
     case XCB_CLIENT_MESSAGE:
@@ -3207,6 +3301,7 @@ static void setup_wm(void)
     tab_code = keysym_to_keycode(XK_Tab);
     escape_code = keysym_to_keycode(XK_Escape);
     f4_code = keysym_to_keycode(XK_F4);
+    l_code = keysym_to_keycode(XK_l);
     {
         xcb_get_modifier_mapping_reply_t *r = REPLY(get_modifier_mapping, xcb_get_modifier_mapping(conn));
         if (r)
@@ -3230,6 +3325,7 @@ static void setup_wm(void)
                             XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, button,
                             XCB_MOD_MASK_1 | locks[i]);
         grab_key(f4_code, XCB_MOD_MASK_1 | locks[i], XCB_GRAB_MODE_ASYNC);
+        if (l_code) grab_key(l_code, XCB_MOD_MASK_4 | locks[i], XCB_GRAB_MODE_SYNC);
     }
     /* The Windows key with XP's hotkeys (Win+R, Win+E, ...) and Ctrl+Esc
      * belong to the shell even while a native client has the keyboard; see shell_key. */

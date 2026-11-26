@@ -100,6 +100,8 @@ class Manager:
         self.previous_classes = None
         self.previous_owners = None
         self.overlays = {}  # override-redirect Windows 7 shell windows kept above the taskbar and Start menu
+        self.lock_window = None  # the lock screen's override-redirect window (greeter/xp-lock.py)
+        self.lock_top = 0  # the window keep_lock put on top: it, or a screen saver
         # Mapped override-redirect top-level windows: Wine's menus (the Start
         # menu's All Programs cascades), tooltips and other popups that place
         # themselves and that raising the taskbar or Start menu must not cover.
@@ -140,6 +142,10 @@ class Manager:
                                       X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
             self.root.grab_key(self.d.keysym_to_keycode(XK.string_to_keysym('F4')), X.Mod1Mask | modifiers,
                                True, X.GrabModeAsync, X.GrabModeAsync)
+        self.lock_code = self.d.keysym_to_keycode(XK.XK_l)
+        if self.lock_code:
+            for modifiers in (0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask):
+                self.root.grab_key(self.lock_code, X.Mod4Mask | modifiers, True, X.GrabModeAsync, X.GrabModeSync)
         # The Windows key with XP's hotkeys (Win+R, Win+E, ...) and Ctrl+Esc
         # belong to the shell even while a native client has the keyboard; see shell_key.
         self.super_codes = {self.d.keysym_to_keycode(XK.string_to_keysym(name)) for name in ('Super_L', 'Super_R')}
@@ -419,8 +425,20 @@ class Manager:
                     self.write_shell_keys('ctrl-escape', [])
                 else:
                     self.shell_combo = []
+                    self.shell_combo_locks = False
         finally:
             self.d.allow_events(mode, e.time)
+
+    def is_lock_key(self, e):
+        """Win+L, which XP's Explorer leaves to Windows itself (the session locks
+        the screen, session/screen.py)."""
+        return self.lock_code and e.detail == self.lock_code and \
+            not e.state & (X.ShiftMask | X.ControlMask | X.Mod1Mask)
+
+    def request_lock(self):
+        temporary = self.ipc / 'lock-request.tmp'
+        temporary.write_text('lock\n')
+        temporary.replace(self.ipc / 'lock-request')
 
     def volume_key(self, code):
         """Run a volume key's command; held keys repeat it."""
@@ -432,7 +450,10 @@ class Manager:
 
     def shell_combo_event(self, e):
         """A key while the WM holds the keyboard for the Windows key."""
-        if e.type == X.KeyPress and e.detail not in self.super_codes:
+        if e.type == X.KeyPress and self.is_lock_key(e):
+            self.shell_combo_locks = True
+            self.request_lock()
+        elif e.type == X.KeyPress and e.detail not in self.super_codes:
             keysym = self.d.keycode_to_keysym(e.detail, 0)
             vk = VIRTUAL_KEYS.get(keysym)
             if vk is None and (XK.XK_a <= keysym <= XK.XK_z or XK.XK_0 <= keysym <= XK.XK_9):
@@ -442,7 +463,9 @@ class Manager:
             if vk is not None:
                 self.shell_combo.append(vk)
         elif e.type == X.KeyRelease and e.detail in self.super_codes:
-            self.write_shell_keys('windows', self.shell_combo)
+            # After Win+L the Windows key alone would open the Start menu.
+            if not self.shell_combo_locks:
+                self.write_shell_keys('windows', self.shell_combo)
             self.shell_combo = None
 
     def write_shell_keys(self, kind, keys):
@@ -482,6 +505,33 @@ class Manager:
             except error.XError:
                 self.overlays.pop(w.id, None)
 
+    @staticmethod
+    def is_screen_saver(c):
+        """Whether client C is a screen saver's window: its program is a .scr."""
+        name = c.get('class', '')
+        return c['kind'] == 'normal' and len(name) > 4 and name.lower().endswith('.scr')
+
+    def keep_lock(self):
+        """Keep the lock screen above every window, whatever is mapped or raised,
+        except a screen saver that covers the screen: that one stays above it."""
+        if not self.lock_window:
+            return
+        try:
+            g = self.root.get_geometry()
+            saver = None
+            for c in self.clients.values():
+                if not c['hidden'] and self.is_screen_saver(c) and c['geometry'][2] >= g.width \
+                        and c['geometry'][3] >= g.height:
+                    saver = c['w']
+            self.lock_top = (saver or self.lock_window).id
+            if saver:
+                saver.configure(stack_mode=X.Above)
+                self.lock_window.configure(sibling=saver, stack_mode=X.Below)
+            else:
+                self.lock_window.configure(stack_mode=X.Above)
+        except error.XError:
+            pass  # It went meanwhile; its event follows.
+
     def focus(self, w):
         # Wine activation targets the proxy's XID; the native client owns X
         # keyboard focus and the single EWMH task identity.
@@ -499,6 +549,7 @@ class Manager:
             w.configure(stack_mode=X.Above)
             self.keep_unmanaged_above(before, {w.id})
             self.raise_overlays()
+            self.keep_lock()
             if self.atom('WM_TAKE_FOCUS') in self.prop(w, 'WM_PROTOCOLS'):
                 self.message(w, 'WM_PROTOCOLS', [self.atom('WM_TAKE_FOCUS'), X.CurrentTime, 0, 0, 0])
             w.set_input_focus(X.RevertToPointerRoot, X.CurrentTime)
@@ -570,6 +621,20 @@ class Manager:
         else:
             self.root.set_input_focus(X.RevertToPointerRoot, X.CurrentTime)
             self.setprop(self.root, '_NET_ACTIVE_WINDOW', Xatom.WINDOW, [0])
+
+    def lock_gone(self):
+        """The lock screen went: the keyboard goes back to the window that had it,
+        the active one, or else XP's desktop, as after unlocking XP."""
+        self.lock_window = None
+        c = self.clients.get(self.active)
+        if not c or c['hidden']:
+            for other in self.clients.values():
+                if other['kind'] == 'desktop':
+                    c = other
+        if c and not c['hidden']:
+            self.focus(c['w'])
+        else:
+            self.focus_visible()
 
     def close(self, w):
         if self.atom('WM_DELETE_WINDOW') in self.prop(w, 'WM_PROTOCOLS'):
@@ -656,6 +721,7 @@ class Manager:
                 raised.add(c['w'].id)
         self.keep_unmanaged_above(before, raised)
         self.raise_overlays()
+        self.keep_lock()
         ids = [i for i, c in self.clients.items() if c['kind'] != 'proxy']
         self.setprop(self.root, '_NET_CLIENT_LIST', Xatom.WINDOW, ids)
         stack = [self.frames.get(w.id, w.id) for w in self.root.query_tree().children if w.id in ids or w.id in self.frames]
@@ -1115,6 +1181,12 @@ class Manager:
         elif e.type == X.MapNotify:
             if e.override:
                 self.unmanaged.add(e.window.id)
+                try:
+                    if len(self.prop(e.window, '_WIN4WINE_LOCK')):
+                        self.lock_window = e.window
+                except error.XError:
+                    pass
+            self.keep_lock()
             if e.override and e.window.id not in self.overlays:
                 try:
                     cls = bytes(self.prop(e.window, '_WIN4WINE_CLASS')).strip(b'\0').lower()
@@ -1153,9 +1225,13 @@ class Manager:
                 self.workarea()
         elif e.type == X.DestroyNotify:
             self.overlays.pop(e.window.id, None)
+            if self.lock_window and e.window.id == self.lock_window.id:
+                self.lock_gone()
             self.unmanage(e.window.id)
         elif e.type == X.UnmapNotify:
             self.unmanaged.discard(e.window.id)
+            if self.lock_window and e.window.id == self.lock_window.id:
+                self.lock_gone()
             c = self.clients.get(e.window.id)
             # A minimized client that withdraws itself sends only the synthetic
             # UnmapNotify (XWithdrawWindow); Wine 11 restores a minimized window
@@ -1213,6 +1289,11 @@ class Manager:
         elif e.type == X.KeyPress and (e.detail in self.super_codes or
                                        e.detail == self.escape and e.state & X.ControlMask):
             self.shell_key(e)
+        elif e.type == X.KeyPress and e.state & X.Mod4Mask and self.is_lock_key(e):
+            # Wine gets the key too (and drops it, patch 0159): it saw the
+            # Windows key go down, and would open the Start menu for it alone.
+            self.request_lock()
+            self.d.allow_events(X.ReplayKeyboard, e.time)
         elif self.switch is not None and e.type in (X.KeyPress, X.KeyRelease):
             self.switch_event(e)
         elif e.type == X.KeyPress and e.detail == self.d.keysym_to_keycode(XK.string_to_keysym('F4')):
@@ -1241,6 +1322,14 @@ class Manager:
                     c['size'] = size
                     if c['kind'] == 'normal' and not c['hidden']:
                         self.redraw_native(e.window)
+            # A window put above the lock screen or the screen saver over it, or
+            # a screen saver that now covers the screen.
+            lock = self.lock_window
+            if lock and e.window.id not in (lock.id, self.root.id):
+                c = self.clients.get(e.window.id)
+                above = getattr(e.above_sibling, 'id', e.above_sibling)
+                if above in (lock.id, self.lock_top) or c and self.is_screen_saver(c):
+                    self.keep_lock()
         elif e.type == X.ClientMessage:
             values = e.data[1]
             if e.client_type == self.atom('_NET_ACTIVE_WINDOW'):

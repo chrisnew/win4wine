@@ -18,7 +18,7 @@ import struct
 import subprocess
 import tempfile
 import time
-from Xlib import X, Xatom, Xutil, display, protocol
+from Xlib import X, XK, Xatom, Xutil, display, protocol
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument('--wm', required=True, help='the WM command, without --ipc')
@@ -261,6 +261,75 @@ try:
     settle()
     command(f'activate {b.id:x}\n')
     dump('menu over b')
+
+    lock = make('lock', 0, 0, g.width, g.height, override=True, mapped=False)
+    lock.change_property(atom('_WIN4WINE_LOCK'), Xatom.CARDINAL, 32, [1])
+    lock.map()
+    dump('lock screen')
+    late = make('menu-over-lock', 20, 20, 100, 100, override=True)
+    dump('override window mapped while locked')
+    late.configure(stack_mode=X.Above)
+    menu.configure(stack_mode=X.Above)
+    dump('override windows raised while locked')
+    message(b, '_NET_ACTIVE_WINDOW', [1])
+    message(popup, '_NET_ACTIVE_WINDOW', [1])
+    dump('windows activated while locked')
+    saver = make('saver', 0, 0, g.width, g.height, hwnd=0x60, mapped=False)
+    saver.set_wm_class('test.scr', 'test.scr')
+    saver.change_property(atom('_NET_WM_STATE'), Xatom.ATOM, 32,
+                          [atom('_NET_WM_STATE_FULLSCREEN'), atom('_NET_WM_STATE_ABOVE')])
+    saver.map()
+    dump('screen saver over the lock screen')
+    late.configure(stack_mode=X.Above)
+    dump('override window raised under the screen saver')
+    # The WM must settle: restacking that causes events would not end.
+    root.change_attributes(event_mask=X.SubstructureNotifyMask)
+    settle()
+    while d.pending_events():
+        d.next_event()
+    settle()
+    print('restacked while nothing happens', d.pending_events())
+    root.change_attributes(event_mask=X.NoEventMask)
+    while d.pending_events():
+        d.next_event()
+    saver.destroy()
+    dump('screen saver gone')
+    small = make('saver-small', 40, 40, 300, 200, mapped=False)
+    small.set_wm_class('test.scr', 'test.scr')
+    small.map()
+    dump('a screen saver settings window stays below')
+    small.configure(width=g.width, height=g.height, x=0, y=0)
+    dump('and goes above once it covers the screen')
+    small.destroy()
+    late.destroy()
+    # The lock screen takes the focus; unlocking gives it back.
+    message(a, '_NET_ACTIVE_WINDOW', [1])
+    settle()
+    lock.set_input_focus(X.RevertToPointerRoot, X.CurrentTime)
+    dump('locked with the focus')
+    lock.destroy()
+    dump('unlocked')
+
+    # Win+L asks for the lock; Win+Shift+L does not.
+    from Xlib.ext import xtest
+
+    def keys(*names):
+        codes = [d.keysym_to_keycode(XK.string_to_keysym(n)) for n in names]
+        for code in codes:
+            xtest.fake_input(d, X.KeyPress, code)
+        for code in reversed(codes):
+            xtest.fake_input(d, X.KeyRelease, code)
+        settle()
+        path = ipc / 'lock-request'
+        print('+'.join(names), 'lock request', path.read_text() if path.exists() else None,
+              'shell keys', repr(ipc_text('shellkeys.tsv')))
+        path.unlink(missing_ok=True)
+    wine_like = make('wine-window', 600, 100, 200, 150, 'Notepad', hwnd=0x70)
+    for focused in (wine_like, b):
+        message(focused, '_NET_ACTIVE_WINDOW', [1])
+        settle()
+        keys('Super_L', 'l')
+        keys('Super_L', 'Shift_L', 'l')
 
     command(f'close {a.id:x}\n')
     command(f'minimize {b.id:x}\n')
