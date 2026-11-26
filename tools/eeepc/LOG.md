@@ -42,6 +42,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0157 (repo fd9ec4a) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls | 2026-11-26 22:16 |
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
+| Prefix | XP's screen savers (`logon.scr`, `scrnsave.scr`, `ss*.scr`) in `drive_c/windows/syswow64`, copied by hand ahead of `prefix/extras.py` VERSION 6 | Trying the Screen Saver tab ([plan](../../plans/screensaver-and-lock.md)) | 2026-11-27 |
 | Prefix | Office's `MDM` and `MOSEARCH` services `Start=3` (manual) instead of automatic | MOSEARCH failed at every login (missing `TQUERY.DLL`); neither is needed by the session | 2026-11-26 |
 | Boot | `GRUB_CMDLINE_LINUX_DEFAULT="zswap.enabled=1 zswap.compressor=zstd"` | Compressed swap cache, for 2 GB of RAM. **zstd is not actually used**, see "Open" | ? |
 | Disk | `/` mounted `noatime,nodiratime`; 9.5 GB swap partition `/dev/sda2` | ? (the disk is a spinning HDD, Toshiba MK2552GSX) | ? |
@@ -73,6 +74,19 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-27: XP's screen savers copied into the prefix
+
+- **What:** `python3 extract/extract.py --only screensavers ~/Images/en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso .local/assets`
+  (10 files), then `cp .local/assets/cpl/logon.scr .local/assets/screensavers/*.scr .local/prefix/drive_c/windows/syswow64/`
+  with the session running. `prefix/extras.py` was not run, because it stops the wineserver; the next `setup.sh` does the same
+  copy (VERSION 6, repo c4374ca).
+- **Why:** to try XP's Screen Saver tab and the screen savers under Wine ([plan](../../plans/screensaver-and-lock.md), phase 0).
+- **Result:** 11 `.scr` files in syswow64 (`logon.scr` was there already). XP's Screen Saver tab, opened again after the copy (it
+  lists the files when it opens), shows all of them by name: (None), 3D FlowerBox, 3D Flying Objects, 3D Pipes, 3D Text, Beziers,
+  Blank, Marquee, My Pictures Slideshow, Mystify, Starfield, Windows XP. The small preview (`/p`) of Windows XP draws, after a
+  moment in which the monitor shows a stale piece of the screen. The screen savers themselves were not run yet.
+- **Undo:** delete `scrnsave.scr` and `ss*.scr` from `drive_c/windows/syswow64`.
 
 ### 2026-11-26: Wine with 0157 (batched immediate mode GL) installed
 

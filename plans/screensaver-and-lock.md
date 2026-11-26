@@ -1,6 +1,6 @@
 # Plan: screen savers and a lock screen
 
-Status: planned (2026-11-26). Phase 0 (extracting the screen savers) is done.
+Status: planned (2026-11-26). Phase 0 (extracting the screen savers) is done and checked in the tab.
 
 Goal: XP's own screen savers start after the idle time set in Display Properties, and Win+L (and "On resume, display Welcome
 screen") shows XP's Welcome screen as a lock screen inside the session, without a VT switch. On the EeePC it must be instant and must
@@ -40,17 +40,21 @@ not add wakeups while the machine is idle.
   `setup.sh` adds it to an earlier extraction by itself (all ten are in I386 as `.SC_` on the XP SP2 CD as well).
 - `prefix/extras.py`: copies them and `cpl/logon.scr` into `drive_c/windows/syswow64`, the 32-bit system directory the tab lists.
   `VERSION` 5 → 6, so `setup.sh` applies it to the existing prefix.
-- To check on the EeePC: `scripts/setup.sh` adds the group, the files are in syswow64, and the tab lists them. Then preview each
-  with the Preview button (`/s`) and in the small monitor (`/p HWND`, a child window in another process).
+- Checked on the EeePC (2026-11-27, files copied by hand, see `tools/eeepc/LOG.md`): all ten come out of the SP3 ISO, and the tab
+  lists all eleven by name. The small monitor's preview (`/p HWND`) of Windows XP works; for a moment it shows a stale piece of
+  the screen first. The checkbox reads "On resume, password protect", not "On resume, display Welcome screen": XP shows the second
+  only with Fast User Switching on. Phase 2's lock screen is XP's FUS one, so the prefix should turn FUS on (the Winlogon setting
+  that XP's User Accounts sets; find out which with a trace) once the lock screen exists.
+- Still to do: run each one with the Preview button (`/s`), and `setup.sh` on a prefix it updates (VERSION 6).
 
 ## Phase 1: screen savers start when the machine is idle
 
 1. **Measure first** (decides how much work comes next):
-   - Does the tab list the files, and does its small preview work under Wine? If not, find out with traces of public APIs (which
-     directory it lists, what `/p` gets). A Wine patch is likely needed here.
    - Run each `.scr /s` on the EeePC. Record CPU and frame rate (GDI ones: Starfield, Marquee, Mystify, Beziers; OpenGL ones: Pipes,
      Flying Objects, Text, FlowerBox on the GMA 3150). Check that mouse or key input ends each one and that its window covers the
      taskbar. Add the numbers to `tools/eeepc/`.
+   - The EeePC has `/etc/X11/xorg.conf.d/10-nodpms.conf` (blanking and DPMS off, reason unknown, see `tools/eeepc/LOG.md`).
+     idle-watch must not depend on it being there or not.
 2. **Wine patch** (opt-in, XP session): winex11 no longer answers `SPI_GET/SETSCREENSAVEACTIVE` with the X server's timer. win32u's
    registry entry answers instead, so the tab shows and stores `ScreenSaveActive`. In the patch table of `docs/patches.md`.
 3. **`session/idle-watch.c`** (built by `bridge-wm/build.sh` as `.local/bridge/idle-watch`):
