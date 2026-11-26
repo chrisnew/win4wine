@@ -38,6 +38,15 @@ static HICON default_icon;
 static int syncing;
 static unsigned sequence;
 static BOOL dirty = TRUE;
+/* Only geometry.tsv changed, or a frame moved: frame_geometry alone. A whole
+ * pass (windows.tsv, icons, every top-level window for the shell, the tray)
+ * cost about 9 ms on an Atom N550, and a Linux window that moved itself
+ * brought three or four of them in each step: 53% of a core in the proxy
+ * and 44% in wineserver at 60 Hz. */
+static BOOL geometry_dirty;
+/* A file other than geometry.tsv changed: switch.tsv, shellkeys.tsv and
+ * snapping.tsv are read again (each read is wineserver requests). */
+static BOOL files_changed = TRUE;
 static char frames_text[MAX_CLIENTS * 96];
 static BOOL frames_written;
 
@@ -90,6 +99,17 @@ static void geometry_command(HWND hwnd, unsigned long xid)
     snprintf(data, sizeof(data), "geometry %lx %ld %ld %ld %ld\n", xid,
              pt.x, pt.y, r.right, r.bottom);
     write_command(data);
+}
+
+/* Whether frame C's client area is where geometry.tsv last put its client. */
+static BOOL frame_at_client(const struct client *c)
+{
+    RECT r;
+    POINT pt = {0, 0};
+    if (!c || !c->width || !c->height) return FALSE;
+    GetClientRect(c->hwnd, &r);
+    ClientToScreen(c->hwnd, &pt);
+    return pt.x == c->x && pt.y == c->y && r.right == c->width && r.bottom == c->height;
 }
 
 /* Whether Wine's move loop drags this window now (Wine 0038: "Win4WineSizeMove"
@@ -209,7 +229,7 @@ static LRESULT CALLBACK proxy_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     if (msg == WM_THEMECHANGED || msg == WM_SETTINGCHANGE || msg == WM_DISPLAYCHANGE) dirty = TRUE;
     if (!syncing && xid)
     {
-        if (msg == WM_WINDOWPOSCHANGED) dirty = TRUE;
+        if (msg == WM_WINDOWPOSCHANGED) geometry_dirty = TRUE;
         if (msg == WM_CLOSE) { command("close", xid); return 0; }
         if (msg == WM_SYSCOMMAND)
         {
@@ -237,7 +257,10 @@ static LRESULT CALLBACK proxy_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             c->moving = 0;
             if (!IsIconic(hwnd)) geometry_command(hwnd, xid);
         }
-        if (msg == WM_WINDOWPOSCHANGED && !IsIconic(hwnd) && !(c && c->moving)) geometry_command(hwnd, xid);
+        /* Not for the rectangle the WM last reported: the WM moved the frame
+         * with its client (follow_native), and already has it. */
+        if (msg == WM_WINDOWPOSCHANGED && !IsIconic(hwnd) && !(c && c->moving) && !frame_at_client(c))
+            geometry_command(hwnd, xid);
         if (msg == WM_ACTIVATE && LOWORD(wp) != WA_INACTIVE && !IsIconic(hwnd)) command("activate", xid);
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
@@ -2050,7 +2073,9 @@ int wmain(int argc, WCHAR **argv)
 {
     WNDCLASSW cls = {0};
     MSG msg;
-    HANDLE changes, lock;
+    HANDLE changes, watch, lock;
+    OVERLAPPED watching = {0};
+    static DWORD notes[4096];
     WCHAR path[MAX_PATH + 32];
     UINT_PTR layout_timer = 0;
     if (argc != 2 || wcslen(argv[1]) >= MAX_PATH) return 2;
@@ -2082,10 +2107,26 @@ int wmain(int argc, WCHAR **argv)
                        NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (lock == INVALID_HANDLE_VALUE || !LockFile(lock, 0, 0, 1, 0))
         fprintf(stderr, "proxy lock unavailable: %lu\n", GetLastError());
-    /* Wake when the WM writes a file or a Win32 window changes; never poll. */
-    changes = FindFirstChangeNotificationW(directory, FALSE,
-                                           FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE);
-    if (changes == INVALID_HANDLE_VALUE) return 4;
+    /* Wake when the WM writes a file or a Win32 window changes; never poll.
+     * ReadDirectoryChangesW names the files, so that the proxy's own files
+     * and geometry.tsv alone cost no whole pass (see geometry_dirty). */
+    watch = CreateFileW(directory, FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+                        OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
+    changes = CreateEventW(NULL, TRUE, FALSE, NULL);
+    watching.hEvent = changes;
+    if (watch == INVALID_HANDLE_VALUE || !changes ||
+        !ReadDirectoryChangesW(watch, notes, sizeof(notes), FALSE,
+                               FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE, NULL, &watching, NULL))
+    {
+        /* Without names: a whole pass on every change, as before. */
+        fprintf(stderr, "ReadDirectoryChangesW unavailable: %lu\n", GetLastError());
+        if (watch != INVALID_HANDLE_VALUE) CloseHandle(watch);
+        if (changes) CloseHandle(changes);
+        watch = INVALID_HANDLE_VALUE;
+        changes = FindFirstChangeNotificationW(directory, FALSE,
+                                               FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE);
+        if (changes == INVALID_HANDLE_VALUE) return 4;
+    }
     SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, NULL, win_event, 0, 0, WINEVENT_OUTOFCONTEXT);
     SetWinEventHook(EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND, NULL, win_event, 0, 0, WINEVENT_OUTOFCONTEXT);
     SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_HIDE, NULL, win_event, 0, 0, WINEVENT_OUTOFCONTEXT);
@@ -2097,15 +2138,27 @@ int wmain(int argc, WCHAR **argv)
     snap_compositor_events(TRUE);
     for (;;)
     {
-        switch_events();
-        shell_key_events(FALSE);
-        snap_compositor_events(FALSE);
+        if (files_changed)
+        {
+            files_changed = FALSE;
+            switch_events();
+            shell_key_events(FALSE);
+            snap_compositor_events(FALSE);
+        }
         if (dirty)
         {
             dirty = FALSE;
+            geometry_dirty = FALSE;
             snapshot();
             shell_events();
             tray_sync();
+        }
+        else if (geometry_dirty)
+        {
+            geometry_dirty = FALSE;
+            syncing = 1;
+            frame_geometry();
+            syncing = 0;
         }
         if (shell_layout_pending() != !!layout_timer)
         {
@@ -2142,11 +2195,56 @@ int wmain(int argc, WCHAR **argv)
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
-        if (dirty) continue; /* Changes made by this pass. */
+        if (dirty || geometry_dirty) continue; /* Changes made by this pass. */
         if (MsgWaitForMultipleObjects(1, &changes, FALSE, INFINITE, QS_ALLINPUT) == WAIT_OBJECT_0)
         {
-            FindNextChangeNotification(changes);
-            dirty = TRUE;
+            DWORD size = 0;
+            BOOL done = watch != INVALID_HANDLE_VALUE && GetOverlappedResult(watch, &watching, &size, FALSE);
+            if (watch == INVALID_HANDLE_VALUE)
+            {
+                FindNextChangeNotification(changes);
+                dirty = files_changed = TRUE;
+                continue;
+            }
+            if (!done || !size) dirty = files_changed = TRUE; /* an overflow or an error: everything */
+            else
+            {
+                FILE_NOTIFY_INFORMATION *note = (FILE_NOTIFY_INFORMATION *)notes;
+                for (;;)
+                {
+                    WCHAR name[MAX_PATH];
+                    DWORD length = min(note->FileNameLength / sizeof(WCHAR), MAX_PATH - 1), n;
+                    memcpy(name, note->FileName, length * sizeof(WCHAR));
+                    name[length] = 0;
+                    n = length;
+                    /* The proxy's own files (commands for the WM and the tray
+                     * host, which remove them, and frames.tsv) and temporary
+                     * files, which are renamed to their real names, change
+                     * nothing here. */
+                    if ((n > 4 && (!_wcsicmp(name + n - 4, L".cmd") || !_wcsicmp(name + n - 4, L".tmp"))) ||
+                        (n > 5 && !_wcsicmp(name + n - 5, L".tray")) || !_wcsicmp(name, L"frames.tsv") ||
+                        !_wcsicmp(name, L"proxy.lock")) {}
+                    else if (!_wcsicmp(name, L"geometry.tsv")) geometry_dirty = TRUE;
+                    else dirty = files_changed = TRUE;
+                    if (!note->NextEntryOffset) break;
+                    note = (FILE_NOTIFY_INFORMATION *)((char *)note + note->NextEntryOffset);
+                }
+            }
+            ResetEvent(changes);
+            if (!ReadDirectoryChangesW(watch, notes, sizeof(notes), FALSE,
+                                       FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE, NULL, &watching,
+                                       NULL))
+            {
+                /* Should not happen: go on without names, as before. */
+                fprintf(stderr, "ReadDirectoryChangesW: %lu\n", GetLastError());
+                CloseHandle(watch);
+                CloseHandle(changes);
+                watch = INVALID_HANDLE_VALUE;
+                changes = FindFirstChangeNotificationW(directory, FALSE,
+                                                       FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE);
+                if (changes == INVALID_HANDLE_VALUE) return 4;
+                dirty = files_changed = TRUE;
+            }
         }
     }
 }
