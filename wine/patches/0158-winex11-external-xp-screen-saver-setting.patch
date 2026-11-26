@@ -1,0 +1,43 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] winex11: keep the screen saver setting in the registry in the XP session
+
+Purpose: Display Properties' Screen Saver tab shows and stores whether a
+screen saver is active, so that the session can start it.
+Windows behavior: SPI_GETSCREENSAVEACTIVE and SPI_SETSCREENSAVEACTIVE read
+and write the user's setting (HKCU\Control Panel\Desktop,
+ScreenSaveActive).
+Wine before: winex11 answered both with the X server's own blanking timer
+(XGetScreenSaver, XSetScreenSaver): the tab showed and switched Xorg's
+blanker, which the XP session turns off because it starts screen savers
+itself (session/idle-watch.c).
+Change: winex11 does not handle the two actions, so win32u's registry entry
+answers them.
+Scope: XP session only (the external shell opt-in without WIN4WINE_SHELL).
+---
+ dlls/winex11.drv/x11drv_main.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/dlls/winex11.drv/x11drv_main.c b/dlls/winex11.drv/x11drv_main.c
+--- a/dlls/winex11.drv/x11drv_main.c
++++ b/dlls/winex11.drv/x11drv_main.c
+@@ -49,6 +49,7 @@
+ #include "xcomposite.h"
+ #include "wine/server.h"
+ #include "wine/debug.h"
++#include "wine/win4wine.h"
+ #include "wine/list.h"
+ #include "wine/vulkan.h"
+ #include "wine/vulkan_driver.h"
+@@ -774,6 +775,12 @@
+  */
+ BOOL X11DRV_SystemParametersInfo( UINT action, UINT int_param, void *ptr_param, UINT flags )
+ {
++    /* win4wine: the XP session starts the screen savers itself, so whether
++     * one is active is the user's setting, not the X server's blanking timer. */
++    if (win4wine_shell() == WIN4WINE_SHELL_XP &&
++        (action == SPI_GETSCREENSAVEACTIVE || action == SPI_SETSCREENSAVEACTIVE))
++        return FALSE;  /* win32u keeps ScreenSaveActive in the registry */
++
+     switch (action)
+     {
+     case SPI_GETSCREENSAVEACTIVE:
