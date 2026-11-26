@@ -24,6 +24,10 @@ FILES = {
                      'duser.dll'), 'system32'),
     # XP's Display Properties (Themes, Desktop, Screen Saver, Appearance, Settings).
     **dict.fromkeys(('desk.cpl', 'themeui.dll', 'deskadp.dll', 'deskmon.dll', 'logon.scr'), 'cpl'),
+    # XP's other screen savers, listed by the Screen Saver tab (prefix/extras.py
+    # puts them in syswow64 with logon.scr, "Windows XP").
+    **dict.fromkeys(('scrnsave.scr', 'ss3dfo.scr', 'ssbezier.scr', 'ssflwbox.scr', 'ssmarque.scr',
+                     'ssmypics.scr', 'ssmyst.scr', 'sspipes.scr', 'ssstars.scr', 'sstext3d.scr'), 'screensavers'),
     # Icons and dialog templates of the notification area's network, battery
     # and volume icons (xp-explorer/helpers/xptray.c).
     **dict.fromkeys(('stobject.dll', 'powercfg.cpl', 'batmeter.dll', 'netshell.dll', 'sndvol32.exe', 'xpsp2res.dll'), 'tray'),
@@ -81,7 +85,8 @@ LANGUAGE_FILES = {
 # Files that XP's setup installs under another name (LAYOUT.INF).
 RENAMED = {'classic.the': 'Windows Classic.theme'}
 # Groups a later version added; setup.sh adds them to an earlier extraction (--only).
-ADDED_GROUPS = ('cpl', 'tray', 'ie', 'wmp', 'inf', 'shell', 'media', 'duser', 'intl', 'themes')
+ADDED_GROUPS = ('cpl', 'tray', 'ie', 'wmp', 'inf', 'shell', 'media', 'duser', 'intl', 'themes',
+                'screensavers')
 
 
 def setup_sources(paths):
@@ -136,7 +141,7 @@ def missing_groups(output):
     checks = {'cpl': 'cpl/desk.cpl', 'tray': 'tray/xpsp2res.dll', 'ie': 'ie/iexplore.exe',
               'wmp': 'wmp/wmplayer.exe', 'inf': 'inf/hivedef.inf', 'shell': 'shell/shimgvw.dll',
               'media': 'media', 'duser': 'system32/duser.dll', 'intl': 'intl/input.dll',
-              'themes': 'themes/Windows Classic.theme'}
+              'themes': 'themes/Windows Classic.theme', 'screensavers': 'screensavers/ssstars.scr'}
     return [group for group in ADDED_GROUPS if not has(checks[group])]
 
 

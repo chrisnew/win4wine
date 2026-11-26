@@ -30,7 +30,7 @@ import xp_schemes
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / '.local/bridge'
 # Bumped when apply() changes; setup.sh applies it again on existing prefixes.
-VERSION = '5'
+VERSION = '6'
 MARKER = '.xp-extras'
 HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe')
 # XP's Regional and Language Options and what it loads (assets/intl), native
@@ -151,6 +151,12 @@ def copy_files(assets, prefix):
     for path in [assets / 'system32/duser.dll', *(assets / 'cpl').glob('*'), *(assets / 'shell').glob('*')]:
         if path.is_file():
             shutil.copyfile(path, native / path.name)
+    # XP's screen savers where the Screen Saver tab looks for them: the 32-bit
+    # system directory (syswow64), with logon.scr ("Windows XP") from the cpl group.
+    system = prefix / 'drive_c/windows/syswow64'
+    for path in [assets / 'cpl/logon.scr', *(assets / 'screensavers').glob('*.scr')]:
+        if path.is_file() and system.is_dir():
+            shutil.copyfile(path, system / path.name)
     # XP's Windows Classic theme for Display Properties. A prefix has both
     # Wine's windows/resources/themes and win4wine's Resources/Themes; on
     # Linux they are two folders, and Display Properties lists one of them.
