@@ -21,7 +21,7 @@
 
 #define SIZE 256
 #define QUADS 2000
-#define FRAMES 100
+#define FRAMES 100 /* or the first argument */
 
 static LRESULT CALLBACK wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
@@ -52,7 +52,7 @@ static void draw_frame( GLuint *textures, int frame )
     }
 }
 
-int main( void )
+int main( int argc, char **argv )
 {
     PIXELFORMATDESCRIPTOR pfd = { sizeof(pfd), 1, PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
                                   PFD_TYPE_RGBA, 32 };
@@ -64,7 +64,7 @@ int main( void )
     HWND hwnd;
     HGLRC rc;
     HDC hdc;
-    int i;
+    int i, frames = argc > 1 ? atoi( argv[1] ) : FRAMES;
 
     wc.lpfnWndProc = wndproc;
     wc.hInstance = GetModuleHandleA( NULL );
@@ -102,7 +102,7 @@ int main( void )
 
     QueryPerformanceFrequency( &freq );
     QueryPerformanceCounter( &start );
-    for (i = 0; i < FRAMES; i++)
+    for (i = 0; i < frames; i++)
     {
         draw_frame( textures, i );
         SwapBuffers( hdc );
@@ -111,7 +111,7 @@ int main( void )
     QueryPerformanceCounter( &end );
 
     /* the last frame again, into the back buffer, to read it */
-    draw_frame( textures, FRAMES - 1 );
+    draw_frame( textures, frames - 1 );
     glFinish();
     pixels = malloc( SIZE * SIZE * 4 );
     glReadPixels( 0, 0, SIZE, SIZE, GL_RGBA, GL_UNSIGNED_BYTE, pixels );
@@ -119,7 +119,7 @@ int main( void )
     printf( "glGetError: %#x\n", glGetError() );
     printf( "checksum: %08x\n", sum );
     printf( "%.2f ms per frame (%d quads, %d GL calls a frame)\n",
-            (double)(end.QuadPart - start.QuadPart) * 1000.0 / freq.QuadPart / FRAMES, QUADS, QUADS * 13 + 1 );
+            (double)(end.QuadPart - start.QuadPart) * 1000.0 / freq.QuadPart / frames, QUADS, QUADS * 13 + 1 );
 
     wglMakeCurrent( NULL, NULL );
     wglDeleteContext( rc );

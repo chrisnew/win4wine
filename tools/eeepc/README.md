@@ -45,8 +45,25 @@ Each unix call of a WoW64 thread must set FS back to glibc's thread pointer (`si
 With `wrfsbase` that is one instruction, but the Atom N550 has no FSGSBASE, so Wine makes an `arch_prctl(ARCH_SET_FS)` system
 call each time. `perf record -e syscalls:sys_enter_arch_prctl -a` for 5 s: 181,000 a second from the game, a few hundred from
 everything else (xp-explorer about 360 a second), so the shell does not suffer from it. The CPU reports "Not affected" for every
-vulnerability, so no mitigations add to the cost. The fix to try is in opengl32: collect the calls between `glBegin` and `glEnd`
-on the PE side and send them across in one unix call.
+vulnerability, so no mitigations add to the cost. Wine 0157 does that: opengl32 collects the vertex and attribute calls and sends
+them in one unix call before the next other call.
+
+**With Wine 0157 (2026-11-26).** Half-Life Alpha started from ssh in the session, once with `WINE_OPENGL_BATCH=0` and once
+without, played for a minute each:
+
+| | batching off | batching on |
+|---|---|---|
+| render thread | 70% user, 31% kernel | 79% user, 21% kernel |
+| `arch_prctl` calls (`perf stat`, 5 s) | 361,000 a second | 10,000 a second |
+| Mesa, its compiled vertex code, libGL, i915 (`perf record -t`, 10 s) | about 37% of the thread | about 60% |
+| Wine's own share | about 59% (unix call path) | about 18% (`opengl32.dll` recording 10%, `opengl32.so` replay and thunks 8%) |
+
+The game renders as fast as it can, so the thread stays at a whole CPU and the gain goes into frames: about 1.6 times as many
+if the work per frame is unchanged (no frame counter was read). It felt clearly smoother. `glbench.exe` (2000 textured quads,
+26,001 GL calls a frame, Mesa-bound by its texture switch per quad) draws the same image either way (checksum `32910d11`) in
+100–107 ms against 117–125 ms. One crash in the game's own code (a write to address 0 at 0x414E54, about 20 s after start) came
+in the first run with batching; it did not come again in the batching run above, and the game had never crashed before.
+What is left: `set_context_attribute` and `replay_batch` 2.3% each, and `read_hpet` 1.5% (the clock source is the HPET).
 
 ## Driving the session and looking at it
 

@@ -39,7 +39,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | X driver | `xserver-xorg-video-intel 2:2.99.917+git20210115-1+w4w1`, built by [xorg-intel/build.sh](xorg-intel/build.sh) with `sna-gen3-dri3.patch`; **held** with `apt-mark hold` | DRI3 on the GMA 3150, so OpenGL runs on the GPU instead of llvmpipe | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/20-intel.conf`: `Driver "intel"`, `Option "DRI" "3"` | The patched driver gives gen3 DRI3 only when asked | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/10-nodpms.conf`: blanking, standby, suspend and off times 0; `DPMS` false on LVDS1 | The screen never blanks (see "Not yet explained") | ? |
-| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0156 | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver | 2026-11-26 21:18 |
+| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0157 (repo fd9ec4a) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls | 2026-11-26 22:16 |
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
 | Prefix | Office's `MDM` and `MOSEARCH` services `Start=3` (manual) instead of automatic | MOSEARCH failed at every login (missing `TQUERY.DLL`); neither is needed by the session | 2026-11-26 |
@@ -73,6 +73,19 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-26: Wine with 0157 (batched immediate mode GL) installed
+
+- **What:** on the development machine, `wine/container-build.sh --deploy 192.168.1.9` (no session was running, so it went
+  straight into `.local/wine-install`; `.local/wine-install-old` is the ntsync install of 21:18). The checkout was moved to
+  4815ba5 with `git fetch fork && git checkout -B eeepc fork/eeepc`.
+- **Why:** Wine 0157 sends glBegin/glVertex/... across in one unix call per batch instead of one each. Half-Life Alpha spent
+  about 59% of its render thread on those calls (see the 2026-11-26 linux-perf entry).
+- **Result:** Half-Life Alpha's render thread makes 10,000 `arch_prctl` calls a second instead of 361,000, and the share of it
+  in Mesa and the driver rose from about 37% to 60% (numbers in the [README](README.md#opengl-on-the-gma-3150)). One
+  unexplained crash in the game's code in the first run with it; not seen again.
+- **Undo:** move `.local/wine-install-old` back to `.local/wine-install`, then log out and in. Or keep the install and set
+  `WINE_OPENGL_BATCH=0` for one program.
 
 ### 2026-11-26: linux-perf and strace installed
 
