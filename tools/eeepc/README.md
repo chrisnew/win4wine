@@ -10,6 +10,9 @@ Atom N550 (2 cores, 4 threads), Intel GMA 3150 (the intel DDX with SNA, gen3, so
 schedutil governor. English XP with Luna, in the X11 session. It is far slower and smaller than what upstream tested (VMs at 1280x800),
 so expect bugs from timing (e.g. the supervisor's `readiness_timeout` of 30 s), from the 600 px screen height and from the old GPU.
 
+What was changed on the machine itself (the backports kernel with ntsync, the patched X driver, `/etc`, the prefix) and why is
+in [LOG.md](LOG.md). Keep it up to date with every change made there.
+
 ## OpenGL on the GMA 3150
 
 Mesa 25 has no DRI2 client any more, and the intel DDX (SNA) enables DRI3 only from gen4 on, whatever `Option "DRI"` says. So

@@ -48,6 +48,8 @@ fits a 1024x600 screen, and has things worth showing. Ideas for features are in 
   -mcmodel=small` for PE files). It catches real errors, but it does not link.
 - The EeePC runs the real session, from a checkout of branch `eeepc`. How to reach it is in `CLAUDE.local.md`.
   **It is the user's live machine: ask before changing anything on it**, and before killing processes there.
+- Every change made on the EeePC outside the checkout (packages, the kernel, `/etc`, services, the prefix, a new Wine install)
+  gets an entry in [tools/eeepc/LOG.md](tools/eeepc/LOG.md) in the same session: what, why, result, undo. Its head says how.
 - On the EeePC: logs are in `~/.local/state/win4wine/`, the IPC directory is `/run/user/1000/win4wine-1000-*`, and
   `DISPLAY=:0 XAUTHORITY=~/.Xauthority xwd -root -silent` takes a screenshot (convert it here; `tools/eeepc/shot.py` also shows
   redirected windows).
