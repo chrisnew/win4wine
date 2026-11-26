@@ -153,3 +153,4 @@
 0153-win32u-external-shell-wallpaper-change.patch
 0154-user32-external-xp-shell-icon-file.patch
 0155-ntdll-unix-process-handles.patch
+0156-dlls-window-property-cache.patch

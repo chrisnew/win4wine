@@ -1,0 +1,237 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] dlls: answer GetProp from a cache while the window's properties are unchanged
+
+Purpose: a window property that is read again and again costs no server
+request each time.
+Windows behavior: GetProp reads the window's property list in the
+kernel's shared desktop heap, without a system call.
+Wine before: every GetProp was a get_window_property request to the
+wineserver. comctl32's subclassing (SetWindowSubclass) keeps its data in
+a property ("UxSubclassInfo" in XP's comctl32 v6) and reads it for every
+message a subclassed control gets. XP's taskbar repaints the notification
+area when an icon changes (xptray's network icon, while there is
+traffic), and each repaint read the toolbar's property 27 times.
+Change: the window's shared object (window_shm_t) gets prop_serial, which
+the wineserver increments whenever a property is set or removed.
+NtUserGetProp keeps the last 32 answers (window, shared object id, serial,
+atom or name of up to 63 characters, value), process-wide under a mutex,
+and answers from them while the serial is unchanged. The serial is read
+before the request, so a change during it leaves an entry that never
+matches. Failed requests (invalid window, unknown name) are not cached,
+so their last error stays as before. The server protocol changes (932).
+Evidence: +server trace of the idle EeePC session (tools/servertrace.py):
+the notification area's thread made 27 get_window_property requests per
+repaint.
+Scope: all programs; only GetProp's server requests change.
+---
+ dlls/win32u/window.c           | 87 +++++++++++++++++++++++++++++++++++++++++-
+ include/wine/server_protocol.h |  3 +-
+ server/protocol.def            |  1 +
+ server/window.c                | 14 +++++++
+ 4 files changed, 103 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/win32u/window.c b/dlls/win32u/window.c
+index 1cdaeca..d274b53 100644
+--- a/dlls/win32u/window.c
++++ b/dlls/win32u/window.c
+@@ -24,6 +24,7 @@
+ #endif
+ 
+ #include <assert.h>
++#include <pthread.h>
+ 
+ #include "ntstatus.h"
+ #define WIN32_NO_STATUS
+@@ -1626,6 +1627,46 @@ int get_window_pixel_format( HWND hwnd )
+     return ret;
+ }
+ 
++/* GetProp answers, valid while the window's property serial in shared memory
++ * stays the same. comctl32's subclassing reads a property for every message a
++ * subclassed control gets, and each read was a server request. */
++#define PROP_CACHE_SIZE 32
++#define PROP_CACHE_NAME 64
++
++struct prop_cache_entry
++{
++    HWND        hwnd;
++    object_id_t id;                     /* the window's shared object, 0 if the entry is free */
++    UINT        serial;
++    ATOM        atom;                   /* an integer atom, or 0 for a string */
++    WCHAR       name[PROP_CACHE_NAME];
++    ULONG_PTR   data;
++};
++
++static struct prop_cache_entry prop_cache[PROP_CACHE_SIZE];
++static unsigned int prop_cache_next;
++static pthread_mutex_t prop_cache_lock = PTHREAD_MUTEX_INITIALIZER;
++
++static BOOL get_window_prop_serial( HWND hwnd, object_id_t *id, UINT *serial )
++{
++    struct object_lock lock = OBJECT_LOCK_INIT;
++    const window_shm_t *window_shm = NULL;
++    NTSTATUS status;
++
++    while ((status = get_shared_window( hwnd, &lock, &window_shm )) == STATUS_PENDING)
++        *serial = window_shm->prop_serial;
++    *id = lock.id;
++    return !status && lock.id;
++}
++
++static BOOL prop_cache_matches( const struct prop_cache_entry *entry, HWND hwnd, object_id_t id, UINT serial,
++                                const WCHAR *str, UINT len )
++{
++    if (entry->id != id || entry->hwnd != hwnd || entry->serial != serial) return FALSE;
++    if (IS_INTRESOURCE(str)) return entry->atom == LOWORD(str);
++    return !entry->atom && !memcmp( entry->name, str, (len + 1) * sizeof(WCHAR) );
++}
++
+ /***********************************************************************
+  *           NtUserGetProp   (win32u.@)
+  *
+@@ -1635,15 +1676,59 @@ int get_window_pixel_format( HWND hwnd )
+ HANDLE WINAPI NtUserGetProp( HWND hwnd, const WCHAR *str )
+ {
+     ULONG_PTR ret = 0;
++    UINT len = IS_INTRESOURCE(str) ? 0 : lstrlenW( str ), serial = 0, i;
++    struct prop_cache_entry *entry;
++    object_id_t id = 0;
++    BOOL cacheable, found = FALSE;
++
++    /* the serial is read before the request: a change during it gives the entry a stale serial */
++    cacheable = (IS_INTRESOURCE(str) ? LOWORD(str) != 0 : len && len < PROP_CACHE_NAME) &&
++                get_window_prop_serial( hwnd, &id, &serial );
++    if (cacheable)
++    {
++        pthread_mutex_lock( &prop_cache_lock );
++        for (i = 0; i < PROP_CACHE_SIZE; i++)
++        {
++            if (!prop_cache_matches( &prop_cache[i], hwnd, id, serial, str, len )) continue;
++            ret = prop_cache[i].data;
++            found = TRUE;
++            break;
++        }
++        pthread_mutex_unlock( &prop_cache_lock );
++        if (found) return (HANDLE)ret;
++    }
+ 
+     SERVER_START_REQ( get_window_property )
+     {
+         req->window = wine_server_user_handle( hwnd );
+         if (IS_INTRESOURCE(str)) req->atom = LOWORD(str);
+-        else wine_server_add_data( req, str, lstrlenW(str) * sizeof(WCHAR) );
++        else wine_server_add_data( req, str, len * sizeof(WCHAR) );
+         if (!wine_server_call_err( req )) ret = reply->data;
++        else cacheable = FALSE;
+     }
+     SERVER_END_REQ;
++
++    if (cacheable)
++    {
++        pthread_mutex_lock( &prop_cache_lock );
++        /* replace an entry of the same window and name, or the oldest */
++        for (i = 0; i < PROP_CACHE_SIZE; i++)
++        {
++            entry = &prop_cache[i];
++            if (entry->hwnd != hwnd || entry->id != id) continue;
++            if (IS_INTRESOURCE(str) ? entry->atom == LOWORD(str) :
++                !entry->atom && !memcmp( entry->name, str, (len + 1) * sizeof(WCHAR) )) break;
++        }
++        if (i == PROP_CACHE_SIZE) i = prop_cache_next++ % PROP_CACHE_SIZE;
++        entry = &prop_cache[i];
++        entry->hwnd   = hwnd;
++        entry->id     = id;
++        entry->serial = serial;
++        entry->atom   = IS_INTRESOURCE(str) ? LOWORD(str) : 0;
++        if (!entry->atom) memcpy( entry->name, str, (len + 1) * sizeof(WCHAR) );
++        entry->data   = ret;
++        pthread_mutex_unlock( &prop_cache_lock );
++    }
+     return (HANDLE)ret;
+ }
+ 
+diff --git a/include/wine/server_protocol.h b/include/wine/server_protocol.h
+index 380d0ac..91ac8e9 100644
+--- a/include/wine/server_protocol.h
++++ b/include/wine/server_protocol.h
+@@ -1055,6 +1055,7 @@ typedef volatile struct
+ {
+     struct obj_locator   class;
+     unsigned int         dpi_context;
++    unsigned int         prop_serial;
+ } window_shm_t;
+ 
+ typedef volatile union
+@@ -7142,6 +7143,6 @@ union generic_reply
+     struct get_shared_icon_reply get_shared_icon_reply;
+ };
+ 
+-#define SERVER_PROTOCOL_VERSION 931
++#define SERVER_PROTOCOL_VERSION 932
+ 
+ #endif /* __WINE_WINE_SERVER_PROTOCOL_H */
+diff --git a/server/protocol.def b/server/protocol.def
+index 72a8766..3d763b0 100644
+--- a/server/protocol.def
++++ b/server/protocol.def
+@@ -1071,6 +1071,7 @@ typedef volatile struct
+ {
+     struct obj_locator   class;            /* object locator for the window class shared object */
+     unsigned int         dpi_context;      /* DPI awareness context */
++    unsigned int         prop_serial;      /* changed with every set or removed window property */
+ } window_shm_t;
+ 
+ typedef volatile union
+diff --git a/server/window.c b/server/window.c
+index d58f643..0ebf501 100644
+--- a/server/window.c
++++ b/server/window.c
+@@ -469,6 +469,16 @@ static int add_handle_to_array( struct user_handle_array *array, user_handle_t h
+     return 1;
+ }
+ 
++/* tell the clients that cache GetProp answers that the window's properties changed */
++static void properties_changed( struct window *win )
++{
++    SHARED_WRITE_BEGIN( win->shared, window_shm_t )
++    {
++        shared->prop_serial++;
++    }
++    SHARED_WRITE_END;
++}
++
+ /* set a window property */
+ static void set_property( struct window *win, atom_t atom, lparam_t data, enum property_type type )
+ {
+@@ -488,6 +498,7 @@ static void set_property( struct window *win, atom_t atom, lparam_t data, enum p
+         {
+             win->properties[i].type = type;
+             win->properties[i].data = data;
++            properties_changed( win );
+             return;
+         }
+     }
+@@ -515,6 +526,7 @@ static void set_property( struct window *win, atom_t atom, lparam_t data, enum p
+     win->properties[free].atom = atom;
+     win->properties[free].type = type;
+     win->properties[free].data = data;
++    properties_changed( win );
+ }
+ 
+ /* remove a window property */
+@@ -530,6 +542,7 @@ static lparam_t remove_property( struct window *win, atom_t atom )
+         {
+             release_atom( table, atom );
+             win->properties[i].type = PROP_TYPE_FREE;
++            properties_changed( win );
+             return win->properties[i].data;
+         }
+     }
+@@ -688,6 +701,7 @@ static struct window *create_window( struct window *parent, struct window *owner
+     {
+         shared->class       = class_locator;
+         shared->dpi_context = NTUSER_DPI_PER_MONITOR_AWARE;
++        shared->prop_serial = 0;
+     }
+     SHARED_WRITE_END;
+ 
