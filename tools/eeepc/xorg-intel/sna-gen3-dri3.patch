@@ -1,0 +1,21 @@
+Description: let a gen3 GPU have DRI3 when the configuration asks for it
+ SNA enables DRI3 only from gen4 on, whatever Option "DRI" says. Mesa 25 has
+ no DRI2 client any more, so on gen3 (GMA 3150, Pineview) every OpenGL program
+ on X fell back to llvmpipe, although Mesa's i915 driver works on the device.
+ With this change, Option "DRI" "3" in the configuration also enables DRI3 on
+ gen3; without the option nothing changes.
+Author: win4wine (EeePC fork)
+Forwarded: not-needed
+
+--- a/src/sna/sna_driver.c
++++ b/src/sna/sna_driver.c
+@@ -445,7 +445,8 @@ static void setup_dri(struct sna *sna)
+ 	sna->dri3.override =
+ 		!sna->dri3.available ||
+ 		xf86IsOptionSet(sna->Options, OPTION_DRI);
+-	if (level >= 3 && sna->kgem.gen >= 040)
++	if (level >= 3 &&
++	    (sna->kgem.gen >= 040 || xf86IsOptionSet(sna->Options, OPTION_DRI)))
+ 		sna->dri3.enable = sna->dri3.available;
+ #endif
+ #if HAVE_DRI2

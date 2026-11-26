@@ -10,6 +10,22 @@ Atom N550 (2 cores, 4 threads), Intel GMA 3150 (the intel DDX with SNA, gen3, so
 schedutil governor. English XP with Luna, in the X11 session. It is far slower and smaller than what upstream tested (VMs at 1280x800),
 so expect bugs from timing (e.g. the supervisor's `readiness_timeout` of 30 s), from the 600 px screen height and from the old GPU.
 
+## OpenGL on the GMA 3150
+
+Mesa 25 has no DRI2 client any more, and the intel DDX (SNA) enables DRI3 only from gen4 on, whatever `Option "DRI"` says. So
+every OpenGL program on X used llvmpipe (AoE 2: four llvmpipe threads at about 190% of the four logical CPUs), although Mesa's i915
+driver works on the device (`i915 (chipset: Pineview M)`, OpenGL 2.1, through GBM). `xorg-intel/build.sh` builds Debian's package
+with `sna-gen3-dri3.patch`, which lets gen3 have DRI3 when the configuration asks for it, into `.local/xorg-intel/`. On the EeePC
+it goes with `/etc/X11/xorg.conf.d/20-intel.conf`:
+
+```
+Section "Device"
+    Identifier "Intel"
+    Driver     "intel"
+    Option     "DRI" "3"
+EndSection
+```
+
 ## Driving the session and looking at it
 
 | Tool | What it does |
