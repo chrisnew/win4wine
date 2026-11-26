@@ -26,6 +26,10 @@ Section "Device"
 EndSection
 ```
 
+Measured 2026-11-26, AoE 2 in a game, 10 s with `top`: with llvmpipe the game took 295% (llvmpipe threads 192%, main thread 75%,
+wined3d 13%), wineserver 7.5%, Xorg 13%. With the patched DDX (and Wine with ntsync, kernel 7.3.4): the game 124% (main thread 68%,
+wined3d 45%), wineserver 17%, Xorg 21%, PulseAudio 15%; the CPUs 48% idle against 17%.
+
 ## Driving the session and looking at it
 
 | Tool | What it does |
