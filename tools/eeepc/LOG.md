@@ -47,6 +47,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | Disk | `/` mounted `noatime,nodiratime`; 9.5 GB swap partition `/dev/sda2` | ? (the disk is a spinning HDD, Toshiba MK2552GSX) | ? |
 | Power | `tlp` installed, configuration untouched | | 2026-11-23 |
 | Remote access | `openssh-server` | Driving and measuring the machine from the development machine | 2026-11-23 |
+| Profiling | `linux-perf` 7.3.4 (trixie-backports, matches the kernel) and `strace` | Profiling Wine programs on the machine itself; `perf_event_paranoid` stays 3, so perf runs with sudo | 2026-11-26 |
 | Build tools | build-essential, MinGW, Xvfb, python3-xlib and the rest of win4wine's build dependencies | Building Wine and the bridge on the machine (Wine is now built in a container on the development machine) | 2026-11-23 |
 
 ## Open
@@ -72,6 +73,15 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-26: linux-perf and strace installed
+
+- **What:** `sudo apt-get install -t trixie-backports linux-perf strace` (perf 7.3.4, the same version as the kernel; trixie's
+  own is 6.12). `/proc/sys/kernel/perf_event_paranoid` is left at 3, so perf runs with `sudo`.
+- **Why:** OpenGL games are slow although they run on the GPU: Half-Life Alpha's render thread used a whole logical CPU
+  (69% user, 32% kernel) and needed a profile to say where.
+- **Result:** both run (`perf --version`, `strace -V`). The profile itself is in the [README](README.md#opengl-on-the-gma-3150).
+- **Undo:** `sudo apt-get remove linux-perf strace`, then `sudo apt-get autoremove`.
 
 ### 2026-11-26: Wine with ntsync and patches up to 0156 installed
 

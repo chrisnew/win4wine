@@ -33,6 +33,21 @@ Measured 2026-11-26, AoE 2 in a game, 10 s with `top`: with llvmpipe the game to
 wined3d 13%), wineserver 7.5%, Xorg 13%. With the patched DDX (and Wine with ntsync, kernel 7.3.4): the game 124% (main thread 68%,
 wined3d 45%), wineserver 17%, Xorg 21%, PulseAudio 15%; the CPUs 48% idle against 17%.
 
+**Half-Life Alpha (2026-11-26): the cost is Wine's WoW64 crossing, not the GPU.** The game runs on the GPU (it holds
+`renderD128`, no llvmpipe threads), but its render thread uses a whole logical CPU: 69% user, 32% kernel. `perf record -g` over
+15 s of play: of the thread's samples, about 59% go to getting each call from the 32-bit game into 64-bit Unix code (the
+kernel's `arch_prctl` path, `__wine_unix_call_dispatcher`, `wow64cpu.dll`, both halves of opengl32) and about 37% to the real
+work (Mesa's i915 and its compiled vertex code, libGL, the i915 kernel driver at 1–2%). The game draws in immediate mode:
+`glBegin`, then `glTexCoord2f`/`glVertex3fv`/`glColor4f` for each vertex, then `glEnd`, and every one of those calls is a
+separate unix call.
+
+Each unix call of a WoW64 thread must set FS back to glibc's thread pointer (`signal_x86_64.c`, `__wine_unix_call_dispatcher`).
+With `wrfsbase` that is one instruction, but the Atom N550 has no FSGSBASE, so Wine makes an `arch_prctl(ARCH_SET_FS)` system
+call each time. `perf record -e syscalls:sys_enter_arch_prctl -a` for 5 s: 181,000 a second from the game, a few hundred from
+everything else (xp-explorer about 360 a second), so the shell does not suffer from it. The CPU reports "Not affected" for every
+vulnerability, so no mitigations add to the cost. The fix to try is in opengl32: collect the calls between `glBegin` and `glEnd`
+on the PE side and send them across in one unix call.
+
 ## Driving the session and looking at it
 
 | Tool | What it does |
