@@ -50,6 +50,11 @@ On 2026-11-23, a 60 Hz drag of an xterm by its XP caption cost about 40% of a co
   `write_geometry` runs on every step and also wakes the proxy.
 - **Fixed 2026-11-26:** xptray reads the volume from a helper on `pactl subscribe` instead of starting processes every 2 s
   (52 → 19 wakeups a second), and Wine 0155 stops each Unix program start from leaking two files (xptray held 6224 fds after two days).
+- **Live, 2026-11-26, with the C WM (`wm.c`):** a 60 Hz drag by the XP caption costs proxy 13-16%, wineserver 13%, Xorg 8.5%,
+  xp-explorer 4.5%, WM 3.7% (wm.py: 40%), still 1-2 px behind. A Linux window that moves itself (GTK's header bar, Alt+drag;
+  `w4w-selfmove`: the client configures itself 480 times) cost proxy 53%, wineserver 44%, Xorg 13%, xp-explorer 12%, WM 8%: three or
+  four whole proxy passes a step. Since 7d3fe2a the proxy runs only `frame_geometry` for `geometry.tsv` and moved frames:
+  proxy 27-31%, wineserver 22%. Writing any file 60 times a second into the IPC directory alone cost proxy 53% and wineserver 47%.
 - **Idle wakeups still open** (see [BUGS.md](../../BUGS.md)): the taskbar's
   notification area repaints whenever xptray's network icon lights up for traffic, and each repaint makes 27
   `GetProp("UxSubclassInfo")` server round trips (comctl32 subclassing).
