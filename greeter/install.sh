@@ -12,6 +12,7 @@
 #                                Windows 7's logon screen (greeter/win7-greeter.py) from
 #                                extract/win7.py's output; SESSION defaults to windows7-shell
 #   greeter/install.sh --remove  go back to the greeter LightDM used before
+# With XP's greeter the XP session can also lock the screen (/etc/pam.d/win4wine-lock).
 # Restart LightDM afterwards. Without the XP files the greeter starts lightdm-gtk-greeter.
 set -euo pipefail
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
@@ -19,7 +20,7 @@ share=/usr/local/share/win4wine/greeter
 seat=/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf
 sudo() { if [[ $EUID -eq 0 ]]; then "$@"; else command sudo "$@"; fi; }
 if [[ ${1:-} == --remove ]]; then
-    sudo rm -f "$seat"
+    sudo rm -f "$seat" /etc/pam.d/win4wine-lock
     printf 'Removed %s; LightDM uses its previous greeter after a restart.\n' "$seat"
     exit 0
 fi
@@ -74,8 +75,10 @@ done
 # LightDM runs the greeter as its own user, which cannot read a private home or checkout.
 sudo install -d -m755 "$share/code" "$share/assets/system32" "$share/assets/fonts" "$share/assets/pictures" \
     "$share/assets/themes/Luna"
-sudo install -m644 "$root"/greeter/{welcome,xpres,xdraw}.py "$share/code/"
+sudo install -m644 "$root"/greeter/{welcome,welcomeinput,xpres,xdraw}.py "$share/code/"
 sudo install -m755 "$root/greeter/xp-greeter.py" "$share/code/"
+# The session's lock screen (greeter/xp-lock.py) checks the password with this.
+sudo install -Dm644 "$root/greeter/win4wine-lock.pam" /etc/pam.d/win4wine-lock
 sudo install -m644 "$assets"/system32/{logonui.exe,msgina.dll,winlogon.exe} "$share/assets/system32/"
 fonts=(fonts/msgothic.ttc fonts/arial.ttf)
 if [[ $(python3 "$root/extract/media.py" "$assets") == en ]]; then

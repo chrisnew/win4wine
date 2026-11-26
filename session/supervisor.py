@@ -21,6 +21,7 @@ from xml.sax.saxutils import escape
 from Xlib import X, display, error
 
 import dpi
+from screen import Screen
 from wineenv import SHELLS, environment
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,8 @@ POWER_OFF_WAIT = 60
 # to 640x480) leaves the taskbar outside the new screen for a moment, and
 # Wine unmaps a window that is wholly outside it until Explorer moves it in.
 TASKBAR_GRACE = 10
+# The lock screen checks the password with this PAM service (greeter/install.sh)
+LOCK_PAM = Path('/etc/pam.d/win4wine-lock')
 IM_VARIABLES = ('XMODIFIERS', 'GTK_IM_MODULE', 'QT_IM_MODULE', 'SDL_IM_MODULE', 'CLUTTER_IM_MODULE')
 
 
@@ -119,6 +122,19 @@ class Session:
         self.env['WIN4WINE_SESSION_REQUEST'] = 'Z:' + str(self.request.resolve()).replace('/', '\\')
         self.power_commands = {'shutdown': config.get('shutdown_command', ['systemctl', 'poweroff']),
                                'reboot': config.get('reboot_command', ['systemctl', 'reboot'])}
+        # XP's screen savers and lock screen (session/screen.py), in the XP
+        # session on X. Wine's LockWorkStation asks for the lock in a file.
+        self.guard = None
+        self.guarded = self.shell['marker'] == 'xp-shell.json' and not self.compositor
+        self.screen_saver = config.get('screen_saver', True)
+        self.lock_screen = self.guarded and config.get('lock_screen', True) and LOCK_PAM.is_file()
+        self.lock_on_suspend = config.get('lock_on_suspend', True)
+        self.dpms = config.get('dpms', 0)
+        if not isinstance(self.dpms, int) or self.dpms < 0:
+            raise SystemExit('Invalid dpms: the seconds until the monitor goes off, 0 for never')
+        if self.lock_screen:
+            request = self.ipc / 'lock-request'
+            self.env['WIN4WINE_LOCK_REQUEST'] = 'Z:' + str(request).replace('/', '\\')
         self.processes = []
         # XP's Welcome screen covers the shell's start and the session's end (greeter/xp-splash.py).
         self.welcome_screen = config.get('welcome_screen', True) and self.shell['welcome']
@@ -378,6 +394,31 @@ class Session:
             self.welcome.stdin.close()
             self.welcome = None
 
+    def start_guard(self):
+        """Screen savers and the lock screen, once the shell is up."""
+        if not self.guarded or self.guard:
+            return
+        idle = ROOT / '.local/bridge/idle-watch'
+        if self.screen_saver and not os.access(idle, os.X_OK):
+            print('idle-watch is not built (bridge-wm/build.sh): no screen saver', file=sys.stderr)
+        lock = logind = None
+        if self.lock_screen:
+            lock = [sys.executable, str(ROOT / 'greeter/xp-lock.py'), '--dpi', str(self.dpi),
+                    '--assets', str(self.xp_assets())]
+            if self.lock_on_suspend:
+                logind = [sys.executable, str(ROOT / 'session/logind-watch.py')]
+        self.guard = Screen(prefix=self.prefix, ipc=self.ipc, logs=self.state, env=self.env,
+                            saver_command=[self.wine],
+                            idle_command=[str(idle)] if self.screen_saver and os.access(idle, os.X_OK) else None,
+                            lock_command=lock, logind_command=logind, dpms=self.dpms)
+        self.guard.start()
+
+    def close_guard(self):
+        if self.guard:
+            self.guard.close(self.halt)
+            self.guard = None
+        self.guarded = False
+
     def tray(self):
         # The taskbar found last time is checked first; a full search asks
         # the X server about every top-level window.
@@ -414,15 +455,23 @@ class Session:
             root.change_attributes(event_mask=X.SubstructureNotifyMask)
 
     def wait(self, processes, timeout=None):
-        """Sleep until a window changes, one of the processes exits, a signal comes or the timeout passes."""
+        """Sleep until a window changes, one of the processes exits, a signal comes or the timeout passes.
+
+        It also wakes for the screen savers and the lock screen, and handles them."""
         fds = [self.d.fileno(), self.wakeup[0]]
+        if self.guard:
+            fds += self.guard.fds()
+            guarded = self.guard.processes()
+            if any(p.poll() is not None for p in guarded):
+                timeout = 0  # exited since it was handled
+            processes = (*processes, *guarded)
+        for process in [p for p in self.pidfds if p.poll() is not None]:
+            os.close(self.pidfds.pop(process))
         for process in processes:
             if process and process.poll() is None:
                 if process not in self.pidfds:
                     self.pidfds[process] = os.pidfd_open(process.pid)
                 fds.append(self.pidfds[process])
-        for process in [p for p in self.pidfds if p.poll() is not None]:
-            os.close(self.pidfds.pop(process))
         while True:
             ready = []
             if not self.d.pending_events() and not self.stopping:
@@ -437,6 +486,8 @@ class Session:
             # Without a timeout the taskbar is up: windows that only move
             # or change size (each step of a drag) need no check.
             if timeout is not None or not moves or self.stopping or set(ready) - {self.d.fileno()}:
+                if self.guard and not self.stopping:
+                    self.guard.handle()
                 return
 
     def halt(self, *processes):
@@ -559,6 +610,7 @@ class Session:
                     ready = True
                     self.status('xp-shell', attempt=attempt)
                     self.hide_welcome()
+                    self.start_guard()
                     if attempt == 1:
                         self.play_sound('SystemStart')
                 if ready and has_tray:
@@ -614,6 +666,7 @@ class Session:
             return False
         if request not in ('logoff', 'shutdown', 'reboot'):
             return False
+        self.close_guard()
         self.show_welcome('logoff')
         self.wait_welcome()
         sound = self.play_sound('WindowsLogoff')
@@ -640,6 +693,8 @@ class Session:
 
     def fallback(self, wm):
         self.hide_welcome()
+        if self.guard:
+            self.guard.stop_saving()
         env = dict(self.env)
         env.pop('WIN4WINE_EXTERNAL_SHELL', None)
         env.pop('WIN4WINE_SHELL', None)
@@ -662,6 +717,7 @@ class Session:
 
     def close(self):
         self.stopping = True
+        self.close_guard()
         self.halt(*reversed(self.processes))
         try:
             self.stop_wine()

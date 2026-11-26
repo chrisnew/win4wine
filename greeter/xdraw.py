@@ -7,17 +7,21 @@ def pixmap(d, surface):
     screen = d.screen()
     width, height = surface.get_width(), surface.get_height()
     result = screen.root.create_pixmap(width, height, screen.root_depth)
-    gc = result.create_gc()
     surface.flush()
-    data, stride = bytes(surface.get_data()), surface.get_stride()
+    put_rows(d, result, bytes(surface.get_data()), surface.get_stride(), width, 0, height)
+    return result
+
+
+def put_rows(d, drawable, data, stride, width, top, bottom):
+    """Rows TOP to BOTTOM (excluded) of an image of 32 bits per pixel onto DRAWABLE."""
+    depth = d.screen().root_depth
+    gc = drawable.create_gc()
     # Keep each PutImage request well under the server's request size.
     rows = max(1, 200000 // stride)
-    for y in range(0, height, rows):
-        count = min(rows, height - y)
-        result.put_image(gc, 0, y, width, count, X.ZPixmap, screen.root_depth, 0,
-                         data[y * stride:(y + count) * stride])
+    for y in range(top, bottom, rows):
+        count = min(rows, bottom - y)
+        drawable.put_image(gc, 0, y, width, count, X.ZPixmap, depth, 0, data[y * stride:(y + count) * stride])
     gc.free()
-    return result
 
 
 def set_root_background(d, surface):

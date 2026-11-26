@@ -16,7 +16,7 @@ import traceback
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-CARET_BLINK = 530      # ms, Windows' default
+from welcomeinput import CARET_BLINK, Input
 TOOLTIP_DELAY = 500    # ms, Windows' default initial delay
 FADE_DELAY, FADE_TIME = 1.0, 2.5  # s; XP starts fading the screen about a second after the dialog
 
@@ -47,7 +47,7 @@ def fallback(reason):
     os.execv(program, command)
 
 
-class Greeter:
+class Greeter(Input):
     def __init__(self, config, assets):
         import welcome
         self.welcome = welcome
@@ -66,7 +66,6 @@ class Greeter:
         self.screen.can_standby = LightDM.get_can_suspend()
         self.message = None
         self.fade_start = None
-        self.pressed = None
         self.pointer = (0, 0)
         self.tooltip_timer = None
         self.lightdm.connect('show-prompt', self.on_prompt)
@@ -201,10 +200,10 @@ class Greeter:
             s.mode, s.status = 'list', ''
             self.select(None)
 
-    # Input ----------------------------------------------------------
+    # Input (welcomeinput.py; here also the shutdown dialog) ----------
 
     def target(self, x, y):
-        """What is under the pointer: ('user', i), ('go',), ('power',), ('dialog', name) or None."""
+        """As welcomeinput.Input, and ('dialog', name) while the dialog is open."""
         s = self.screen
         if s.dialog:
             rects = s.dialog_rects(self.width, self.height)
@@ -215,25 +214,13 @@ class Greeter:
                         return None
                     return ('dialog', name)
             return None
-        if s.mode != 'list':
-            return None
-        px, py, pw, ph = s.power_rect(self.width, self.height)
-        if px <= x < px + pw and py <= y < py + ph:
-            return ('power',)
-        if s.selected is not None and s.prompt:
-            gx, gy, gw, gh = s.password_rects(self.width, self.height)['go']
-            if gx <= x < gx + gw and gy <= y < gy + gh:
-                return ('go',)
-        index = s.item_at(self.width, self.height, x, y)
-        return ('user', index) if index is not None else None
+        return super().target(x, y)
 
-    def on_motion(self, area, event):
+    def motion(self, x, y):
         s = self.screen
-        target = self.target(event.x, event.y)
-        hover = target[1] if target and target[0] == 'user' else None
+        target = self.target(x, y)
         dialog_hover = target[1] if target and target[0] == 'dialog' else None
-        power = target == ('power',)
-        self.pointer = (int(event.x), int(event.y))
+        self.pointer = (int(x), int(y))
         if dialog_hover != s.dialog_hover:
             # The dialog's buttons explain themselves after the pointer rests on them.
             if self.tooltip_timer:
@@ -242,12 +229,45 @@ class Greeter:
             s.tooltip = None
             if dialog_hover in ('standby', 'off', 'restart'):
                 self.tooltip_timer = GLib.timeout_add(TOOLTIP_DELAY, self.show_tooltip, dialog_hover)
-        if (hover, dialog_hover, power) != (s.hover, s.dialog_hover, s.power_hover):
-            s.hover, s.dialog_hover, s.power_hover = hover, dialog_hover, power
+            s.dialog_hover = dialog_hover
             self.refresh()
-        hand = target is not None and target != ('user', s.selected)
-        self.window.get_window().set_cursor(self.cursors['pointer' if hand else 'default'])
-        return True
+        return super().motion(x, y)
+
+    def press(self, x, y):
+        super().press(x, y)
+        if self.pressed and self.pressed[0] == 'dialog':
+            self.screen.dialog_pressed = self.pressed[1]
+            self.refresh()
+
+    def release(self, x, y):
+        self.screen.dialog_pressed = None
+        super().release(x, y)
+
+    def activate(self, target):
+        if target[0] == 'power':
+            self.open_dialog()
+        elif target[0] == 'dialog':
+            self.dialog_action(target[1])
+
+    def key(self, name, character):
+        s = self.screen
+        if not s.dialog:
+            super().key(name, character)
+            return
+        order = [n for n in ('standby', 'off', 'restart') if n != 'standby' or s.can_standby]
+        if name == 'Escape':
+            self.dialog_action('cancel')
+        elif name in ('Left', 'Right', 'Tab', 'ISO_Left_Tab'):
+            step = -1 if name in ('Left', 'ISO_Left_Tab') else 1
+            current = order.index(s.dialog_focus) if s.dialog_focus in order else 0
+            s.dialog_focus = order[(current + step) % len(order)]
+        elif name in ('Return', 'KP_Enter', 'space'):
+            self.dialog_action(s.dialog_focus)
+        else:
+            mnemonics = {'s': 'standby', 'u': 'off', 'r': 'restart'}
+            if name.lower() in mnemonics and mnemonics[name.lower()] in order:
+                self.dialog_action(mnemonics[name.lower()])
+        self.refresh()
 
     def show_tooltip(self, name):
         self.tooltip_timer = None
@@ -256,36 +276,26 @@ class Greeter:
             self.refresh()
         return False
 
+    # The events GTK delivers ----------------------------------------
+
+    def on_motion(self, area, event):
+        hand = self.motion(event.x, event.y)
+        self.window.get_window().set_cursor(self.cursors['pointer' if hand else 'default'])
+        return True
+
     def on_press(self, area, event):
         if event.button == 1:
-            self.pressed = self.target(event.x, event.y)
-            if self.pressed and self.pressed[0] == 'dialog':
-                self.screen.dialog_pressed = self.pressed[1]
-                self.refresh()
+            self.press(event.x, event.y)
         return True
 
     def on_release(self, area, event):
-        if event.button != 1:
-            return True
-        target, pressed = self.target(event.x, event.y), self.pressed
-        self.pressed = None
-        self.screen.dialog_pressed = None
-        if target != pressed:
-            self.refresh()
-            return True
-        s = self.screen
-        if target is None:
-            if not s.dialog and s.selected is not None and s.item_at(self.width, self.height, event.x, event.y) is None:
-                self.select(None)
-        elif target[0] == 'user' and target[1] != s.selected:
-            self.select(target[1])
-        elif target[0] == 'go':
-            self.submit()
-        elif target[0] == 'power':
-            self.open_dialog()
-        elif target[0] == 'dialog':
-            self.dialog_action(target[1])
-        self.refresh()
+        if event.button == 1:
+            self.release(event.x, event.y)
+        return True
+
+    def on_key(self, area, event):
+        code = Gdk.keyval_to_unicode(event.keyval)
+        self.key(Gdk.keyval_name(event.keyval) or '', chr(code) if code else '')
         return True
 
     def open_dialog(self):
@@ -310,53 +320,6 @@ class Greeter:
         elif name == 'restart':
             LightDM.restart()
         self.refresh()
-
-    def on_key(self, area, event):
-        s = self.screen
-        key = Gdk.keyval_name(event.keyval) or ''
-        if s.dialog:
-            order = [n for n in ('standby', 'off', 'restart') if n != 'standby' or s.can_standby]
-            if key == 'Escape':
-                self.dialog_action('cancel')
-            elif key in ('Left', 'Right', 'Tab', 'ISO_Left_Tab'):
-                step = -1 if key in ('Left', 'ISO_Left_Tab') else 1
-                current = order.index(s.dialog_focus) if s.dialog_focus in order else 0
-                s.dialog_focus = order[(current + step) % len(order)]
-            elif key in ('Return', 'KP_Enter', 'space'):
-                self.dialog_action(s.dialog_focus)
-            else:
-                mnemonics = {'s': 'standby', 'u': 'off', 'r': 'restart'}
-                if key.lower() in mnemonics and mnemonics[key.lower()] in order:
-                    self.dialog_action(mnemonics[key.lower()])
-            self.refresh()
-            return True
-        if s.mode != 'list':
-            return True
-        if s.selected is not None and s.prompt:
-            if key in ('Return', 'KP_Enter'):
-                self.submit()
-            elif key == 'Escape':
-                self.select(None)
-            elif key == 'BackSpace':
-                s.password = s.password[:-1]
-            else:
-                character = chr(Gdk.keyval_to_unicode(event.keyval)) if Gdk.keyval_to_unicode(event.keyval) else ''
-                if character.isprintable() and character and len(s.password) < 127:
-                    s.password += character
-                    s.error = False
-            s.caret = True
-            self.refresh()
-            return True
-        if key in ('Up', 'Down'):
-            count = len(s.users)
-            current = s.hover if s.hover is not None else (-1 if key == 'Down' else count)
-            s.hover = max(0, min(count - 1, current + (1 if key == 'Down' else -1)))
-            self.refresh()
-        elif key in ('Return', 'KP_Enter', 'space') and s.hover is not None:
-            self.select(s.hover)
-        elif key == 'Escape' and s.selected is not None:
-            self.select(None)
-        return True
 
 
 def main():

@@ -91,6 +91,17 @@ that shell's DLLs are used only in that shell's processes (the same override iso
 - Text is drawn imitating GDI's placement, and the layout matches numbers measured on a real XP's screen
   ("ログイン画面（段階 9）", the login screen, stage 9).
 
+## Screen savers and the lock screen
+
+- The screen savers are XP's own, with XP's settings; the session only decides when to start them, because Wine starts none.
+- Idle time is watched by a small C helper, not by the WM, so that `wm.c` and `wm.py` do not both have to do it, and with XSync
+  alarms, so that an idle Atom is not woken up.
+- The lock screen is inside the session, not LightDM's (`dm-tool lock`): a VT switch with a second X server and a Python/GTK
+  greeter would take seconds on the Atom and flicker, while XP locks at once. The price is X's usual limit: if the lock screen
+  dies, the session is open until the supervisor has started it again, and the console (Ctrl+Alt+F1) is not locked.
+- No Microsoft code handles the password, as on the logon screen: PAM checks it. XP's files supply only images and strings.
+- It looks like Fast User Switching's Welcome screen, not the classic "Computer Locked" dialog. "Turn off computer" is left out.
+
 ## DPI
 
 - As in XP, a single `LogPixels` decides it. XP has no DPI virtualization and every app scales its own drawing, so Wine's bitmap

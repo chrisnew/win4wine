@@ -1,0 +1,4 @@
+# The XP session's lock screen (greeter/xp-lock.py): the password of the
+# logged-in user, checked as at login.
+@include common-auth
+@include common-account

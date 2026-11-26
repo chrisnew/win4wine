@@ -10,6 +10,9 @@ Display manager (LightDM)
       ├─ bridge-wm/wm.c (or wm.py) .... the X11 window manager (WM)
       ├─ bridge-wm/tray.py ............ broker for Linux tray icons
       ├─ fcitx5 ....................... Japanese input
+      ├─ session/idle-watch.c ......... says when the user is idle (screen savers)
+      ├─ greeter/xp-lock.py ........... the lock screen, while the screen is locked
+      ├─ session/logind-watch.py ...... locks on logind's request and before sleep
       ├─ proxy.exe (on Wine) .......... stand-ins for Linux windows, and their XP frames
       └─ xp-explorer.exe (on Wine) .... the XP shell (explorer.exe extracted from the ISO)
                     ↑ ↓  files in the IPC directory (WM ⇄ proxy ⇄ tray.py)
@@ -62,6 +65,8 @@ checks that they still give the same state (see [development.md](development.md)
   Windows owned by a raised window (`WM_TRANSIENT_FOR`; modal dialogs and the like) are kept above it, as in Windows.
 - Keeps each Linux window's frame (the proxy's window) just below that window and moves them together ("XP frames for Linux windows" below).
 - Takes Alt+Tab, the Windows key and Ctrl+Esc and passes them to the XP shell ("Keyboard" below).
+- Asks for the lock screen on Win+L, keeps its window (`_WIN4WINE_LOCK`) above everything but a screen saver, and gives the keyboard
+  back to the window that had it when the screen is unlocked ("Screen savers and the lock screen" below).
 - Publishes an XSETTINGS with `Gtk/DecorationLayout` set to `:`, which hides the close button and the like in GTK header bars (only when
   no other settings daemon is running).
 - Automatically redirects Wine's windows (except proxy frames) with Composite, so the X server keeps their contents (`composite` in
@@ -109,6 +114,8 @@ same directory and then renamed, so readers never see a half-written file. Each 
 | `icon-XID.argb` | WM → proxy | A Linux window's icon ("Icons" below) |
 | `tray.tsv`, `tray-ID.argb`, `menu-ID.tsv` | tray.py → proxy | Tray icons ("Tray icons" below) |
 | `*.tray` | proxy → tray.py | Clicks on tray icons and menu choices |
+| `lock-request` | WM (Win+L) and Wine's LockWorkStation → supervisor | `lock`; the supervisor removes it and locks the screen |
+| `lock` | supervisor | There while the screen is locked |
 | `proxy.lock` | proxy | While the proxy runs it holds the first byte with LockFile. The WM checks the proxy is alive with F_GETLK |
 
 ## XP frames for Linux windows
@@ -197,6 +204,37 @@ same directory and then renamed, so readers never see a half-written file. Each 
   `~/.local/state/win4wine/`; at each start the previous one becomes `*.log.1`. Wine logs only errors by default
   (`WINEDEBUG=+timestamp,fixme-all`, inherited by every Windows program in the session). To investigate, choose Wine channels with
   `"debug"` in `session.json` (e.g. `"+timestamp,+seh,+loaddll"`).
+
+## Screen savers and the lock screen (`session/screen.py`)
+
+Only in the XP shell's X11 session. The supervisor starts it once the shell is up, and sleeps on its pipes and processes with
+everything else: nothing polls, so an idle machine is not woken up.
+
+- **Settings**: XP's own, from Display Properties' Screen Saver tab: `ScreenSaveActive`, `ScreenSaveTimeOut`, `SCRNSAVE.EXE`
+  and `ScreenSaverIsSecure` in `HKCU\Control Panel\Desktop`. The supervisor reads them from the prefix's `user.reg` and watches it
+  with inotify (the wineserver writes it within half a minute of a change). Wine patch 0158 makes "active" the user's setting
+  instead of the X server's blanking timer. XP's tab writes `SCRNSAVE.EXE` to `system.ini` and reads it from the registry;
+  `prefix/extras.py` sets up Windows' `IniFileMapping` for that entry, so that both are the registry.
+- **Idle time**: `session/idle-watch.c` (built as `.local/bridge/idle-watch`) sets XSync alarms on the server's `IDLETIME` counter
+  and writes `idle` and `active`. It turns the X server's own blanking off and sets the monitor's DPMS off time (`dpms` in
+  `session.json`). Players that call `XResetScreenSaver` (mpv, VLC, and Wine's dinput for a joystick) hold the screen saver off.
+- **The screen saver** is the chosen `.scr` run with `/s`. The path the tab stores names `system32`, which for that 32-bit program
+  is `syswow64`; the supervisor translates it. One that ends by itself is not started again until the user has been active.
+- **The lock screen** (`greeter/xp-lock.py`) is XP's Welcome screen as Fast User Switching shows it: the session's user with "N
+  programs running" (the X windows that would have a taskbar button). It is an override-redirect window that holds the keyboard
+  and pointer grabs; PAM checks the password (`/etc/pam.d/win4wine-lock`, installed by `greeter/install.sh`; without that file the
+  session does not lock). It is started when:
+  - **Win+L**: XP's Explorer does not register it (a `+relay` trace of `RegisterHotKey`), so the WM does, writes `lock-request`
+    and passes the key on; patch 0159 keeps it from Windows programs.
+  - **LockWorkStation** (patch 0159), e.g. `rundll32.exe user32.dll,LockWorkStation`.
+  - **A screen saver starts with "On resume, password protect"**: the lock screen waits below the screen saver without the grabs,
+    and takes them when the screen saver's window goes. Within 5 seconds of its start, no password is asked for (XP's grace period).
+  - **logind** (`session/logind-watch.py`): the session's `Lock` signal (`loginctl lock-session`), and before sleep (a closed lid),
+    which it delays with an inhibitor until the screen is locked (`lock_on_suspend`).
+- The supervisor and the lock screen talk over its stdin and stdout (`session/screen.py` lists the words). While the screen is
+  locked a screen saver may start over it: the lock screen lets go of the grabs and takes them back when it ends.
+- A lock screen that dies without unlocking (exit status 0) is started again. One that fails three times without ever locking is
+  given up, so that a broken one does not restart for ever.
 
 ## The Start menu of Linux apps (`session/linux_apps.py`)
 

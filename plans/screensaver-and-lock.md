@@ -1,6 +1,29 @@
 # Plan: screen savers and a lock screen
 
-Status: planned (2026-11-26). Phase 0 (extracting the screen savers) is done and checked in the tab.
+Status (2026-11-27): phases 0 to 3 are written and checked in a Debian 13 container (the whole XP session on Xvfb with the
+patched Wine), **not yet on the EeePC**. What is left is under "Left to do". How it works now:
+[docs/architecture.md](../docs/architecture.md), "Screen savers and the lock screen"; the sections below are the plan as it was.
+
+## Left to do
+
+- On the EeePC (ask first): deploy (checkout, `bridge-wm/build.sh`, the new Wine, `scripts/setup.sh` for prefix `VERSION` 7,
+  `greeter/install.sh` for `/etc/pam.d/win4wine-lock`, then log in again) and log it in `tools/eeepc/LOG.md`.
+- Measure there: CPU and frame rate of each screen saver (phase 1.1), the time from Win+L to the lock screen and its CPU while the
+  caret blinks, wakeups at idle before and after, and whether the lid's suspend locks first. If the lock screen starts too slowly,
+  start it ahead of time and keep it waiting.
+- Decide after measuring whether a full-screen game should hold the screen saver off (XP does not skip it; not done).
+- Fast User Switching is still off, so the checkbox reads "On resume, password protect". Turning it on would also add "Switch
+  User" to XP's Log Off dialog, which has nothing behind it yet.
+- Not done: hardening against VT switches (2.5, only if wanted), "Switch User" (3.4), phase 4 (only if needed).
+
+## Found while building it
+
+- XP's Explorer does not register Win+L (phase 3.1), so the WM takes it, and patch 0159 keeps the "l" from Windows programs.
+- XP's tab writes `SCRNSAVE.EXE` to `system.ini` and reads it from the registry. Wine supports Windows' `IniFileMapping`; the
+  prefix lacked the entry (`prefix/extras.py`).
+- The tab's `system32` is `syswow64` for a program started from Linux.
+- Wine writes `user.reg` up to 30 seconds after a change, so a changed setting takes that long.
+- In the container, XP's popup menus show only their shadows on Xvfb, with the old WM too; unrelated, and not seen on the EeePC.
 
 Goal: XP's own screen savers start after the idle time set in Display Properties, and Win+L (and "On resume, display Welcome
 screen") shows XP's Welcome screen as a lock screen inside the session, without a VT switch. On the EeePC it must be instant and must

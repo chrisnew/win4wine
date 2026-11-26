@@ -30,6 +30,19 @@ if command -v gcc >/dev/null && [ -f /usr/include/xcb/xcb.h ]; then
 else
     printf 'No gcc or libxcb headers (libxcb1-dev): the session will run wm.py\n' >&2
 fi
+# The screen savers' idle time (session/idle-watch.c), a native program too.
+if command -v gcc >/dev/null && [ -f /usr/include/X11/extensions/sync.h ]; then
+    temporary=$(mktemp "$root/.local/bridge/idle-watch.XXXXXX")
+    if gcc -std=gnu11 -O2 -Wall -Wextra -Werror -o "$temporary" "$root/session/idle-watch.c" -lXext -lX11; then
+        chmod 755 "$temporary"
+        mv -f -- "$temporary" "$root/.local/bridge/idle-watch"
+    else
+        rm -f -- "$temporary"
+        exit 1
+    fi
+else
+    printf 'No gcc or libXext headers (libxext-dev): the session will have no screen saver\n' >&2
+fi
 # Sessions may still map these PE files. Publish new inodes without truncating
 # an executable that another Wine process is using.
 compile "$root/.local/bridge/proxy.exe" "$root/bridge-wm/proxy.c" -luser32 -lgdi32 -lshell32 -luxtheme

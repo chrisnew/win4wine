@@ -552,8 +552,9 @@ def escape(text):
 
 
 class User:
-    def __init__(self, name, display=None, picture=None, password=True):
+    def __init__(self, name, display=None, picture=None, password=True, note=''):
         self.name, self.display, self.picture, self.password = name, display or name, picture, password
+        self.note = note  # a line under the name, as "2 programs running."
 
 
 class Screen:
@@ -577,6 +578,7 @@ class Screen:
         self.prompt = True         # whether the selected account shows its password box
         self.error = False
         self.status = ''
+        self.power = True          # whether "Turn off computer" is offered
         self.power_hover = False
         self.dialog = False        # the "Turn off computer" dialog
         self.dialog_hover = None   # 'standby' | 'off' | 'restart' | 'cancel'
@@ -811,9 +813,11 @@ class Screen:
         # Bottom band.
         if self.mode == 'list':
             x, y, w, h = self.power_rect(width, height)
-            blit(a.bitmap('logonui', 107, key='corner', dimmed=dimmed), x, y, px(26), px(26), nearest=not smooth)
-            layout = self.power_layout(self.power_hover)
-            self.text.draw(cr, layout, x + px(28 + INSET), y, tint((255, 255, 255)))
+            if self.power:
+                blit(a.bitmap('logonui', 107, key='corner', dimmed=dimmed), x, y, px(26), px(26),
+                     nearest=not smooth)
+                layout = self.power_layout(self.power_hover)
+                self.text.draw(cr, layout, x + px(28 + INSET), y, tint((255, 255, 255)))
             layout = self.text.layout(a.string('logonui', 25).replace('\\n', '\n'),
                                       self.pt(int(a.string('logonui', 43) or 9)), width=px(325 - 18),
                                       family=a.bottom_face)
@@ -855,10 +859,14 @@ class Screen:
         name = self.name_layout(user.display)
         name_x = x + px(5 + 2 + 58 + 7) + INSET
         self.text.draw(cr, name, name_x, fy, tint(TEXT))
-        if self.mode == 'logon' and self.status:
-            layout = self.text.layout(self.status, self.pt(int(a.string('logonui', 46) or 9)), bold=True,
+        # The password's label takes the place of the account's note.
+        typing = selected and (self.prompt or self.error)
+        line = self.status if self.mode == 'logon' else user.note if self.mode == 'list' and not typing else ''
+        if line:
+            layout = self.text.layout(line, self.pt(int(a.string('logonui', 46) or 9)), bold=True,
                                       family=a.account_face)
-            self.text.draw(cr, layout, name_x, fy + self.text.size(name)[1], tint(STATUS))
+            self.text.draw(cr, layout, name_x, fy + self.text.size(name)[1],
+                           tint(TEXT if selected and self.mode == 'list' else STATUS))
         if alpha < 1:
             self.fade(target, area, under, 96)
         if selected and self.mode == 'list' and (self.prompt or self.error):
