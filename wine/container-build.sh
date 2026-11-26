@@ -35,15 +35,22 @@ done
 
 # The Wine build packages of scripts/setup.sh (Debian): keep these in step
 # with it, so that configure finds the same libraries as a build there.
+# The kernel headers come from trixie-backports: Debian 13's (6.12) have a
+# linux/ntsync.h without NTSYNC_IOC_EVENT_READ, and Wine then builds without
+# ntsync. The install still runs on 6.12, where /dev/ntsync is missing and
+# Wine keeps to the wineserver's synchronization.
 echo '>>> Preparing the Debian 13 build image'
 docker build -q -t "$image" - <<'EOF' >/dev/null
 FROM debian:trixie
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+RUN echo 'deb http://deb.debian.org/debian trixie-backports main' > /etc/apt/sources.list.d/backports.list \
+    && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential flex bison pkg-config git ca-certificates gettext \
         libx11-dev libxext-dev libxrender-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev \
         libfreetype-dev libfontconfig-dev libgnutls28-dev libgl-dev libasound2-dev libdbus-1-dev libudev-dev \
         gcc-mingw-w64-i686 gcc-mingw-w64-x86-64 \
         python3 \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -t trixie-backports linux-libc-dev \
+    && grep -q NTSYNC_IOC_EVENT_READ /usr/include/linux/ntsync.h \
     && rm -rf /var/lib/apt/lists/*
 EOF
 

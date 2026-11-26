@@ -39,6 +39,13 @@ if [[ -n ${WIN4WINE_PROGRESS:-} ]]; then
 else
     echo '>>> Compiling'
 fi
+# Make does not follow system headers: the two files that use ntsync are
+# compiled again when linux/ntsync.h changes (e.g. newer kernel headers).
+ntsync_stamp=$(sha256sum /usr/include/linux/ntsync.h 2>/dev/null || echo none)
+if [[ $(cat .win4wine-ntsync 2>/dev/null) != "$ntsync_stamp" ]]; then
+    rm -f dlls/ntdll/unix/sync.o server/inproc_sync.o
+    echo "$ntsync_stamp" > .win4wine-ntsync
+fi
 make -j"${JOBS:-6}"
 echo '>>> Installing'
 make install
