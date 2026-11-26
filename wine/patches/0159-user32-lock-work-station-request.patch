@@ -1,0 +1,73 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] user32, win32u: ask the external shell session to lock the screen
+
+Purpose: lock the XP session from Windows programs: Win+L if the shell
+calls it, "rundll32.exe user32.dll,LockWorkStation" and others.
+Windows behavior: LockWorkStation asks for the workstation to be locked and
+returns without waiting.
+Wine before: a stub that failed with ERROR_CALL_NOT_IMPLEMENTED.
+Change: when WIN4WINE_LOCK_REQUEST names a file, write "lock" to it and
+return TRUE. The session supervisor watches the file and shows its lock
+screen (greeter/xp-lock.py). XP's explorer does not register Win+L (a
++relay trace of RegisterHotKey and LockWorkStation: XP leaves it to
+Windows), so bridge-wm asks for the lock itself and passes the key on:
+win32u (in the XP session) delivers an L pressed with the Windows key to
+no program. Without that, Wine saw only the Windows key go down and up
+under the lock screen, and opened the Start menu on unlocking (0029).
+Scope: LockWorkStation changes only when WIN4WINE_LOCK_REQUEST is set,
+which the session does when it can lock the screen; Win+L is kept from
+programs in the XP session.
+---
+ dlls/user32/user_main.c | 21 +++++++++++++++++++++
+ dlls/win32u/message.c   |  8 ++++++++
+ 2 files changed, 29 insertions(+)
+
+diff --git a/dlls/user32/user_main.c b/dlls/user32/user_main.c
+--- a/dlls/user32/user_main.c
++++ b/dlls/user32/user_main.c
+@@ -335,6 +335,27 @@
+  */
+ BOOL WINAPI LockWorkStation(void)
+ {
++    WCHAR path[MAX_PATH];
++
++    /* An external shell session locks the screen itself. As on Windows, the
++     * call only asks for it and does not wait for the screen to be locked. */
++    if (GetEnvironmentVariableW( L"WIN4WINE_LOCK_REQUEST", path, MAX_PATH ) - 1 < MAX_PATH - 1)
++    {
++        HANDLE file = CreateFileW( path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS,
++                                   FILE_ATTRIBUTE_NORMAL, NULL );
++        DWORD written;
++        BOOL ret;
++
++        if (file == INVALID_HANDLE_VALUE)
++        {
++            ERR( "cannot record lock request in %s\n", debugstr_w(path) );
++            return FALSE;
++        }
++        ret = WriteFile( file, "lock\n", 5, &written, NULL );
++        CloseHandle( file );
++        return ret;
++    }
++
+     TRACE(": stub\n");
+     SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+     return FALSE;
+diff --git a/dlls/win32u/message.c b/dlls/win32u/message.c
+--- a/dlls/win32u/message.c
++++ b/dlls/win32u/message.c
+@@ -2607,6 +2607,14 @@
+             return FALSE;
+         }
+         win_key_alone = FALSE;
++        /* Win+L locks the screen and no program gets it, as on Windows. The
++         * session's window manager asks for the lock and passes the key on,
++         * so that the Windows key does not count as pressed alone. */
++        if (msg->wParam == 'L' && win4wine_shell() == WIN4WINE_SHELL_XP &&
++            ((NtUserGetKeyState( VK_LWIN ) | NtUserGetKeyState( VK_RWIN )) & 0x8000) &&
++            !((NtUserGetKeyState( VK_CONTROL ) | NtUserGetKeyState( VK_SHIFT ) |
++               NtUserGetKeyState( VK_MENU )) & 0x8000))
++            return TRUE;
+         /* The thread's key state is that of this message, also for keys that
+          * SendInput entered all at once. */
+         if (msg->wParam != VK_ESCAPE || !(NtUserGetKeyState( VK_CONTROL ) & 0x8000) ||

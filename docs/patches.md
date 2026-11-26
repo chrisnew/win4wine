@@ -1,6 +1,6 @@
 # Wine patches
 
-`wine/patches/` holds 158 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
+`wine/patches/` holds 159 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
 `wine/build.sh` applies them, and the actual applying is done by `wine/patch-state.py` (on a partly patched source it applies only
 what is missing).
 
@@ -17,7 +17,7 @@ Changes for the XP shell only take effect in processes that have the environment
 - Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155–0157), 0025 and 0026,
   which do not change the look or behaviour of ordinary apps, most of the APIs and Wine fixes for the Windows 7 shell (0094–0112), and the
   theme fixes that only apply to version 4 styles (0113–0119).
-- 0024 only takes effect with `WIN4WINE_SESSION_REQUEST`.
+- 0024 only takes effect with `WIN4WINE_SESSION_REQUEST`, and 0159's `LockWorkStation` only with `WIN4WINE_LOCK_REQUEST`.
 - 0090 additionally needs `WIN4WINE_FOLDER_SHELL` (set only by the ReactOS shell session).
 - The ReactOS shell session also sets `WIN4WINE_SHELL=reactos`. 0067 then does not swap in the parts meant for XP.
 - What is marked "XP session" only takes effect with `WIN4WINE_EXTERNAL_SHELL` set and `WIN4WINE_SHELL` unset (the XP shell session). It
@@ -249,7 +249,7 @@ Matched pixel by pixel against a real Windows 7 SP1 (the reference VM).
 | 0136 | riched20: text in Windows 7's search boxes (Start menu, folder windows; windowless RichEdit). Use the default format the host announces later (Meiryo 9 pt) (whole external shell), measure and draw paragraphs without complex scripts (Arabic and so on) with GDI, and create the font with DEFAULT_CHARSET (Latin in that font, Japanese through font linking; the same glyphs and positions as on real hardware). Japanese showed as boxes or overlapping | partly (`WIN4WINE_SHELL=win7`) |
 | 0137 | comdlg32: give the Windows 7 shell session's item dialogs (IFileDialog) Windows 7's form. The top row (back/forward, the breadcrumb address bar, refresh, search) is drawn by a new part (navbar7.c) with theme parts and explorerframe.dll's images and strings. 640x478, the message font, no details or preview pane, a size grip, "Folder:" and "Select Folder" when choosing a folder. Search filters by name within the folder (Windows 7 searches the index) | yes (`WIN4WINE_SHELL=win7`) |
 
-### Details of the XP and ReactOS shells (0138–0158)
+### Details of the XP and ReactOS shells (0138–0159)
 
 Changes for the XP and ReactOS shells that use mechanisms added for the Windows 7 shell (0117's themed menus, 0119's TS_MIN, 0126's
 comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading, 0133's message box layout).
@@ -279,6 +279,7 @@ comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading
 | 0156 | win32u, server: GetProp answers from a cache in the process while the window's properties are unchanged (the wineserver increments a serial in the window's shared memory on every SetProp and RemoveProp; before, each GetProp was a server request, and comctl32's subclassing reads one for every message a subclassed control gets: 27 per repaint of XP's notification area. The server protocol changes. It belongs with 0001–0011 and has not been renumbered yet) | no |
 | 0157 | opengl32: send immediate mode calls across in batches (glBegin, glEnd, glVertex, glTexCoord, glColor, glNormal and glMultiTexCoord2fARB are collected per thread and sent in one unix call before any other GL call; before, each was a unix call, and in a WoW64 process on a CPU without FSGSBASE each unix call is also an arch_prctl system call: Half-Life Alpha on the EeePC made 181,000 a second, about 59% of its render thread. `WINE_OPENGL_BATCH=0` turns it off. It belongs with 0001–0011 and has not been renumbered yet) | no |
 | 0158 | winex11: in the XP session, `SPI_GETSCREENSAVEACTIVE` and `SPI_SETSCREENSAVEACTIVE` are the user's setting in the registry, not the X server's blanking timer (Display Properties showed and switched Xorg's blanker, which the session turns off: it starts the screen savers itself) | yes (XP session) |
+| 0159 | user32, win32u: `LockWorkStation` asks the session to lock the screen (it writes the file `WIN4WINE_LOCK_REQUEST` names; before, a stub that failed), and Win+L reaches no program (the WM asks for the lock and passes the key on, so that Wine does not take the Windows key for pressed alone and open the Start menu after unlocking) | `WIN4WINE_LOCK_REQUEST`; Win+L: XP session |
 
 ## Order
 
