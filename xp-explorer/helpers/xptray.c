@@ -4,7 +4,7 @@
  * there are none, so this program reads the Linux state instead:
  *   power    /sys/class/power_supply (battery level, AC, time remaining)
  *   network  /sys/class/net, /proc/net/route and nmcli (SSID, signal, speed)
- *   volume   wpctl (PipeWire) or pactl (PulseAudio)
+ *   volume   a bash helper on pactl subscribe (PulseAudio) or wpctl (PipeWire)
  * and shows XP's own icons, flyouts and the Network Connections panel, from
  * the user's ISO extracted into C:\xp\tray.
  *
@@ -409,9 +409,173 @@ static BOOL capture(const WCHAR *script, char *buffer, DWORD size)
     return ok;
 }
 
+/* The volume comes from a Unix helper (bash) that runs as long as xptray:
+ * with PulseAudio (or pipewire-pulse) it waits on `pactl subscribe` and
+ * writes "Volume: 0.62 [MUTED]" (or "none") to a state file when a sink or
+ * the default sink changes; with wpctl only, it reads the volume every 2 s
+ * itself. xptray reads that file each second through a handle that stays
+ * open, so the volume costs it no process starts and no wineserver requests.
+ * Wine starts a Unix program in a process of its own (it forks twice), so
+ * the helper cannot see xptray end through its parent. Instead xptray writes
+ * to an "alive" file each second, and the helper ends when that file is 30 s
+ * old (xptray ended or hangs); xptray starts a new one when the state file
+ * is gone. */
+static const char volume_script[] =
+    "f=$1 a=$2\n"
+    "alive() { local now t; printf -v now '%(%s)T' -1; t=$(stat -c %Y \"$a\" 2>/dev/null) || return 1; (( now - t < 30 )); }\n"
+    "vol() {\n"
+    "  local v m=\n"
+    "  if [ -n \"$pulse\" ]; then\n"
+    "    v=$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | awk '/Volume/{gsub(\"%\",\"\",$5); printf \"%.2f\", $5/100; exit}')\n"
+    "    case $(pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null) in *yes*) m=' [MUTED]';; esac\n"
+    "    if [ -n \"$v\" ]; then printf 'Volume: %s%s\\n' \"$v\" \"$m\"; else echo none; fi > \"$f\"\n"
+    "  else\n"
+    "    v=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | grep Volume:)\n"
+    "    echo \"${v:-none}\" > \"$f\"\n"
+    "  fi\n"
+    "}\n"
+    "while alive; do\n"
+    "  if command -v pactl >/dev/null && pactl info >/dev/null 2>&1; then\n"
+    "    pulse=1\n"
+    "    coproc P { exec pactl subscribe 2>/dev/null; }\n"
+    "    vol\n"
+    "    while alive && [ -n \"${P[0]}\" ]; do\n"
+    "      if read -r -t 5 -u \"${P[0]}\" line; then\n"
+    "        case $line in\n"
+    "        *\" on sink \"*|*\" on server \"*)\n"
+    /* A held volume key sends a burst: read the volume once after it. */
+    "          while read -r -t 0.1 -u \"${P[0]}\" line; do :; done\n"
+    "          vol;;\n"
+    "        esac\n"
+    "      elif (( $? <= 128 )); then break\n" /* pactl ended (the sound server restarts) */
+    "      fi\n"
+    "    done\n"
+    "    kill \"$P_PID\" 2>/dev/null; wait \"$P_PID\" 2>/dev/null\n"
+    "  else\n"
+    "    pulse=; command -v wpctl >/dev/null && vol || echo none > \"$f\"\n"
+    "  fi\n"
+    "  sleep 2\n"
+    "done\n"
+    "rm -f \"$f\" \"$a\" \"$0\"\n";
+
+static WCHAR volume_state[MAX_PATH], volume_alive_path[MAX_PATH + 8];
+static HANDLE volume_alive = INVALID_HANDLE_VALUE;
+static ULONGLONG volume_helper_started;
+static BOOL volume_helper_failed, volume_helper_heard;
+
+static void unix_path(const WCHAR *dos, WCHAR *out)
+{
+    wcscpy(out, dos + 2);
+    for (WCHAR *p = out; *p; p++) if (*p == L'\\') *p = L'/';
+}
+
+static void touch_volume_alive(void)
+{
+    OVERLAPPED start = {0};
+    DWORD done;
+    WriteFile(volume_alive, "1", 1, &done, &start);
+}
+
+static BOOL start_volume_helper(void)
+{
+    WCHAR script_path[MAX_PATH + 8], state_unix[MAX_PATH], alive_unix[MAX_PATH + 8], script_unix[MAX_PATH + 8];
+    WCHAR command[4 * MAX_PATH];
+    HANDLE file;
+    DWORD done;
+    BOOL ok;
+
+    if (!exists(L"Z:\\bin\\bash") && !exists(L"Z:\\usr\\bin\\bash")) return FALSE;
+    if (!GetTempFileNameW(L"Z:\\tmp", L"xpv", 0, volume_state)) return FALSE;
+    swprintf(script_path, ARRAYSIZE(script_path), L"%ls.sh", volume_state);
+    swprintf(volume_alive_path, ARRAYSIZE(volume_alive_path), L"%ls.alive", volume_state);
+    file = CreateFileW(script_path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+    if (file == INVALID_HANDLE_VALUE) return FALSE;
+    ok = WriteFile(file, volume_script, sizeof(volume_script) - 1, &done, NULL);
+    CloseHandle(file);
+    volume_alive = CreateFileW(volume_alive_path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL,
+                               CREATE_ALWAYS, 0, NULL);
+    if (ok && volume_alive != INVALID_HANDLE_VALUE)
+    {
+        touch_volume_alive();
+        unix_path(volume_state, state_unix);
+        unix_path(volume_alive_path, alive_unix);
+        unix_path(script_path, script_unix);
+        swprintf(command, ARRAYSIZE(command), L"exec bash '%ls' '%ls' '%ls' </dev/null >/dev/null 2>&1",
+                 script_unix, state_unix, alive_unix);
+        ok = spawn(command, NULL);
+    }
+    else ok = FALSE;
+    if (!ok)
+    {
+        if (volume_alive != INVALID_HANDLE_VALUE) CloseHandle(volume_alive);
+        volume_alive = INVALID_HANDLE_VALUE;
+        DeleteFileW(volume_alive_path);
+        DeleteFileW(script_path);
+        DeleteFileW(volume_state);
+        return FALSE;
+    }
+    volume_helper_started = GetTickCount64();
+    return TRUE;
+}
+
+static void stop_volume_helper(void)
+{
+    if (volume_alive == INVALID_HANDLE_VALUE) return;
+    CloseHandle(volume_alive);
+    volume_alive = INVALID_HANDLE_VALUE;
+    /* The helper ends at its next check, within 5 s, and removes the rest. */
+    DeleteFileW(volume_alive_path);
+}
+
+/* With the helper running, TRUE and the volume from its state file. An empty
+ * file (before the first reading, or while the helper rewrites it) keeps the
+ * last volume. */
+static BOOL read_volume_helper(void)
+{
+    char out[256], *p;
+    if (volume_helper_failed) return FALSE;
+    if (volume_alive == INVALID_HANDLE_VALUE && !start_volume_helper())
+    {
+        volume_helper_failed = TRUE;
+        return FALSE;
+    }
+    /* The helper ended (it removes its files): start another. */
+    if (tick % 10 == 5 && !exists(volume_state))
+    {
+        stop_volume_helper();
+        volume_helper_heard = FALSE;
+        if (!start_volume_helper())
+        {
+            volume_helper_failed = TRUE;
+            return FALSE;
+        }
+    }
+    touch_volume_alive();
+    if (!read_file(volume_state, out, sizeof(out)) || !out[0])
+    {
+        /* No answer in 10 s: give it up and read the volume as before. */
+        if (!volume_helper_heard && GetTickCount64() - volume_helper_started > 10000)
+        {
+            stop_volume_helper();
+            volume_helper_failed = TRUE;
+            return FALSE;
+        }
+        return TRUE;
+    }
+    volume_helper_heard = TRUE;
+    if (!(p = strstr(out, "Volume:"))) volume = -1;
+    else
+    {
+        volume = (int)(atof(p + 7) * 100 + 0.5);
+        muted = strstr(out, "MUTED") != NULL;
+    }
+    return TRUE;
+}
+
 static void poll_volume(void)
 {
     char out[1024], *p;
+    if (read_volume_helper()) return;
     /* Their warnings (PipeWire's about RTKit) would come before the volume. */
     if (!capture(L"if command -v wpctl >/dev/null; then wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null; "
                  L"elif command -v pactl >/dev/null; then "
@@ -928,7 +1092,7 @@ static void poll(void)
     if (net.up != last_up || tick % 10 == 0) poll_network(TRUE);
     last_up = net.up;
     show_network();
-    if (tick % 2 == 0 || volume < 0)
+    if (tick % 2 == 0 || volume < 0 || volume_alive != INVALID_HANDLE_VALUE)
     {
         poll_volume();
         show_volume();
@@ -2599,6 +2763,7 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
         }
         return 0;
     case WM_DESTROY:
+        stop_volume_helper();
         for (UINT id = 1; id < ID_COUNT; id++)
             if (icons[id].shown) tray_send(NIM_DELETE, id, NULL, NULL, 0);
         PostQuitMessage(0);
