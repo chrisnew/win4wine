@@ -230,6 +230,8 @@ else
         cabextract p7zip-full xvfb xauth
         # the session: X, the WM and tray bridge, recovery terminal, root cursor
         xserver-xorg x11-xserver-utils x11-xkb-utils xterm python3 python3-xlib
+        # the WM in C (bridge-wm/wm.c); without it the session runs wm.py
+        libxcb1-dev
         python3-gi gir1.2-glib-2.0 gir1.2-gdkpixbuf-2.0 librsvg2-common
         locales
     )

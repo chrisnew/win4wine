@@ -7,7 +7,7 @@ To just use win4wine, `scripts/setup.sh` from [INSTALL.md](../INSTALL.md) is eno
 | Path | Contents |
 |---|---|
 | `wine/` | The Wine it is based on (`upstream.env`), the patches (`patches/` and `series`), the build (`build.sh`), applying the patches (`patch-state.py`) |
-| `bridge-wm/` | The X11 WM (`wm.py`), the Win32 proxy (`proxy.c`), the tray broker (`tray.py`), a tool for investigations (`inspect.c`) |
+| `bridge-wm/` | The X11 WM (`wm.c`, and `wm.py` that behaves the same), the Win32 proxy (`proxy.c`), the tray broker (`tray.py`), a tool for investigations (`inspect.c`) |
 | `wayland/` | The Wayland session: labwc and wlroots versions (`upstream.env`), patches (`patches/`), the build (`build.sh`), labwc's configuration (`labwc/`), startup (`session.sh`) |
 | `session/` | Starting and watching the session (`supervisor.py`), the Start menu of Linux apps (`linux_apps.py`), `win4wine-wine` for use outside the session (`wine.py`; the Wine environment is in `wineenv.py`), registering the session |
 | `prefix/` | Creating the prefix (`create.py`), updating it (`stage.py`), appearance and DPI (`display.py`), registry settings (registry profiles) |
@@ -75,7 +75,8 @@ The list, order, format and the opt-in check are in [patches.md](patches.md). Ne
 
 | Test | What it covers |
 |---|---|
-| `tests/wm_integration.py` | The WM alone (Alt+Tab, focus, minimizing, passing on the Windows key) |
+| `tests/wm_integration.py` | The WM alone (Alt+Tab, focus, minimizing, passing on the Windows key). Runs against either WM |
+| `tests/wm_parity.py --wm CMD` | Drives a WM through frames, commands, icons, maximizing and stacking and prints its state after each step; the output of `wm.py` and `wm.c` must be identical (run each on a fresh Xvfb and `diff`) |
 | `tests/wine_restore.py` | A Wine window minimized and restored from Win32 is shown again (pass `WINE` and `WINEPREFIX`) |
 | `tests/bridge_integration.py` | The WM, the proxy and the XP shell together |
 | `tests/native_frames.py` | XP frames on Linux windows (Luna and Classic) |

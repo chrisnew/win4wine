@@ -17,7 +17,7 @@ def procs():
         if not e.name.isdigit(): continue
         try: cmd = (e / 'cmdline').read_bytes().replace(b'\0', b' ').decode('utf-8', 'replace')
         except OSError: continue
-        for key, pat in (('wm', 'bridge-wm/wm.py'), ('proxy', 'proxy.exe'), ('wineserver', 'bin/wineserver'),
+        for key, pat in (('wm', 'bridge-wm/wm.py'), ('wm', '.local/bridge/wm --ipc'), ('proxy', 'proxy.exe'), ('wineserver', 'bin/wineserver'),
                          ('Xorg', 'Xorg'), ('xterm', 'xterm'), ('xp-explorer', 'xp-explorer.exe'), ('supervisor', 'supervisor.py'),
                          ('tray', 'tray.py')):
             if pat in cmd and 'dragbench' not in cmd: found[key] = int(e.name)

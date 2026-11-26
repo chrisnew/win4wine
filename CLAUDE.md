@@ -52,8 +52,9 @@ fits a 1024x600 screen, and has things worth showing. Ideas for features are in 
   `DISPLAY=:0 XAUTHORITY=~/.Xauthority xwd -root -silent` takes a screenshot (convert it here; `tools/eeepc/shot.py` also shows
   redirected windows).
 - Deploying a commit: push to `origin`, then on the EeePC `git fetch fork && git checkout -B eeepc fork/eeepc`.
-  - Python changes to the session (wm.py, supervisor.py) only take effect after logging out and in, because the session ends
-    when the WM exits.
+  - Changes to the session (the WM, supervisor.py) only take effect after logging out and in, because the session ends
+    when the WM exits. The session runs the C WM (`bridge-wm/wm.c`, built by `bridge-wm/build.sh` as `.local/bridge/wm`);
+    a WM change goes into both `wm.c` and `wm.py`, checked with `tests/wm_parity.py`.
   - To reload the proxy without a relogin: `pkill -x proxy.exe`. The supervisor then restarts the shell, **which ends every
     Windows program**, so check that none are open first. Never use `pkill -f` with a pattern that is also in the ssh command
     line: it kills the ssh shell.

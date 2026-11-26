@@ -7,7 +7,7 @@ What win4wine is made of and how the parts connect. Why it was done this way is 
 ```text
 Display manager (LightDM)
  └─ session/supervisor.py ............. starts and watches the session
-      ├─ bridge-wm/wm.py .............. the X11 window manager (WM)
+      ├─ bridge-wm/wm.c (or wm.py) .... the X11 window manager (WM)
       ├─ bridge-wm/tray.py ............ broker for Linux tray icons
       ├─ fcitx5 ....................... Japanese input
       ├─ proxy.exe (on Wine) .......... stand-ins for Linux windows, and their XP frames
@@ -39,9 +39,13 @@ Preparation builds the following:
   also sets the jump list's title and icon and the command of a pinned button (`relaunch.tsv` from `linux_apps.py`).
   In the Wayland session labwc writes `classes.tsv` (each window's app_id or `WM_CLASS`) instead of the WM.
 
-## The WM (`bridge-wm/wm.py`)
+## The WM (`bridge-wm/wm.c`, `bridge-wm/wm.py`)
 
-An X11 window manager. It draws no frames itself (it does not reparent). It:
+An X11 window manager. It draws no frames itself (it does not reparent). There are two versions that behave the same: `wm.c` (libxcb),
+which `bridge-wm/build.sh` builds as `.local/bridge/wm` and the session runs, and `wm.py` (python-xlib), which the session runs when
+`wm.c` is not built or `session.json` has `"wm": "python"`. wm.py spent about 5 ms of an Atom N550's CPU on each step of a window drag,
+nearly all of it in python-xlib; wm.c takes under a fifth of that. A change to one goes into the other too, and `tests/wm_parity.py`
+checks that they still give the same state (see [development.md](development.md)). It:
 
 - Tells apart XP's desktop (Progman), the taskbar (Shell_TrayWnd), the Start menu (DV2ControlHost), proxy frames, ordinary Wine windows
   and Linux windows by the `_WIN4WINE_CLASS` and `_WIN4WINE_HWND` that Wine's X11 driver sets (patch 0025).

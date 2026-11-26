@@ -16,6 +16,20 @@ compile() {
         return 1
     fi
 }
+# The X11 WM (wm.c), a native program. Without gcc and libxcb's headers the
+# session runs wm.py instead. A new inode: the running WM keeps its own.
+if command -v gcc >/dev/null && [ -f /usr/include/xcb/xcb.h ]; then
+    temporary=$(mktemp "$root/.local/bridge/wm.XXXXXX")
+    if gcc -std=gnu11 -O2 -Wall -Wextra -Werror -o "$temporary" "$root/bridge-wm/wm.c" -lxcb -lm; then
+        chmod 755 "$temporary"
+        mv -f -- "$temporary" "$root/.local/bridge/wm"
+    else
+        rm -f -- "$temporary"
+        exit 1
+    fi
+else
+    printf 'No gcc or libxcb headers (libxcb1-dev): the session will run wm.py\n' >&2
+fi
 # Sessions may still map these PE files. Publish new inodes without truncating
 # an executable that another Wine process is using.
 compile "$root/.local/bridge/proxy.exe" "$root/bridge-wm/proxy.c" -luser32 -lgdi32 -lshell32 -luxtheme

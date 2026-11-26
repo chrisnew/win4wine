@@ -106,6 +106,13 @@ class Session:
         self.linux_font = config.get('linux_font', 'Tahoma' if self.language() == 'en' else 'MS UI Gothic')
         self.linux_menu = config.get('linux_menu', True)
         self.composite = config.get('composite', True)
+        # The WM: bridge-wm/wm.c as bridge-wm/build.sh built it, else wm.py
+        # ("wm": "python" picks wm.py; the two behave the same).
+        wm_binary = ROOT / '.local/bridge/wm'
+        if config.get('wm', 'c') == 'c' and os.access(wm_binary, os.X_OK):
+            self.wm_command = [str(wm_binary)]
+        else:
+            self.wm_command = ['python3', str(ROOT / 'bridge-wm/wm.py')]
         # Wine's ExitWindowsEx records log off / shut down / restart here,
         # so that the shell's exit ends the session instead of restarting it.
         self.request = self.state / 'session-request'
@@ -506,7 +513,7 @@ class Session:
             self.configure_outputs()
         self.show_welcome('logon')
         if not self.compositor:
-            wm = self.spawn(['python3', str(ROOT / 'bridge-wm/wm.py'), '--ipc', str(self.ipc)] +
+            wm = self.spawn(self.wm_command + ['--ipc', str(self.ipc)] +
                             ([] if self.composite else ['--no-composite']), 'wm')
             time.sleep(.5)
             if wm.poll() is not None:
