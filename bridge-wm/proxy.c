@@ -195,16 +195,20 @@ static LRESULT CALLBACK proxy_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (clients[i].xid == xid && clients[i].workarea.right > clients[i].workarea.left)
             {
                 MINMAXINFO *limits = (MINMAXINFO *)lp;
-                WINDOWINFO info = {.cbSize = sizeof(info)};
                 MONITORINFO monitor = {.cbSize = sizeof(monitor)};
-                RECT area = clients[i].workarea;
+                RECT area = clients[i].workarea, borders = {0, 0, 0, 0};
                 LRESULT result = DefWindowProcW(hwnd, msg, wp, lp);
-                if (!GetWindowInfo(hwnd, &info) ||
+                /* The borders come from the style, not GetWindowInfo: a
+                 * minimized frame restored to maximized asks while it still
+                 * has its minimized rectangles, whose empty client area gave
+                 * borders of 0 and 31 (the caption ended up off screen). */
+                if (!AdjustWindowRectEx(&borders, GetWindowLongW(hwnd, GWL_STYLE) & ~(WS_MINIMIZE | WS_MAXIMIZE),
+                                        FALSE, GetWindowLongW(hwnd, GWL_EXSTYLE)) ||
                     !GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY), &monitor)) return result;
-                limits->ptMaxPosition.x = area.left - monitor.rcMonitor.left - info.cxWindowBorders;
-                limits->ptMaxPosition.y = area.top - monitor.rcMonitor.top - info.cyWindowBorders;
-                limits->ptMaxSize.x = area.right - area.left + 2 * info.cxWindowBorders;
-                limits->ptMaxSize.y = area.bottom - area.top + 2 * info.cyWindowBorders;
+                limits->ptMaxPosition.x = area.left - monitor.rcMonitor.left + borders.left;
+                limits->ptMaxPosition.y = area.top - monitor.rcMonitor.top - borders.bottom;
+                limits->ptMaxSize.x = area.right - area.left - 2 * borders.left;
+                limits->ptMaxSize.y = area.bottom - area.top + 2 * borders.bottom;
                 limits->ptMaxTrackSize.x = max(limits->ptMaxTrackSize.x, limits->ptMaxSize.x);
                 limits->ptMaxTrackSize.y = max(limits->ptMaxTrackSize.y, limits->ptMaxSize.y);
                 return result;
