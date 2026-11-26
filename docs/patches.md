@@ -1,6 +1,6 @@
 # Wine patches
 
-`wine/patches/` holds 154 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
+`wine/patches/` holds 155 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
 `wine/build.sh` applies them, and the actual applying is done by `wine/patch-state.py` (on a partly patched source it applies only
 what is missing).
 
@@ -14,7 +14,7 @@ Changes for the XP shell only take effect in processes that have the environment
 
 - The check is gathered in one place, `win4wine_external_shell()` in `include/wine/win4wine.h`, added by 0019.
   ntdll reads the same variable with Rtl functions, and wow64.dll (0023) with ntdll functions.
-- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146), 0025 and 0026,
+- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155), 0025 and 0026,
   which do not change the look or behaviour of ordinary apps, most of the APIs and Wine fixes for the Windows 7 shell (0094–0112), and the
   theme fixes that only apply to version 4 styles (0113–0119).
 - 0024 only takes effect with `WIN4WINE_SESSION_REQUEST`.
@@ -249,7 +249,7 @@ Matched pixel by pixel against a real Windows 7 SP1 (the reference VM).
 | 0136 | riched20: text in Windows 7's search boxes (Start menu, folder windows; windowless RichEdit). Use the default format the host announces later (Meiryo 9 pt) (whole external shell), measure and draw paragraphs without complex scripts (Arabic and so on) with GDI, and create the font with DEFAULT_CHARSET (Latin in that font, Japanese through font linking; the same glyphs and positions as on real hardware). Japanese showed as boxes or overlapping | partly (`WIN4WINE_SHELL=win7`) |
 | 0137 | comdlg32: give the Windows 7 shell session's item dialogs (IFileDialog) Windows 7's form. The top row (back/forward, the breadcrumb address bar, refresh, search) is drawn by a new part (navbar7.c) with theme parts and explorerframe.dll's images and strings. 640x478, the message font, no details or preview pane, a size grip, "Folder:" and "Select Folder" when choosing a folder. Search filters by name within the folder (Windows 7 searches the index) | yes (`WIN4WINE_SHELL=win7`) |
 
-### Details of the XP and ReactOS shells (0138–0154)
+### Details of the XP and ReactOS shells (0138–0155)
 
 Changes for the XP and ReactOS shells that use mechanisms added for the Windows 7 shell (0117's themed menus, 0119's TS_MIN, 0126's
 comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading, 0133's message box layout).
@@ -275,6 +275,7 @@ comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading
 | 0152 | win32u: a top-level window just shown stays off the screen until it and its children have finished drawing (up to 300 ms) (new surfaces are white, and a flush before drawing finished made XP's Start menu look like a white rectangle for about 100 ms. It belongs with 0060 and has not been renumbered yet) | yes |
 | 0153 | win32u: a process that sets the wallpaper (SPI_SETDESKWALLPAPER, SPI_SETDESKPATTERN) tells the thread of the shell window (XP's Progman). That thread forgets the wallpaper it had loaded and redraws the shell window with its children (win32u remembers the wallpaper path per process, and choosing the Windows XP theme in Display Properties did not show Bliss until the next logon. When only WallpaperStyle changes with the same image, 0049 does not reload it, so it takes effect from the next logon) | yes |
 | 0154 | user32: in the XP session, load the icon of `C:\windows\explorer.exe` (Wine's explorer) from `C:\xp\xp-explorer.exe` (the XP theme writes My Computer's icon into HKCU as `%SystemRoot%\explorer.exe,0`, which gave a blank icon. PrivateExtractIcons, PrivateExtractIconEx) | yes (XP session) |
+| 0155 | ntdll: after starting a Unix program (NtCreateUserProcess' fork_and_exec), close the image's file handle and the current directory's fd (each start leaked a handle and two fds in the caller and an open file in the wineserver; xptray, which starts the volume check every 2 s, held 6224 fds after two days. It belongs with 0001–0011 and has not been renumbered yet) | no |
 
 ## Order
 

@@ -1,0 +1,35 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] ntdll: close the image file and directory after starting a Unix program
+
+Purpose: a process that starts Unix programs (xptray's volume check every
+2 s, the Start menu's Linux launchers) does not gather open files.
+Windows behavior: CreateProcess keeps no handle to the image or the
+current directory after it returns.
+Wine before: when NtCreateUserProcess runs a Unix executable with
+fork_and_exec, it returned at once and skipped the cleanup at "done":
+the image's file handle and the current directory's Unix fd stayed open.
+Each start leaked a handle and two fds in the caller and an open file in
+the wineserver. On the EeePC, after two days, xptray held 6224 fds (3096
+of /usr/bin/env, 3099 of its current directory), growing by one a
+second, and the wineserver 3567.
+Change: the Unix program path also leaves through "done".
+Scope: all programs; only starting a Unix executable changes.
+---
+ dlls/ntdll/unix/process.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/dlls/ntdll/unix/process.c b/dlls/ntdll/unix/process.c
+index 4c2e7eb..1348ffc 100644
+--- a/dlls/ntdll/unix/process.c
++++ b/dlls/ntdll/unix/process.c
+@@ -764,9 +764,7 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
+         {
+             *process_handle_ptr = *thread_handle_ptr = 0;
+             memset( info, 0, sizeof(*info) );
+-            free( unix_name );
+-            free( nt_name.Buffer );
+-            return STATUS_SUCCESS;
++            status = STATUS_SUCCESS;
+         }
+         goto done;
+     }

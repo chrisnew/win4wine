@@ -152,3 +152,4 @@
 0152-win32u-external-hold-unpainted-surface.patch
 0153-win32u-external-shell-wallpaper-change.patch
 0154-user32-external-xp-shell-icon-file.patch
+0155-ntdll-unix-process-handles.patch

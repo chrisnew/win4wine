@@ -4,7 +4,7 @@
 |---|---|
 | [architecture.md](architecture.md) | How it works: what each part does, the WM, the proxy and their IPC, XP frames for Linux windows, the tray, the session, the login screen, DPI |
 | [design.md](design.md) | The design in brief: which parts were taken from XP, the rules the project keeps and why |
-| [patches.md](patches.md) | The list of Wine's 154 patches, the opt-in check, their order and format, how to add one |
+| [patches.md](patches.md) | The list of Wine's 155 patches, the opt-in check, their order and format, how to add one |
 | [development.md](development.md) | How to develop: building in the chroot, tests, installing by hand, updating an existing setup |
 | [reactos.md](reactos.md) | The ReactOS shell: a session that uses ReactOS's explorer instead of the XP ISO; getting it, its licence, the prefix, limits |
 | [windows7.md](windows7.md) | The Windows 7 shell (experimental): a session built from a Windows 7 ISO; the files it takes, the registry from the components' manifests, the prefix, limits |
