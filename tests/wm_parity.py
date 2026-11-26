@@ -70,6 +70,9 @@ def command(text):
     temporary = ipc / f'999-{sequence}.tmp'
     temporary.write_text(text)
     temporary.replace(ipc / f'999-{sequence}.cmd')
+    # One at a time: commands that reach the WM in one pass or in several
+    # can end differently (minimize, then activate before the UnmapNotify).
+    settle()
 
 
 def frames(text):
