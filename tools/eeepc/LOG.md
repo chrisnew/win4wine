@@ -84,7 +84,8 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   now `.local/wine-install-old`). The installed one before had the patch series of 4a956d9 (compared by its digest), so only
   0066 and 0079 changed.
 - **Why:** a grey square showed around the round button that opens the hidden notification icons.
-- **Result:** checked before in the container session; on this machine not yet looked at.
+- **Result:** checked before in the container session. After logging in, a screenshot shows the button without the square;
+  the session runs the new `wineserver` and the prefix has the new `win4wine-controls.dll`.
 - **Undo:** logged off, `mv .local/wine-install .local/wine-install-chevron && mv .local/wine-install-old .local/wine-install`.
 
 ### 2026-11-27: Linux columns deployed
