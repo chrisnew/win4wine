@@ -25,7 +25,8 @@ chronological record [history/investigations.md](history/investigations.md) (sec
 | uxtheme | Wine | The user's Luna theme file is drawn by Wine's uxtheme. XP's theme service is not installed |
 | user32.dll (as data) | XP (icons only) | Gives apps' default icons and message box icons XP's look. Placed as `C:\xp\res\user32-xp.dll` and only its resources are read (patch 0141; the cursors are extracted from it too) |
 | kernel32, ntdll, user32, gdi32 etc. | Wine | The base that runs on Linux |
-| mshtml, mscoree | Disabled | IE and .NET are out of scope |
+| mshtml | XP's in iexplore.exe (Internet Explorer 6), disabled everywhere else | No Gecko. The registry disables it, not the environment, which would beat IE's per-program setting |
+| mscoree | Disabled | .NET is out of scope |
 
 XP's DLLs are used **only in the xp-explorer.exe process** (AppDefaults). If the whole session used XP's DLLs, even Wine's
 own management processes and the recovery path would depend on them ("Override の隔離", isolating the overrides).

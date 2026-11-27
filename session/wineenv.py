@@ -38,8 +38,12 @@ def environment(base, config, shell):
     # No winemenubuilder: for each link an installer saves on the desktop it
     # writes a Linux launcher (NAME.desktop) beside it, into the prefix's
     # Desktop folder, which the shell shows as a desktop item of its own.
+    # No Mono and no Gecko. In XP's prefix the registry disables mshtml (for
+    # every program but iexplore.exe, which gets XP's): an override here would
+    # beat it and leave Internet Explorer 6 without its HTML engine.
+    disabled = 'mscoree' if shell['module'] == 'xp-explorer' else 'mscoree,mshtml'
     env = dict(base, WINEPREFIX=str(prefix), WIN4WINE_EXTERNAL_SHELL='1',
-               WINEDLLOVERRIDES=f'explorer=b;{shell["module"]}=n;mscoree,mshtml=;uxtheme=b;winemenubuilder.exe=d')
+               WINEDLLOVERRIDES=f'explorer=b;{shell["module"]}=n;{disabled}=;uxtheme=b;winemenubuilder.exe=d')
     if shell['folders']:
         # Wine's explorer.exe hands folder windows to the shell's own explorer.
         env['WIN4WINE_FOLDER_SHELL'] = shell['command']
