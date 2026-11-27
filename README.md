@@ -12,6 +12,7 @@
 </p>
 
 A personal fork of [mikuta0407/win4wine](https://github.com/mikuta0407/win4wine), tuned for an old Asus EeePC and taking its own direction.
+What the fork has added, in pictures: [docs/showcase.md](docs/showcase.md).
 
 > [!IMPORTANT]
 > **This is a personal, experimental project**, not a finished product for daily use.

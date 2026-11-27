@@ -25,8 +25,8 @@ git config core.hooksPath .githooks
 ```
 
 The pre-commit check (`scripts/check-staged.py`) refuses files under `localres/` and `.local/`, PE files, registry hives, fonts
-and binaries containing NUL bytes (even with `git add -f`). The only exceptions are PNGs in `docs/images/` (the README
-screenshot) and our own icons, `.ico` files in `resources/`.
+and binaries containing NUL bytes (even with `git add -f`). The only exceptions are PNGs in `docs/images/` and its folders
+(screenshots, see [showcase.md](showcase.md)) and our own icons, `.ico` files in `resources/`.
 
 ## Development environment in a chroot
 
