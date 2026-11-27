@@ -31,6 +31,24 @@ fits a 1024x600 screen, and has things worth showing. Ideas for features are in 
 - Never ship a change made directly in `.local/wine-upstream`: every Wine change is a patch in `wine/patches/`, in the format and
   place [docs/patches.md](docs/patches.md) describes, and the patch table there is updated with it.
 
+## Skills and tools
+
+The skills in `.claude/skills/` hold the how-to of the recurring work; use them rather than writing one-off scripts:
+
+- `bench`: the XP session in Docker on this machine, driving it, probes.
+- `eeepc`: deploying to the EeePC, driving and measuring it there, `tools/eeepc/LOG.md`.
+- `wine-patch`: changing Wine, from an edit to a patch, its docs and its build.
+- `screenshots`: pictures of what a change adds.
+
+A helper written during a task that will be needed again belongs in the repo (`tools/`, `wine/`, `tests/`) with a usage line
+and a mention in the matching skill, not in the scratchpad.
+
+## Show what was built
+
+**Every change that is visible in the session is documented with screenshots** in the commit that makes it: the picture in
+`docs/images/showcase/`, a section in [docs/showcase.md](docs/showcase.md), and a link from the feature's plan (skill
+`screenshots`). Prefer pictures from the EeePC, and replace bench pictures with EeePC ones once the feature is deployed there.
+
 ## Git
 
 - Work on branch `eeepc`, one commit per fix, and push it to `origin` (the fork, `chrisnew/win4wine`). `upstream` is only a
@@ -38,22 +56,23 @@ fits a 1024x600 screen, and has things worth showing. Ideas for features are in 
 - Commit messages in English: `area: what changes now` as the subject (`wm:`, `proxy:`, `xptray:`, `supervisor:` …, or
   `Wine NNNN: …` for a new or changed patch), then a body that explains the cause, the fix and, where there is one, the measurement.
 - When a bug in [BUGS.md](BUGS.md) is fixed, update its status in the same commit.
+- `IDEAS.md` and `tools/eeepc/LOG.md` often hold the user's uncommitted notes: commit only your own lines with
+  `tools/stage-edit.py`.
 
 ## The development machine (here) and the EeePC
 
-- This machine has Docker but no Wine, Xvfb or MinGW, so the session can't run here.
-- Wine is built here in a Debian 13 container: `wine/container-build.sh` (`--deploy HOST` copies the install to the EeePC's
-  checkout). Builds after the first only recompile what changed patches touch.
-- To check a Wine patch's syntax without MinGW, copy the patched tree and the EeePC's `wine-build/include` and
-  `compile_commands.json`, and run the compile command with the host's `gcc -fsyntax-only` (add `-fshort-wchar`; drop `-mcx16
-  -mcmodel=small` for PE files). It catches real errors, but it does not link.
+- This machine has Docker but no Wine, Xvfb or MinGW of its own: they run in Debian 13 containers.
+  - Wine is built with `wine/container-build.sh` (`--deploy HOST` copies the install to the EeePC's checkout). A Wine change
+    is edited, compiled and turned into a patch with `wine/patch-edit.py` (skill `wine-patch`).
+  - The whole XP session runs on Xvfb at 1024x600 with `tools/bench/bench.sh` (skill `bench`): try a change there, and take
+    its screenshots, before it goes to the EeePC. Speed is measured only on the EeePC.
 - The EeePC runs the real session, from a checkout of branch `eeepc`. How to reach it is in `CLAUDE.local.md`.
   **It is the user's live machine: ask before changing anything on it**, and before killing processes there.
 - Every change made on the EeePC outside the checkout (packages, the kernel, `/etc`, services, the prefix, a new Wine install)
   gets an entry in [tools/eeepc/LOG.md](tools/eeepc/LOG.md) in the same session: what, why, result, undo. Its head says how.
 - On the EeePC: logs are in `~/.local/state/win4wine/`, the IPC directory is `/run/user/1000/win4wine-1000-*`, and
-  `DISPLAY=:0 XAUTHORITY=~/.Xauthority xwd -root -silent` takes a screenshot (convert it here; `tools/eeepc/shot.py` also shows
-  redirected windows).
+  `tools/eeepc/eee.sh` drives it, takes screenshots (with the taskbar and menus, which `xwd -root` misses) and samples CPU
+  from here (skill `eeepc`).
 - Deploying a commit: push to `origin`, then on the EeePC `git fetch fork && git checkout -B eeepc fork/eeepc`.
   - Changes to the session (the WM, supervisor.py) only take effect after logging out and in, because the session ends
     when the WM exits. The session runs the C WM (`bridge-wm/wm.c`, built by `bridge-wm/build.sh` as `.local/bridge/wm`);
