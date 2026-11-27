@@ -79,6 +79,18 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
 
 ## Entries
 
+### 2026-11-28: Alt+Tab in the order of use, and Alt+F4 on the desktop
+
+- **What** (no Windows program open), in `~/win4wine`: `git fetch fork && git checkout -B master fork/master` (c1eef12 to
+  5805617), `bridge-wm/build.sh`; the user logged off and on (the WM changed too).
+- **Why:** Alt+Tab from Notepad did not go back to an xterm and did not follow the order of use (repo 8034448); Alt+F4 on
+  the desktop did nothing (repo 5805617).
+- **Result** (driven with XTest): Notepad and two xterms, 18 Alt+Tabs with one or two Tabs reached the window XP would
+  choose each time. Closing the last window and pressing Alt+F4 opened "Turn off computer"; Esc closed it. Closing Notepad
+  gave the keyboard to the next xterm in 7 of 7 tries; once before that, right after a long Alt+Tab run, it went to the
+  desktop instead (BUGS.md, not reproduced). Nothing outside the checkout changed.
+- **Undo:** `git checkout -B master c1eef12`, `bridge-wm/build.sh`, then log off and on.
+
 ### 2026-11-27: the proxy hands the keyboard on when a Linux window closes
 
 - **What** (in the session, only an empty Notepad open), in `~/win4wine`: `git fetch fork && git checkout -B master
