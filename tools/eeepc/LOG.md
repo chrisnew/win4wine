@@ -79,6 +79,25 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
 
 ## Entries
 
+### 2026-11-27: LunaticOS on master, without the ReactOS and Windows 7 shells; old builds and backups removed
+
+- **What** (XP logged off), in `~/win4wine`: `git remote set-url fork https://github.com/chrisnew/LunaticOS.git` (the
+  repository was renamed), `git fetch fork && git checkout -B master fork/master` (dc08256 to ffb04e2; the branch `eeepc` was
+  deleted, `master` is the main branch now), `bridge-wm/build.sh`. Wine was not rebuilt: `wine/patch-state.py --digest
+  wine/patches` equals `.local/wine-install/win4wine-patches`. Then, in `.local/`: `rm -rf wine-build wine-upstream
+  wine-install-old wine-install-new`, the prefix backups `backup-2026-11-27`, `backup-2026-11-27-linuxcols`,
+  `backup-before-extras9`, `-extras10`, `-extras12`, `backup-before-wine0161`, `-wine0163b`, `-wine0164`, the logs
+  `extras9/10/12/13.log`, `prefix-linuxcols.log`, `wine-build*.log`, `bridge-0161.log`, and
+  `~/.config/win4wine/session.json.before-trace` (the same as `session.json`).
+- **Why:** the fork is LunaticOS now and runs only the XP shell (repo 2fc82b8: the session, the proxy and the WM lost the
+  other shells' code). Wine is built in a container on the development machine, so the machine's own Wine build tree and
+  source were unused, and the backups were undo steps for changes that have run for days since.
+- **Result:** about 5 GB freed (`/` from 21 to 16 GB used). The bridge built without warnings. The new session (WM,
+  supervisor, proxy) runs from the next login; not yet checked in a session.
+- **Undo:** `git checkout -B master dc08256` and `bridge-wm/build.sh`, then log off and in. The removed builds and backups
+  are gone: the undo steps in older entries that use `.local/wine-install-old` or one of those backups no longer work;
+  `backup-before-wine0165` is kept. A Wine build is `wine/container-build.sh --deploy` from the development machine.
+
 ### 2026-11-27: mounting disc images (Wine 0162 to 0165) installed
 
 - **What:** four rounds, each with XP logged off: `git fetch fork && git checkout -B eeepc fork/eeepc` (a76fdac to 7eadf57,
