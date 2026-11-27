@@ -14,7 +14,7 @@ Seamless integration of USB storage etc. Attaching media will show it up in expl
 
 Some helper tool that will mount/unmount .iso files and show them as drives.
 
-Built, not yet on the EeePC (no AutoRun): [plans/iso-mount.md](plans/iso-mount.md).
+Done and on the EeePC, except AutoRun: [plans/iso-mount.md](plans/iso-mount.md).
 
 ## Notification manager
 

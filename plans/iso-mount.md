@@ -1,7 +1,7 @@
 # Plan: mount ISO images as CD drives
 
-Status (2026-11-27): phases 0 to 2 built; Wine 0162–0164 not yet on the EeePC. AutoRun is open (phase 3). The probes changed
-phase 2 and parts of phase 1: read [As built](#as-built-2026-11-27) first, the sections after it are the plan as it was made.
+Status (2026-11-27): phases 0 to 2 are done and on the EeePC. AutoRun is open (phase 3). The probes changed phase 2 and
+parts of phase 1: read [As built](#as-built-2026-11-27) first, the sections after it are the plan as it was made.
 
 Goal: double-clicking an `.iso` file in XP's Explorer mounts it on the Linux side, and a few moments later it is a CD-ROM drive
 in My Computer (`D:`, the first free letter), with the disc's label and a CD icon. If the disc has an `autorun.inf`, its setup
@@ -26,6 +26,11 @@ How it works is in [docs/architecture.md](../docs/architecture.md#disc-images-se
   pipe, so the `udisksctl` steps are in **`session/iso_mount.py`**, which writes its result to a file.
   `loop-setup` always gets `--no-partition-scan`, which settles hybrid images.
 - **Opening the drive** starts `xp-explorer.exe` with the path. The default verb goes over DDE, which fails from the launcher.
+- **A wait of 2 s** before the window of a disc mounted just now, or Explorer shows it without its label and address.
+- **Found while testing:** an Eject froze My Computer, by a race in unmodified Wine's Uniscribe font cache: **Wine 0165**.
+- **Eject with a window of the drive open** does nothing and says nothing (the plan expected "the drive is in use").
+- **Unmounting from Linux** leaves an empty drive; deleting the loop device removes it.
+- **Not tested:** a hybrid ISO (there is none on the machine).
 - **No AutoRun.** XP looks for `autorun.inf` but does not read it, whether the disc was there at logon or arrives. Setup
   screens therefore do not start by themselves. The launcher could run the `open=` line itself (phase 3).
 

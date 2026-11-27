@@ -39,11 +39,11 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | X driver | `xserver-xorg-video-intel 2:2.99.917+git20210115-1+w4w1`, built by [xorg-intel/build.sh](xorg-intel/build.sh) with `sna-gen3-dri3.patch`; **held** with `apt-mark hold` | DRI3 on the GMA 3150, so OpenGL runs on the GPU instead of llvmpipe | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/20-intel.conf`: `Driver "intel"`, `Option "DRI" "3"` | The patched driver gives gen3 DRI3 only when asked | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/10-nodpms.conf`: blanking, standby, suspend and off times 0; `DPMS` false on LVDS1 | The screen never blanks (see "Not yet explained") | ? |
-| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0161 (repo 152c0d4) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner; 0161 keeps copy and paste working after a folder window is closed | 2026-11-27 |
+| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0165 (repo dc08256) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner; 0161 keeps copy and paste working after a folder window is closed; 0162 to 0164 are for mounted disc images; 0165 keeps Explorer from freezing when its windows redraw at once | 2026-11-27 |
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
 | PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
-| Prefix | `prefix/extras.py` VERSION 13 (IE's `NoUpdateCheck`). Since VERSION 12: "Open in Linux Terminal" (`C:\xp\bin\linux-launch.exe` and the context menu handler in `linuxcols.dll`). Since VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
+| Prefix | `prefix/extras.py` VERSION 15 (the icon of `.iso` files). Since VERSION 14: "Mount" on `.iso` files. Since VERSION 13: IE's `NoUpdateCheck`. Since VERSION 12: "Open in Linux Terminal" (`C:\xp\bin\linux-launch.exe` and the context menu handler in `linuxcols.dll`). Since VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
 | Prefix | Office's `MDM` and `MOSEARCH` services `Start=3` (manual) instead of automatic | MOSEARCH failed at every login (missing `TQUERY.DLL`); neither is needed by the session | 2026-11-26 |
 | Boot | `GRUB_CMDLINE_LINUX_DEFAULT="zswap.enabled=1 zswap.compressor=zstd"` | Compressed swap cache, for 2 GB of RAM. **zstd is not actually used**, see "Open" | ? |
 | Disk | `/` mounted `noatime,nodiratime`; 9.5 GB swap partition `/dev/sda2` | ? (the disk is a spinning HDD, Toshiba MK2552GSX) | ? |
@@ -53,6 +53,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | Profiling | `linux-perf` 7.3.4 (trixie-backports, matches the kernel) and `strace` | Profiling Wine programs on the machine itself; `perf_event_paranoid` stays 3, so perf runs with sudo | 2026-11-26 |
 | Build tools | build-essential, MinGW, Xvfb, python3-xlib and the rest of win4wine's build dependencies | Building Wine and the bridge on the machine (Wine is now built in a container on the development machine) | 2026-11-23 |
 | Network | `avahi-daemon` (first installed with `redshift-gtk`), marked as manually installed | mDNS for My Network Places (`session/network_places.py`) | 2026-11-27 |
+| Disc images | `udisks2` | "Mount" on `.iso` files: it mounts them without root, and Wine makes them CD drives | 2026-11-27 |
 
 ## Open
 
@@ -77,6 +78,53 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-27: mounting disc images (Wine 0162 to 0165) installed
+
+- **What:** four rounds, each with XP logged off: `git fetch fork && git checkout -B eeepc fork/eeepc` (a76fdac to 7eadf57,
+  e9899c3, c5a27d8, dc08256); on the development machine `wine/container-build.sh --deploy 192.168.1.9` (not for c5a27d8);
+  `bridge-wm/build.sh`; the prefix additions as `scripts/setup.sh` runs them after a Wine build (`prefix/extras.py`,
+  `session/linux_apps.py`, `xp-explorer/scripts/pins.py` in `xvfb-run`, then `wineserver -k` and `-w`), about 7 minutes. For
+  c5a27d8 (the icon) only one registry value and the file, replaced by the full additions in the last round (VERSION 15).
+  Registry files copied to `.local/backup-before-wine0164`, `-wine0163b` and `-wine0165` first.
+- **Why:** [mounting `.iso` files](../../plans/iso-mount.md): Wine 0162–0164 (`mountmgr`), and 0165 after an Eject froze
+  My Computer (a race in Wine's Uniscribe font cache).
+- **Result** (repo dc08256, in the session, driven with XTest): a double click on each of the four images in `~/Images` gave
+  a CD drive with the disc's label (D: to G:) and its window after 5.6 to 7.3 s; Eject on each removed the drive, with no
+  loop device left. Six more mount and Eject cycles with two folder windows open, and no access violation or lock timeout
+  in the session log. A text file named `.iso` gave the message box and no loop device. `udisksctl` mount and `loop-delete`
+  from the session added and removed the drive; a mounted ext4 image got none. Numbers in the [README](README.md#disc-images).
+- **Undo:** the Wine before these (up to 0161) is no longer on the machine: check out a76fdac, build and deploy it with
+  `wine/container-build.sh --deploy`, run `bridge-wm/build.sh` and the prefix additions. `.local/wine-install-old` is the
+  build up to 0164, which freezes as above. The `.iso` class stays until `HKCR\.iso` and `HKCR\win4wine.isoimage` are
+  deleted.
+
+### 2026-11-27: UDisks2 installed, to mount disc images
+
+- **What:** `sudo apt-get install -y udisks2` (2.10.1-12.1+deb13u2; with recommends it also brought `dosfstools`, `eject`,
+  `exfatprogs`, `fuse3`, `ntfs-3g`, `parted` and libblockdev and its libraries, 25 packages, and rebuilt the initramfs).
+  `udisks2.service` is enabled by the package.
+- **Why:** "Mount" on `.iso` files ([plans/iso-mount.md](../../plans/iso-mount.md)): UDisks2 mounts without root, and Wine's
+  `mountmgr` follows it. `mountmgr` only does so if UDisks2 is there when it starts: log off and on after installing.
+- **Result:** in the session's own process tree `udisksctl loop-setup -r` took 0.90 s and `udisksctl mount` 0.33 s on the Office
+  XP image, without a password; mounted at `/media/cr/OFFICE10`, drive `D:` in My Computer with the label. `udisksd` has
+  17 MB resident. With Wine up to 0161 every `PropertiesChanged` on the system bus made `mountmgr` ask UDisks2 for everything:
+  over 10 ssh logins (261 such signals) CPU time `udisksd` 3.24 s, `dbus-daemon` 1.30 s, `winedevice.exe` 0.57 s (from
+  `/proc/PID/stat`; Wine 0162 is the fix). In 60 s without logins: 1 signal; `udisksd` 0.55% of one logical CPU, the whole
+  machine 5.1% and 170 wakeups/s, against 4.9% and 177 before the install (both with the sampling script of
+  [plans/screensaver-and-lock.md](../../plans/screensaver-and-lock.md); the second also with a debug trace on).
+- **Undo:** `sudo apt remove udisks2 && sudo apt autoremove`.
+
+### 2026-11-27: probes for mounting disc images (undone)
+
+- **What:** for the probes of [plans/iso-mount.md](../../plans/iso-mount.md): `/etc/udev/rules.d/70-win4wine-iso.rules`
+  (`SUBSYSTEM=="block", KERNEL=="loop*", ENV{ID_FS_TYPE}=="iso9660|udf", GROUP="cdrom", MODE="0660"`), and for one session
+  `"debug": "+timestamp,fixme-all,xp-explorer.exe:+cdrom,xp-explorer.exe:+file,winedevice.exe:+mountmgr"` in
+  `session.json`. Test files went to `/tmp/w4w-*`.
+- **Why:** to see whether XP's Eject needs to open the loop device (`root:disk 0660`), and what it sends.
+- **Result:** Eject sends `IOCTL_DISK_EJECT_MEDIA` to the volume device, and does so too when `cr` cannot open the loop
+  device, so the rule is not needed.
+- **Undo:** done the same day: the rule removed and `udevadm control --reload`, `session.json` restored.
 
 ### 2026-11-27: Wine 0161 (copy and paste of files) installed
 

@@ -194,3 +194,25 @@ The Linux values were there in the same frame as the rows. Sorting by Linux Perm
 run). Idle for 30 s with the four columns on screen: xp-explorer 2.3% of one logical CPU, wineserver 0.8%; with a folder window
 without them (`Z:\usr`): 3.3% and 1.8%. `Z:\run\user\1000`, with its sockets, showed them and nothing hung.
 
+## Disc images
+
+Measured 2026-11-27, `udisks2` 2.10.1, the images in `~/Images` (300 to 600 MB, on the hard disk).
+
+- **`udisksctl`** in the session, the Office XP image: `loop-setup -r` 0.90 s, `mount` 0.33 s (one run, `udisksd` freshly
+  started).
+- **From the double click until the drive's window** (repo dc08256, the launcher's 2 s wait included): Office XP 7.3 s the
+  first time and 5.6 to 6.2 s in six more, Age of Empires II 6.2 s, XP SP3 6.9 s, Whistler 2296 6.7 s.
+- **The wait** (test builds, Office XP): a window asked for 0.3 s after the drive had its letter was titled `D:\` with an
+  empty address bar, after 0.8 s the title was right and the address bar still empty, after 1.5 s all was.
+- **D-Bus signals**, CPU time over 10 ssh logins (systemd sends about 26 `PropertiesChanged` per login):
+
+  | | up to Wine 0161 | with Wine 0162 |
+  |---|---|---|
+  | `udisksd` | 3.24 s | 0.09 s |
+  | `dbus-daemon` (system) | 1.30 s | 0.56 s |
+  | `winedevice.exe` (mountmgr) | 0.57 s | 0.00 s |
+
+- **Memory**: `udisksd` 15 to 18 MB resident.
+- **Idle session**, 60 s, the desktop only: 4.9% of one logical CPU and 177 wakeups/s before `udisks2` was installed, 6.4%
+  and 237 after the tests (xp-explorer 2.4% and 28/s before, 3.7% and 55/s after; `udisksd` 0.0%). The second sample was
+  taken after some twenty mounts in that session, so the two are not like for like; **not yet repeated on a fresh logon**.

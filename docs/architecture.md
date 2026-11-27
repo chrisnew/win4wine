@@ -374,6 +374,7 @@ UDisks2); Wine does not read the file.
   directory on it, the unmount fails and the disc stays. XP shows **no message** then; close the window and eject again.
 - **Arrivals**: `mountmgr` announces a drive once, when it can be read, as a new drive (0163): Explorer adds it to My
   Computer and opens nothing, so the one window is the launcher's. An image mounted from Linux appears without a window.
+  Unmounting from Linux (`udisksctl unmount`) leaves the drive with nothing in it; it goes when the loop device does.
   A disc's `autorun.inf` is **not** run: XP's Explorer looks for the file and does not read it (as far as traced, with
   no Shell Hardware Detection service here).
 - **Images stay mounted across a log off**, like a disc left in a drive. A restart of the machine clears them.
