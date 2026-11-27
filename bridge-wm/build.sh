@@ -61,6 +61,8 @@ compile "$root/.local/bridge/linux-launch.exe" "$root/session/linux-launch.c" "$
 rm -f "$root/.local/bridge/linux-launch.res"
 # Its helper for "Mount" on disc images (--mount-iso), installed beside it.
 install -m 644 "$root/session/iso_mount.py" "$root/.local/bridge/iso_mount.py"
+# The icon of .iso files (prefix/extras.py).
+install -m 644 "$root/resources/iso-disc.ico" "$root/.local/bridge/iso-disc.ico"
 compile "$root/.local/bridge/linux-links.exe" "$root/session/linux-links.c" -lole32 -lshell32 -luuid
 # XP's logon and log off sounds (session/supervisor.py).
 compile "$root/.local/bridge/playsound.exe" "$root/session/playsound.c" -mwindows -lwinmm -lshell32

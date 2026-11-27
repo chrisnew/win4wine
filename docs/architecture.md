@@ -348,7 +348,7 @@ from `D:`) with the disc's label. Linux does the mounting (the kernel's loop dev
 UDisks2); Wine does not read the file.
 
 - **The association** is written by `prefix/extras.py`: `.iso` becomes the class `win4wine.isoimage` ("Disc Image File",
-  shell32's CD drive icon) unless a program has given it a class of its own. Its default verb, **Mount**, runs
+  the icon [resources/iso-disc.ico](../resources/iso-disc.ico)) unless a program has given it a class of its own. Its default verb, **Mount**, runs
   `linux-launch.exe --mount-iso "PATH"`.
 - **The work** is done by `C:\xp\bin\iso_mount.py`, which the launcher starts with the Unix names of the image and of a result
   file. A script, because Wine gives a Windows program neither the exit status of a Unix program nor its output through a

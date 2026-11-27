@@ -37,11 +37,11 @@ import xp_schemes
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / '.local/bridge'
 # Bumped when apply() changes; setup.sh applies it again on existing prefixes.
-VERSION = '14'
+VERSION = '15'
 MARKER = '.xp-extras'
 # What goes from .local/bridge to C:\xp\bin.
 HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'linux-launch.exe',
-           'linuxcols.dll', 'iso_mount.py')
+           'linuxcols.dll', 'iso_mount.py', 'iso-disc.ico')
 # linuxcols.dll's column handler (xp-explorer/helpers/linuxcols.c), and the
 # property set of its columns.
 LINUX_COLUMNS = '{48E91554-B8E3-45CE-A5C9-E7E65E654FF0}'
@@ -160,8 +160,7 @@ def registry(xpx):
           'Open in Linux Terminal')
     iso = 'HKCR\\' + ISO_CLASS
     r.add(iso, None, 'Disc Image File')
-    # shell32's CD drive.
-    r.add(iso + '\\DefaultIcon', None, r'%SystemRoot%\system32\shell32.dll,11', 'REG_EXPAND_SZ')
+    r.add(iso + '\\DefaultIcon', None, r'C:\xp\bin\iso-disc.ico')
     r.add(iso + '\\shell', None, 'mount')
     r.add(iso + '\\shell\\mount', None, '&Mount')
     r.add(iso + '\\shell\\mount\\command', None, r'"C:\xp\bin\linux-launch.exe" --mount-iso "%1"')
