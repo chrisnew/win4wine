@@ -132,7 +132,7 @@ Fixes towards documented behaviour; they apply to every Wine app.
 | No. | Contents | Opt-in |
 |---|---|---|
 | 0065 | user32: measure the ideal size of classic push buttons | yes |
-| 0066 | user32, comctl32: draw and size the Start button as XP does | yes |
+| 0066 | user32, comctl32: draw and size the Start button as XP does. Neither it nor the notification area's chevron button fills its background with the classic face brush (a grey square showed around the round chevron) | yes (the chevron: XP session) |
 | 0067 | user32, comctl32: create the XP shell's controls with Wine's themed implementation | yes |
 | 0068 | comctl32: match the text position of themed check boxes and group boxes to XP | yes |
 
@@ -150,7 +150,7 @@ Fixes towards documented behaviour; they apply to every Wine app.
 | 0076 | uxtheme: use Japanese XP's Luna font settings (the ones in the prefix) | yes |
 | 0077 | uxtheme: use values from the string table of localized msstyles | yes |
 | 0078 | uxtheme: draw the Start menu user name's continuous shadow | yes |
-| 0079 | uxtheme: draw the themed background of the taskbar's children | yes |
+| 0079 | uxtheme: draw the themed background of the taskbar's children; in the notification area its own background over the taskbar's, which shows through at its left end (under the chevron button) | yes |
 | 0080 | uxtheme: draw the notification area's clock with the theme | yes |
 | 0081 | uxtheme: draw the taskbar ReBar's grippers and trailing margin | yes |
 | 0082 | uxtheme: with a theme applied, start the menu bar height at 19 (96 DPI), as in XP (Luna is 1 taller than Classic; with English XP's Tahoma it stayed at 18) | yes |

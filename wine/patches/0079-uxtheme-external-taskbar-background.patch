@@ -15,8 +15,10 @@ its parent's background and showed black behind the icons.
 Change: for descendants of Shell_TrayWnd with themes active, draw the
 Taskbar part at the ancestor's coordinates, keeping the caller's clip and
 viewport; for descendants of TrayNotifyWnd, draw its TrayNotify background
-under the theme that window selected. Report BgType None as partially
-transparent. Other windows keep the parent message painting.
+over that, under the theme that window selected (Luna's is see-through at its
+left end, where the chevron button kept old pixels without the taskbar below).
+Report BgType None as partially transparent. Other windows keep the parent
+message painting.
 Evidence: tests/taskbar-background.c compares translated child rendering
 with a direct DrawThemeBackground of the user's theme. On XP and on Wine,
 tests/theme-part-pixels.c prints partial=1 for Toolbar under TrayNotify,
@@ -25,14 +27,14 @@ button with the TrayNotify background.
 Scope: only with WIN4WINE_EXTERNAL_SHELL.
 Old patches: 0016.
 ---
- dlls/uxtheme/draw.c | 59 +++++++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 59 insertions(+)
+ dlls/uxtheme/draw.c | 57 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 57 insertions(+)
 
 diff --git a/dlls/uxtheme/draw.c b/dlls/uxtheme/draw.c
-index c04f166..1645c5c 100644
+index c04f166..df5595e 100644
 --- a/dlls/uxtheme/draw.c
 +++ b/dlls/uxtheme/draw.c
-@@ -95,6 +95,61 @@ BOOL WINAPI IsThemeDialogTextureEnabled(HWND hwnd)
+@@ -95,6 +95,59 @@ BOOL WINAPI IsThemeDialogTextureEnabled(HWND hwnd)
      return dwDialogTextureFlags && !(dwDialogTextureFlags & ETDT_DISABLE);
  }
  
@@ -60,41 +62,39 @@ index c04f166..1645c5c 100644
 +        tray = GetParent(tray);
 +    }
 +    if (!tray) return FALSE;
-+    if (notify)
-+    {
-+        /* Under the theme the notification area selected for itself
-+         * (TrayNotifyHoriz or TrayNotifyVert). */
-+        theme = OpenThemeDataForDpi(notify, L"TrayNotify", GetDpiForWindow(notify));
-+        if (!theme) return FALSE;
-+        part = TNP_BACKGROUND;
-+        GetClientRect(notify, &rect);
-+        MapWindowPoints(notify, hwnd, (POINT *)&rect, 2);
-+    }
++    theme = OpenThemeDataForDpi(NULL, L"Taskbar", GetDpiForWindow(tray));
++    if (!theme) return FALSE;
++    GetWindowRect(tray, &screen);
++    if (screen.right - screen.left >= screen.bottom - screen.top)
++        part = screen.top < GetSystemMetrics(SM_CYSCREEN) / 2 ? TBP_BACKGROUNDTOP : TBP_BACKGROUNDBOTTOM;
 +    else
-+    {
-+        theme = OpenThemeDataForDpi(NULL, L"Taskbar", GetDpiForWindow(tray));
-+        if (!theme) return FALSE;
-+        GetWindowRect(tray, &screen);
-+        if (screen.right - screen.left >= screen.bottom - screen.top)
-+            part = screen.top < GetSystemMetrics(SM_CYSCREEN) / 2 ? TBP_BACKGROUNDTOP : TBP_BACKGROUNDBOTTOM;
-+        else
-+            part = screen.left < GetSystemMetrics(SM_CXSCREEN) / 2 ? TBP_BACKGROUNDLEFT : TBP_BACKGROUNDRIGHT;
-+        GetClientRect(tray, &rect);
-+        MapWindowPoints(tray, hwnd, (POINT *)&rect, 2);
-+    }
++        part = screen.left < GetSystemMetrics(SM_CXSCREEN) / 2 ? TBP_BACKGROUNDLEFT : TBP_BACKGROUNDRIGHT;
++    GetClientRect(tray, &rect);
++    MapWindowPoints(tray, hwnd, (POINT *)&rect, 2);
 +    saved = SaveDC(dc);
 +    if (!saved) { CloseThemeData(theme); return FALSE; }
 +    if (clip) IntersectClipRect(dc, clip->left, clip->top, clip->right, clip->bottom);
 +    result = DrawThemeBackground(theme, dc, part, 0, &rect, NULL);
-+    RestoreDC(dc, saved);
 +    CloseThemeData(theme);
++    /* The notification area's background has see-through parts (Luna's left
++     * end, under the chevron button), so it goes over the taskbar's, under the
++     * theme the area selected for itself (TrayNotifyHoriz or TrayNotifyVert). */
++    if (SUCCEEDED(result) && notify &&
++        (theme = OpenThemeDataForDpi(notify, L"TrayNotify", GetDpiForWindow(notify))))
++    {
++        GetClientRect(notify, &rect);
++        MapWindowPoints(notify, hwnd, (POINT *)&rect, 2);
++        result = DrawThemeBackground(theme, dc, TNP_BACKGROUND, 0, &rect, NULL);
++        CloseThemeData(theme);
++    }
++    RestoreDC(dc, saved);
 +    return SUCCEEDED(result);
 +}
 +
  /***********************************************************************
   *      DrawThemeParentBackground                           (UXTHEME.@)
   */
-@@ -107,6 +162,7 @@ HRESULT WINAPI DrawThemeParentBackground(HWND hwnd, HDC hdc, RECT *prc)
+@@ -107,6 +160,7 @@ HRESULT WINAPI DrawThemeParentBackground(HWND hwnd, HDC hdc, RECT *prc)
      int hasClip = -1;
      
      TRACE("(%p,%p,%p)\n", hwnd, hdc, prc);
@@ -102,7 +102,7 @@ index c04f166..1645c5c 100644
      hParent = GetParent(hwnd);
      if(!hParent)
          hParent = hwnd;
-@@ -2482,6 +2538,9 @@ BOOL WINAPI IsThemeBackgroundPartiallyTransparent(HTHEME hTheme, int iPartId,
+@@ -2482,6 +2536,9 @@ BOOL WINAPI IsThemeBackgroundPartiallyTransparent(HTHEME hTheme, int iPartId,
  
      GetThemeEnumValue(hTheme, iPartId, iStateId, TMT_BGTYPE, &bgtype);
  

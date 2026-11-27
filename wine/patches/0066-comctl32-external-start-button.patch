@@ -27,13 +27,13 @@ machine's.
 Scope: only with WIN4WINE_EXTERNAL_SHELL and the Start button class.
 Old patches: 0013, 0033, 0037, 0044.
 ---
- dlls/comctl32_v6/button.c         | 131 ++++++++++++++++++++++++++++++++++----
+ dlls/comctl32_v6/button.c         | 140 ++++++++++++++++++++++++++++++---
  dlls/comctl32_v6/comctl32_v6.spec |   1 +
- dlls/user32/win.c                 |  18 ++++++
- 3 files changed, 137 insertions(+), 13 deletions(-)
+ dlls/user32/win.c                 |  18 +++++
+ 3 files changed, 146 insertions(+), 13 deletions(-)
 
 diff --git a/dlls/comctl32_v6/button.c b/dlls/comctl32_v6/button.c
-index 9128e52..f4feec0 100644
+index 9128e52..f570783 100644
 --- a/dlls/comctl32_v6/button.c
 +++ b/dlls/comctl32_v6/button.c
 @@ -55,6 +55,7 @@
@@ -106,7 +106,7 @@ index 9128e52..f4feec0 100644
      }
  
      case WM_NCHITTEST:
-@@ -1092,18 +1116,34 @@ static LRESULT CALLBACK BUTTON_WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, L
+@@ -1092,18 +1116,42 @@ static LRESULT CALLBACK BUTTON_WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, L
  }
  
  /* If maxWidth is zero, rectangle width is unlimited */
@@ -121,6 +121,14 @@ index 9128e52..f4feec0 100644
 +{
 +    if (!IsThemeActive() || !external_start_button(info)) return NULL;
 +    return GetWindowTheme(info->hwnd);
++}
++
++/* The XP taskbar's other themed button, the notification area's chevron. */
++static BOOL external_notify_button(const BUTTON_INFO *info)
++{
++    WCHAR name[64];
++    return win4wine_shell() == WIN4WINE_SHELL_XP &&
++        GetClassNameW(GetParent(info->hwnd), name, ARRAY_SIZE(name)) && !wcscmp(name, L"TrayNotifyWnd");
 +}
 +
  static RECT BUTTON_GetTextRect(const BUTTON_INFO *infoPtr, HDC hdc, const WCHAR *text, LONG maxWidth)
@@ -142,7 +150,7 @@ index 9128e52..f4feec0 100644
      if (hPrevFont) SelectObject(hdc, hPrevFont);
  
      return rect;
-@@ -1240,6 +1280,13 @@ static UINT BUTTON_ILStoBS(UINT align)
+@@ -1240,6 +1288,13 @@ static UINT BUTTON_ILStoBS(UINT align)
      }
  }
  
@@ -156,7 +164,7 @@ index 9128e52..f4feec0 100644
  static SIZE BUTTON_GetImageSize(const BUTTON_INFO *infoPtr)
  {
      ICONINFO iconInfo;
-@@ -1249,10 +1296,22 @@ static SIZE BUTTON_GetImageSize(const BUTTON_INFO *infoPtr)
+@@ -1249,10 +1304,22 @@ static SIZE BUTTON_GetImageSize(const BUTTON_INFO *infoPtr)
      /* ImageList has priority over image */
      if (infoPtr->imagelist.himl)
      {
@@ -181,7 +189,7 @@ index 9128e52..f4feec0 100644
      }
      else if (infoPtr->u.image)
      {
-@@ -1426,6 +1485,17 @@ static BOOL PB_GetIdealSize(BUTTON_INFO *infoPtr, SIZE *size)
+@@ -1426,6 +1493,17 @@ static BOOL PB_GetIdealSize(BUTTON_INFO *infoPtr, SIZE *size)
  
          size->cx = labelSize.cx;
          size->cy = labelSize.cy;
@@ -199,7 +207,7 @@ index 9128e52..f4feec0 100644
      }
      return TRUE;
  }
-@@ -1737,9 +1807,27 @@ static void BUTTON_DrawImage(const BUTTON_INFO *infoPtr, HDC hdc, HBRUSH hbr, UI
+@@ -1737,9 +1815,27 @@ static void BUTTON_DrawImage(const BUTTON_INFO *infoPtr, HDC hdc, HBRUSH hbr, UI
  {
      if (infoPtr->imagelist.himl)
      {
@@ -230,7 +238,7 @@ index 9128e52..f4feec0 100644
      }
      else
      {
-@@ -2771,9 +2859,13 @@ static void PB_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, in
+@@ -2771,9 +2867,14 @@ static void PB_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, in
      {
          DrawThemeParentBackground(infoPtr->hwnd, hDC, NULL);
          /* Tests show that the brush from WM_CTLCOLORBTN is used for filling background after a
@@ -238,8 +246,9 @@ index 9128e52..f4feec0 100644
 -        brush = (HBRUSH)SendMessageW(parent, WM_CTLCOLORBTN, (WPARAM)hDC, (LPARAM)infoPtr->hwnd);
 -        FillRect(hDC, &bgRect, brush ? brush : GetSysColorBrush(COLOR_BTNFACE));
 +         * DrawThemeParentBackground() call. The XP taskbar answers with the classic face
-+         * brush, while XP keeps its themed background in the Start image's rounded corners. */
-+        if (!external_start_button(infoPtr))
++         * brush, while XP keeps its themed background in the Start image's rounded corners
++         * and around the notification area's round chevron. */
++        if (!external_start_button(infoPtr) && !external_notify_button(infoPtr))
 +        {
 +            brush = (HBRUSH)SendMessageW(parent, WM_CTLCOLORBTN, (WPARAM)hDC, (LPARAM)infoPtr->hwnd);
 +            FillRect(hDC, &bgRect, brush ? brush : GetSysColorBrush(COLOR_BTNFACE));
@@ -247,7 +256,7 @@ index 9128e52..f4feec0 100644
      }
      DrawThemeBackground(theme, hDC, BP_PUSHBUTTON, state, &bgRect, NULL);
  
-@@ -3225,7 +3317,7 @@ static void CL_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, in
+@@ -3225,7 +3326,7 @@ static void CL_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, in
      }
  }
  
@@ -256,7 +265,7 @@ index 9128e52..f4feec0 100644
  {
      WNDCLASSW wndClass;
  
-@@ -3236,6 +3328,19 @@ void BUTTON_Register(void)
+@@ -3236,6 +3337,19 @@ void BUTTON_Register(void)
      wndClass.cbWndExtra = sizeof(BUTTON_INFO *);
      wndClass.hCursor = LoadCursorW(0, (LPWSTR)IDC_ARROW);
      wndClass.hbrBackground = NULL;
