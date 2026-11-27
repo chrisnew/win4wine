@@ -297,7 +297,8 @@ Details view (right click on the column header, or View → Choose Details), and
 task pane. Wine's own shell32 does not use column handlers, so only XP's Explorer has them. It only reads.
 
 - **The handler** is a 32-bit in-process COM server, `C:\xp\bin\linuxcols.dll`, with `IColumnProvider`, listed under
-  `HKCR\Folder\shellex\ColumnHandlers`. `prefix/extras.py` copies and registers it.
+  `HKCR\Folder\shellex\ColumnHandlers`. `prefix/extras.py` copies and registers it. The DLL's second class is the context menu
+  handler of [Open in Linux Terminal](#open-in-linux-terminal-sessionlinux-launchc).
 - **Mode, user and group** come from `NtQueryInformationByName` with `FileStatLxInformation` (Wine patch 0160): a path conversion
   and `lstat()`. A symbolic link shows itself (`l`, its own owner), as `ls -l` does. Without the patch only the path is filled in.
   Names are read from `\\?\unix\etc\passwd` and `group`, again when they change; users only NSS knows show as numbers.
@@ -311,17 +312,24 @@ task pane. Wine's own shell32 does not use column handlers, so only XP's Explore
   does not know without a name. So the handler has the four columns twice: the second set is hidden (`SHCOLSTATE_HIDDEN`,
   not in the column menus), and its values carry the name (`Owner: root`). The path there has zero width spaces after `/`, `_`,
   `-` and `.`, and in long runs, where the narrow pane can wrap it.
-- **To see XP's calls**: `HKCU\Software\win4wine\LinuxColumns`, DWORD `Debug` = 1, and `"debug": "warn+seh"` in
-  `session.json` (Wine prints `OutputDebugString` on the `seh` channel).
+- **To see XP's calls** (the columns' and the menu's): `HKCU\Software\win4wine\LinuxColumns`, DWORD `Debug` = 1, and
+  `"debug": "warn+seh"` in `session.json` (Wine prints `OutputDebugString` on the `seh` channel).
 
 ## Open in Linux Terminal (`session/linux-launch.c`)
 
 Folders and drives that exist on the Linux file system offer **Open in Linux Terminal** (access key T): a Linux terminal
 (`x-terminal-emulator`, else `xterm`) in that folder, with an XP frame and a taskbar button from the WM.
 
-- **The verb** is a static one under `HKCR\Directory\shell\linuxterminal` and `HKCR\Drive\...`, written by
-  `prefix/extras.py`: `"C:\xp\bin\linux-launch.exe" --terminal "%1"`. Both keys' default verb is set to `none`, as XP's setup
-  does, so that a double click still opens the folder.
+- **The menu item** comes from a context menu handler (`IShellExtInit` and `IContextMenu`), the second class of
+  `C:\xp\bin\linuxcols.dll` (`xp-explorer/helpers/linuxcols.c`), registered by `prefix/extras.py` under
+  `ContextMenuHandlers` of `Directory`, `Drive` and `Directory\Background`. So it is on a folder or drive (in a folder window,
+  the Folders tree, the desktop and the File menu), and on the background of a folder window or the desktop, for that folder.
+  It starts `linux-launch.exe --terminal "PATH"`.
+- **Where it is missing**: anything but one directory on a drive (a file, several items, My Computer and the other virtual
+  folders), and `/proc` and `/run/user/*/gvfs`, where asking could hang the menu (the [Linux columns](#linux-columns-in-xps-folder-windows-xp-explorerhelperslinuxcolsc)'
+  rule). The check opens the drive's root and asks for the folder's attributes.
+- **Once per menu**: with a folder selected, XP's File menu asks the handler for the selection and then, into the same menu,
+  for the window's folder, so the handler adds nothing to a menu that has its item.
 - **The folder reaches the terminal as its working directory only.** Wine changes to `CreateProcess`'s current directory before
   it runs the Unix program, so no folder name is ever part of a command line or read by a shell.
 - **No terminal in another directory.** The launcher shows a message box instead for: a path without a drive letter

@@ -1,7 +1,7 @@
 # Plan: "Open in Linux Terminal" on folders
 
-Status (2026-11-27): phase 1 built and checked in the session in Docker (Xvfb, 1024x600); not yet on the EeePC. Found there,
-and different from what is written below:
+Status (2026-11-27): phases 1 and 2 built and checked in the session in Docker (Xvfb, 1024x600); not yet on the EeePC. Phase 3
+is not started. Found there, and different from what is written below:
 
 - **Environment:** only `WINEDEBUG` and `FONTCONFIG_FILE` are dropped. Without `WIN4WINE_EXTERNAL_SHELL` and `WINEDLLOVERRIDES`,
   `wine notepad` gets a broken frame, and Linux programs do not read them.
@@ -9,7 +9,10 @@ and different from what is written below:
   working directory, and folders that may not be entered, where Wine starts the program in its own directory.
 - **`Directory\shell` and `Drive\shell`** did not exist in the prefix, so `extras.py` sets their default verb to `none`.
 - A name with `"` shows in Explorer but cannot be opened by Windows programs: message box.
-- Control Panel was not checked on its own; it is not of the class `Directory`.
+- **XP asks `Directory\Background` handlers**, in a folder window and on the desktop, so the static verbs are gone.
+- **The File menu** with a folder selected asks the handler twice, into one menu: it adds nothing the second time.
+- **The handler also opens the drive's root** (to find its Linux path, for the `gvfs` rule), besides `GetFileAttributesW`.
+- A drive root that XP covers with "These files are hidden" has no background menu until its contents are shown.
 
 Goal: in XP's Explorer, right-clicking a folder or a drive that exists on the Linux file system offers **Open in Linux
 Terminal**. It opens a Linux terminal (xterm on the EeePC) in that folder, with an XP frame and a taskbar button from the WM. A

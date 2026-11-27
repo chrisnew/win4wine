@@ -15,6 +15,11 @@
  * the file): only a drive's root is, and the rest of the path is appended, in
  * the spelling the folder window gives it.
  *
+ * The DLL also holds a context menu handler (IShellExtInit and IContextMenu),
+ * "Open in Linux Terminal" on folders, drives and the background of a folder
+ * window or the desktop. It adds nothing where there is no Linux path, and it
+ * leaves the launching to linux-launch.exe --terminal (session/linux-launch.c).
+ *
  * HKCU\Software\win4wine\LinuxColumns, "Debug" = 1 reports the calls through
  * OutputDebugStringW (WINEDEBUG=warn+seh; read when XP loads the handler).
  *
@@ -136,10 +141,14 @@ static int wraps_after(unsigned int c, unsigned int previous, unsigned int *run)
 #include <ole2.h>
 #include <shlobj.h>
 #include <shlguid.h>
+#include <shellapi.h>
 #include <wchar.h>
 
 static const GUID CLSID_LinuxColumns =
     {0x48e91554, 0xb8e3, 0x45ce, {0xa5, 0xc9, 0xe7, 0xe6, 0x5e, 0x65, 0x4f, 0xf0}};
+static const GUID CLSID_LinuxTerminal =
+    {0x8524e83f, 0xa4b4, 0x4b25,
+    {0x81, 0x20, 0x52, 0x00, 0x29, 0xcc, 0x61, 0x72}};
 static const GUID FMTID_LinuxColumns =
     {0x9efe7827, 0xd3d3, 0x4e38, {0xbe, 0x40, 0xbb, 0xff, 0x8b, 0x12, 0xf6, 0x57}};
 
@@ -564,6 +573,262 @@ static IColumnProviderVtbl provider_vtbl =
     provider_GetItemData,
 };
 
+/* "Open in Linux Terminal" */
+
+#define LAUNCHER L"C:\\xp\\bin\\linux-launch.exe"
+#define TITLE L"Open in Linux &Terminal"
+#define VERB "linuxterminal"
+#define HELP "Opens a Linux terminal in this folder."
+
+struct menu
+{
+    IShellExtInit init;
+    IContextMenu menu;
+    LONG references;
+    WCHAR folder[MAX_PATH];  /* empty: no item */
+};
+
+static struct menu *from_init(IShellExtInit *iface)
+{
+    return CONTAINING_RECORD(iface, struct menu, init);
+}
+
+static struct menu *from_menu(IContextMenu *iface)
+{
+    return CONTAINING_RECORD(iface, struct menu, menu);
+}
+
+/* Whether a terminal can be offered for the item: a directory on a drive, so
+ * one with a Linux path. That path comes from the drive's root alone
+ * (unix_path), so that the paths skip_path leaves out, where a hung mount
+ * would stop the menu, are never touched. */
+static BOOL terminal_folder(const WCHAR *path)
+{
+    DWORD attributes;
+    BOOL skip;
+    char *name;
+
+    if ((unsigned int)((path[0] | 0x20) - 'a') >= 26 || path[1] != ':' || path[2] != '\\') return FALSE;
+    /* Look at the drives afresh. */
+    EnterCriticalSection(&lock);
+    generation++;
+    LeaveCriticalSection(&lock);
+    if (!(name = unix_path(path))) return FALSE;
+    skip = skip_path(name);
+    free(name);
+    if (skip) return FALSE;
+    attributes = GetFileAttributesW(path);
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+/* The path of the selection, if it is one item with a path. */
+static BOOL selected_path(IDataObject *data, WCHAR path[MAX_PATH])
+{
+    FORMATETC format = {CF_HDROP, NULL, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+    STGMEDIUM medium;
+    BOOL found;
+
+    if (IDataObject_GetData(data, &format, &medium) != S_OK) return FALSE;
+    found = DragQueryFileW(medium.hGlobal, 0xffffffff, NULL, 0) == 1 &&
+            DragQueryFileW(medium.hGlobal, 0, NULL, 0) < MAX_PATH &&
+            DragQueryFileW(medium.hGlobal, 0, path, MAX_PATH);
+    ReleaseStgMedium(&medium);
+    return found;
+}
+
+static BOOL already_offered(HMENU popup)
+{
+    WCHAR title[64];
+    int i, count = GetMenuItemCount(popup);
+
+    for (i = 0; i < count; i++)
+        if (GetMenuStringW(popup, i, title, 64, MF_BYPOSITION) && !wcscmp(title, TITLE)) return TRUE;
+    return FALSE;
+}
+
+static HRESULT menu_query_interface(struct menu *menu, REFIID riid, void **out)
+{
+    if (IsEqualIID(riid, &IID_IUnknown) || IsEqualIID(riid, &IID_IShellExtInit)) *out = &menu->init;
+    else if (IsEqualIID(riid, &IID_IContextMenu)) *out = &menu->menu;
+    else
+    {
+        *out = NULL;
+        return E_NOINTERFACE;
+    }
+    InterlockedIncrement(&menu->references);
+    return S_OK;
+}
+
+static ULONG menu_release(struct menu *menu)
+{
+    ULONG left = InterlockedDecrement(&menu->references);
+    if (!left)
+    {
+        free(menu);
+        InterlockedDecrement(&references);
+    }
+    return left;
+}
+
+static HRESULT WINAPI init_QueryInterface(IShellExtInit *iface, REFIID riid, void **out)
+{
+    return menu_query_interface(from_init(iface), riid, out);
+}
+
+static ULONG WINAPI init_AddRef(IShellExtInit *iface)
+{
+    return InterlockedIncrement(&from_init(iface)->references);
+}
+
+static ULONG WINAPI init_Release(IShellExtInit *iface)
+{
+    return menu_release(from_init(iface));
+}
+
+/* With a selection the item is for it; without one, on the background of a
+ * folder window or the desktop, for the folder. */
+static HRESULT WINAPI init_Initialize(IShellExtInit *iface, LPCITEMIDLIST folder, IDataObject *data, HKEY key)
+{
+    struct menu *menu = from_init(iface);
+    WCHAR path[MAX_PATH];
+    BOOL found = FALSE;
+
+    (void)key;
+    menu->folder[0] = 0;
+    if (data) found = selected_path(data, path);
+    else if (folder) found = SHGetPathFromIDListW(folder, path);
+    report(L"linuxcols: thread %u menu for %s \"%.300s\"", GetCurrentThreadId(),
+           data ? L"the selection" : L"the folder", found ? path : L"");
+    if (found && terminal_folder(path)) lstrcpyW(menu->folder, path);
+    return S_OK;
+}
+
+static IShellExtInitVtbl init_vtbl =
+{
+    init_QueryInterface,
+    init_AddRef,
+    init_Release,
+    init_Initialize,
+};
+
+static HRESULT WINAPI menu_QueryInterface(IContextMenu *iface, REFIID riid, void **out)
+{
+    return menu_query_interface(from_menu(iface), riid, out);
+}
+
+static ULONG WINAPI menu_AddRef(IContextMenu *iface)
+{
+    return InterlockedIncrement(&from_menu(iface)->references);
+}
+
+static ULONG WINAPI menu_Release(IContextMenu *iface)
+{
+    return menu_release(from_menu(iface));
+}
+
+static HRESULT WINAPI menu_QueryContextMenu(IContextMenu *iface, HMENU popup, UINT index, UINT first,
+                                            UINT last_id, UINT flags)
+{
+    struct menu *menu = from_menu(iface);
+
+    report(L"linuxcols: thread %u QueryContextMenu flags %x \"%.300s\"",
+           GetCurrentThreadId(), flags, menu->folder);
+    /* CMF_DEFAULTONLY: a double click, which asks for the default item alone.
+     * With a folder selected, XP's File menu asks for the selection and then,
+     * into the same menu, for the window's folder: one item is enough. */
+    if (!menu->folder[0] || (flags & CMF_DEFAULTONLY) || first > last_id || already_offered(popup))
+        return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
+    if (!InsertMenuW(popup, index, MF_BYPOSITION | MF_STRING, first, TITLE)) return E_FAIL;
+    return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 1);
+}
+
+static HRESULT WINAPI menu_InvokeCommand(IContextMenu *iface, LPCMINVOKECOMMANDINFO info)
+{
+    struct menu *menu = from_menu(iface);
+    STARTUPINFOW startup = {.cb = sizeof(startup)};
+    PROCESS_INFORMATION process;
+    WCHAR line[MAX_PATH + 64];
+
+    /* Our item by its offset (0) or by its verb. */
+    if (HIWORD((ULONG_PTR)info->lpVerb) ? lstrcmpiA(info->lpVerb, VERB) : LOWORD((ULONG_PTR)info->lpVerb))
+        return E_INVALIDARG;
+    if (!menu->folder[0]) return E_FAIL;
+    wsprintfW(line, L"\"%s\" --terminal \"%s\"", LAUNCHER, menu->folder);
+    if (!CreateProcessW(LAUNCHER, line, NULL, NULL, FALSE, 0, NULL, NULL, &startup, &process))
+    {
+        DWORD error = GetLastError();
+        report(L"linuxcols: %s: error %u", LAUNCHER, error);
+        return HRESULT_FROM_WIN32(error);
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    return S_OK;
+}
+
+static HRESULT WINAPI menu_GetCommandString(IContextMenu *iface, UINT_PTR id, UINT type, UINT *reserved,
+                                            LPSTR out, UINT size)
+{
+    (void)iface;
+    (void)reserved;
+    if (id) return E_INVALIDARG;
+    switch (type)
+    {
+    case GCS_VERBA: lstrcpynA(out, VERB, size); return S_OK;
+    case GCS_VERBW: lstrcpynW((WCHAR *)out, L"" VERB, size); return S_OK;
+    case GCS_HELPTEXTA: lstrcpynA(out, HELP, size); return S_OK;
+    case GCS_HELPTEXTW: lstrcpynW((WCHAR *)out, L"" HELP, size); return S_OK;
+    case GCS_VALIDATEA:
+    case GCS_VALIDATEW: return S_OK;
+    default: return E_INVALIDARG;
+    }
+}
+
+static IContextMenuVtbl menu_vtbl =
+{
+    menu_QueryInterface,
+    menu_AddRef,
+    menu_Release,
+    menu_QueryContextMenu,
+    menu_InvokeCommand,
+    menu_GetCommandString,
+};
+
+static HRESULT create_menu(REFIID riid, void **out)
+{
+    struct menu *menu;
+    HRESULT result;
+
+    if (!(menu = calloc(1, sizeof(*menu)))) return E_OUTOFMEMORY;
+    menu->init.lpVtbl = &init_vtbl;
+    menu->menu.lpVtbl = &menu_vtbl;
+    menu->references = 1;
+    InterlockedIncrement(&references);
+    result = menu_query_interface(menu, riid, out);
+    menu_release(menu);
+    return result;
+}
+
+static HRESULT create_provider(REFIID riid, void **out)
+{
+    struct provider *provider;
+    HRESULT result;
+
+    if (!(provider = malloc(sizeof(*provider)))) return E_OUTOFMEMORY;
+    provider->object.lpVtbl = &provider_vtbl;
+    provider->references = 1;
+    InterlockedIncrement(&references);
+    result = provider_QueryInterface(&provider->object, riid, out);
+    provider_Release(&provider->object);
+    return result;
+}
+
+/* One class factory for each of the two classes. */
+struct factory
+{
+    IClassFactory object;
+    HRESULT (*create)(REFIID, void **);
+};
+
 static HRESULT WINAPI factory_QueryInterface(IClassFactory *iface, REFIID riid, void **out)
 {
     if (!IsEqualIID(riid, &IID_IUnknown) && !IsEqualIID(riid, &IID_IClassFactory))
@@ -590,19 +855,9 @@ static ULONG WINAPI factory_Release(IClassFactory *iface)
 
 static HRESULT WINAPI factory_CreateInstance(IClassFactory *iface, IUnknown *outer, REFIID riid, void **out)
 {
-    struct provider *provider;
-    HRESULT result;
-
-    (void)iface;
     *out = NULL;
     if (outer) return CLASS_E_NOAGGREGATION;
-    if (!(provider = malloc(sizeof(*provider)))) return E_OUTOFMEMORY;
-    provider->object.lpVtbl = &provider_vtbl;
-    provider->references = 1;
-    InterlockedIncrement(&references);
-    result = provider_QueryInterface(&provider->object, riid, out);
-    provider_Release(&provider->object);
-    return result;
+    return CONTAINING_RECORD(iface, struct factory, object)->create(riid, out);
 }
 
 static HRESULT WINAPI factory_LockServer(IClassFactory *iface, BOOL keep)
@@ -622,19 +877,23 @@ static IClassFactoryVtbl factory_vtbl =
     factory_LockServer,
 };
 
-static IClassFactory factory = {&factory_vtbl};
+static struct factory columns_factory = {{&factory_vtbl}, create_provider};
+static struct factory menu_factory = {{&factory_vtbl}, create_menu};
 
 STDAPI DllGetClassObject(REFCLSID clsid, REFIID riid, LPVOID *out)
 {
     DWORD value = 0, size = sizeof(value);
-    if (!IsEqualCLSID(clsid, &CLSID_LinuxColumns))
+    struct factory *factory;
+    if (IsEqualCLSID(clsid, &CLSID_LinuxColumns)) factory = &columns_factory;
+    else if (IsEqualCLSID(clsid, &CLSID_LinuxTerminal)) factory = &menu_factory;
+    else
     {
         *out = NULL;
         return CLASS_E_CLASSNOTAVAILABLE;
     }
     debug = !RegGetValueW(HKEY_CURRENT_USER, L"Software\\win4wine\\LinuxColumns", L"Debug",
                           RRF_RT_REG_DWORD, NULL, &value, &size) && value;
-    return IClassFactory_QueryInterface(&factory, riid, out);
+    return IClassFactory_QueryInterface(&factory->object, riid, out);
 }
 
 STDAPI DllCanUnloadNow(void)

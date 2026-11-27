@@ -10,7 +10,8 @@
  * computers with nothing to open).
  *
  * linux-launch.exe --terminal PATH opens a Linux terminal in the folder PATH,
- * XP's "Open in Linux Terminal" on folders and drives (prefix/extras.py). PATH
+ * XP's "Open in Linux Terminal" (the context menu handler in
+ * xp-explorer/helpers/linuxcols.c). PATH
  * is the rest of the command line, with or without quotes around it: by the
  * rules of CommandLineToArgvW the closing quote of "C:\" would be escaped.
  * The folder becomes the terminal's working directory and nothing else, so its

@@ -9,10 +9,11 @@ scheme and Explorer defaults, Internet Explorer 6, Windows Media Player 9, and
 the Start menu's full left column (Internet, E-mail and the most used
 programs); XP's proxies for the shell's COM interfaces, which Taskbar
 Properties' Customize Notifications needs; Linux permissions, owner, group and
-path as columns and in the task pane's Details section of folder windows
-(linuxcols.dll); "Open in Linux Terminal" on folders and drives
-(linux-launch.exe); and XP's Regional and Language Options, whose input languages
-the session's keyboard layout follows (session/keyboard.py). This applies them to a prefix made by prefix/create.py, with
+path as columns and in the task pane's Details section of folder windows, and
+"Open in Linux Terminal" on folders, drives and folder windows' backgrounds
+(linuxcols.dll, linux-launch.exe); and XP's Regional and Language Options,
+whose input languages the session's keyboard layout follows
+(session/keyboard.py). This applies them to a prefix made by prefix/create.py, with
 xp-explorer/scripts/prefix.py's own code, and again when they change.
 
   extras.py PREFIX --wine WINE      apply (scripts/setup.sh runs it)
@@ -34,7 +35,7 @@ import xp_schemes
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / '.local/bridge'
 # Bumped when apply() changes; setup.sh applies it again on existing prefixes.
-VERSION = '11'
+VERSION = '12'
 MARKER = '.xp-extras'
 # What goes from .local/bridge to C:\xp\bin.
 HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'linux-launch.exe',
@@ -43,6 +44,12 @@ HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'li
 # property set of its columns.
 LINUX_COLUMNS = '{48E91554-B8E3-45CE-A5C9-E7E65E654FF0}'
 LINUX_PROPERTIES = '{9EFE7827-D3D3-4E38-BE40-BBFF8B12F657}'
+# Its context menu handler, "Open in Linux Terminal", and the classes that ask
+# it: folders, drives and the background of a folder window or the desktop.
+LINUX_TERMINAL = '{8524E83F-A4B4-4B25-8120-520029CC6172}'
+TERMINAL_CLASSES = ('Directory', 'Drive', r'Directory\Background')
+# The static verbs of version 11, which would show the item a second time.
+OLD_VERBS = ('Directory', 'Drive')
 # The task pane's Details section for files and folders: XP's own lines, and
 # between them the handler's hidden columns with a name in their values (IDs 6
 # to 9). XP reads a property ID after a space; after a comma it takes 0.
@@ -137,15 +144,23 @@ def registry(xpx):
     # type's own list comes first.
     for key in ('*', 'Directory'):
         r.add('HKCR\\' + key, 'Details', LINUX_DETAILS)
-    # "Open in Linux Terminal" on folders and drives (session/linux-launch.c).
-    # "none" is XP's own default verb of these classes: without it the only
-    # verb listed would be what a double click does.
-    for key in ('Directory', 'Drive'):
-        shell = 'HKCR\\' + key + '\\shell'
-        r.add(shell, None, 'none')
-        r.add(shell + '\\linuxterminal', None, 'Open in Linux &Terminal')
-        r.add(shell + '\\linuxterminal\\command', None, r'"C:\xp\bin\linux-launch.exe" --terminal "%1"')
+    # "Open in Linux Terminal" (linuxcols.dll's second class), which starts
+    # linux-launch.exe (session/linux-launch.c).
+    linux_terminal = 'HKCR\\CLSID\\' + LINUX_TERMINAL
+    r.add(linux_terminal, None, 'Open in Linux Terminal')
+    r.add(linux_terminal + '\\InprocServer32', None, r'C:\xp\bin\linuxcols.dll')
+    r.add(linux_terminal + '\\InprocServer32', 'ThreadingModel', 'Apartment')
+    for key in TERMINAL_CLASSES:
+        r.add('HKCR\\' + key + '\\shellex\\ContextMenuHandlers\\LinuxTerminal', None, LINUX_TERMINAL)
+    r.add(r'HKLM\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved', LINUX_TERMINAL,
+          'Open in Linux Terminal')
     return r
+
+
+def removals():
+    """The keys of earlier versions that are in the way (Reg only adds)."""
+    keys = ''.join(f'[-HKEY_CLASSES_ROOT\\{key}\\shell\\linuxterminal]\r\n\r\n' for key in OLD_VERBS)
+    return 'Windows Registry Editor Version 5.00\r\n\r\n' + keys
 
 
 def keyboard_layouts(assets):
@@ -305,6 +320,7 @@ def apply(prefix, wine):
     stop(wine, prefix)
     copy_files(assets, prefix)
     print('* XP Explorer additions: registry', flush=True)
+    regedit(wine, prefix, removals())
     regedit(wine, prefix, registry(xpx).text())
     regedit(wine, prefix, xpx.xp_registrations(assets))
     screen_saver_mapping(wine, prefix)
