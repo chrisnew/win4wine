@@ -39,7 +39,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | X driver | `xserver-xorg-video-intel 2:2.99.917+git20210115-1+w4w1`, built by [xorg-intel/build.sh](xorg-intel/build.sh) with `sna-gen3-dri3.patch`; **held** with `apt-mark hold` | DRI3 on the GMA 3150, so OpenGL runs on the GPU instead of llvmpipe | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/20-intel.conf`: `Driver "intel"`, `Option "DRI" "3"` | The patched driver gives gen3 DRI3 only when asked | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/10-nodpms.conf`: blanking, standby, suspend and off times 0; `DPMS` false on LVDS1 | The screen never blanks (see "Not yet explained") | ? |
-| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0165 (repo dc08256) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner; 0161 keeps copy and paste working after a folder window is closed; 0162 to 0164 are for mounted disc images; 0165 keeps Explorer from freezing when its windows redraw at once | 2026-11-27 |
+| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0166 (repo 0780637) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner; 0161 keeps copy and paste working after a folder window is closed; 0162 to 0164 are for mounted disc images; 0165 keeps Explorer from freezing when its windows redraw at once; 0166 keeps the desktop taking clicks after a program ends while it holds the mouse | 2026-11-28 |
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
 | PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
@@ -78,6 +78,21 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-28: Wine 0166 (the desktop takes clicks after a program ends holding the mouse) installed
+
+- **What** (logged off): `git fetch fork && git checkout -B master fork/master` (8ccc822 to 0780637); on the development
+  machine `wine/container-build.sh --deploy 192.168.1.9` (the Wine up to 0165 is now `.local/wine-install-old`); copies of
+  the prefix's `*.reg`, `system.ini` and `.xp-extras` in `.local/backup-2026-11-28-wine0166/`, then, as `setup.sh` does
+  after a Wine build, in `xvfb-run`: `prefix/extras.py .local/prefix --wine W`, `session/linux_apps.py` and
+  `xp-explorer/scripts/pins.py` likewise (417 s), then `wineserver -k` and `-w`.
+- **Why:** the desktop icons, seen with My Documents, did not respond to clicks. A 1024x600 InputOnly window of
+  `explorer.exe /desktop`, Wine's cursor clipping window, lay above XP's desktop.
+- **Result:** `extras.py --check` passes on the machine, and nothing was left running. `tests/clip-exit.c` passed on the
+  bench; not yet checked in a session on the machine.
+- **Undo:** logged off, `mv .local/wine-install .local/wine-install-0166 && mv .local/wine-install-old .local/wine-install`,
+  copy the backup's `*.reg` and `.xp-extras` back into `.local/prefix` and `system.ini` into `drive_c/windows`, and
+  `git checkout -B master 8ccc822`.
 
 ### 2026-11-28: Alt+Tab in the order of use, and Alt+F4 on the desktop
 
