@@ -1,0 +1,69 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] gdi32: keep Uniscribe's font cache list whole when threads race
+
+Purpose: XP Explorer no longer freezes when several of its folder windows
+redraw at once, as they do when a drive goes (Eject of a disc image).
+Windows behavior: Uniscribe may be used from several threads at a time.
+Wine before: init_script_cache looks the font up, makes a cache outside the
+lock, puts it on the list and then looks again for one another thread made
+meanwhile. When it found one, it took that other cache off the list and freed
+its own, which stayed on the list. Later lookups walked freed memory while
+holding the lock: an access violation, which in a window procedure is caught,
+left the lock held, and every other thread that draws text waited for it for
+ever.
+Change: the second lookup comes first, and the new cache is put on the list
+only when there is no other; otherwise it is freed.
+Evidence: tests/uniscribe-thread.c crashed or hung in six of six runs without
+the patch. On the EeePC an Eject with two folder windows open froze My
+Computer: two access violations in one Explorer thread, then another waiting
+for "usp10.c: script_cache".
+Scope: all programs.
+---
+ dlls/gdi32/uniscribe/usp10.c | 18 +++++++++---------
+ 1 file changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/dlls/gdi32/uniscribe/usp10.c b/dlls/gdi32/uniscribe/usp10.c
+index 43afbaa..e6152f1 100644
+--- a/dlls/gdi32/uniscribe/usp10.c
++++ b/dlls/gdi32/uniscribe/usp10.c
+@@ -778,7 +778,7 @@ static inline BOOL set_cache_glyph_widths(SCRIPT_CACHE *psc, WORD glyph, ABC *ab
+ 
+ static HRESULT init_script_cache(const HDC hdc, SCRIPT_CACHE *psc)
+ {
+-    ScriptCache *sc;
++    ScriptCache *sc, *other;
+     unsigned size;
+     LOGFONTW lf;
+ 
+@@ -828,23 +828,23 @@ static HRESULT init_script_cache(const HDC hdc, SCRIPT_CACHE *psc)
+     }
+     sc->lf = lf;
+     sc->refcount = 1;
+-    *psc = sc;
+ 
+     EnterCriticalSection(&cs_script_cache);
+-    list_add_head(&script_cache_list, &sc->entry);
+-    LIST_FOR_EACH_ENTRY(sc, &script_cache_list, ScriptCache, entry)
++    LIST_FOR_EACH_ENTRY(other, &script_cache_list, ScriptCache, entry)
+     {
+-        if (sc != *psc && !memcmp(&sc->lf, &lf, sizeof(lf)))
++        if (!memcmp(&other->lf, &lf, sizeof(lf)))
+         {
+             /* Another thread won the race. Use their cache instead of ours */
+-            list_remove(&sc->entry);
+-            sc->refcount++;
++            other->refcount++;
+             LeaveCriticalSection(&cs_script_cache);
+-            free(*psc);
+-            *psc = sc;
++            free(sc->otm);
++            free(sc);
++            *psc = other;
+             return S_OK;
+         }
+     }
++    list_add_head(&script_cache_list, &sc->entry);
++    *psc = sc;
+     LeaveCriticalSection(&cs_script_cache);
+     TRACE("<- %p\n", sc);
+     return S_OK;

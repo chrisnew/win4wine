@@ -76,6 +76,7 @@ compile "$out/desktop-menu-test.exe" -municode "$root/tests/desktop-menu.c" -lsh
 compile "$out/reg-dump-test.exe" -municode "$root/tests/reg-dump.c" -ladvapi32
 compile "$out/string-id-test.exe" -municode "$root/tests/string-id.c"
 compile "$out/ole-clipboard-thread-test.exe" "$root/tests/ole-clipboard-thread.c" -lole32
+compile "$out/uniscribe-thread-test.exe" "$root/tests/uniscribe-thread.c" -lusp10 -lgdi32
 compile "$out/transparent-shrink-test.exe" -municode "$root/tests/transparent-shrink.c" -lmsimg32 -lgdi32
 
 compile "$out/nonclient-theme-test.exe" -municode "$root/tests/nonclient-theme.c" -luxtheme -lgdi32
