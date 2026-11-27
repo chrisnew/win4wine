@@ -410,7 +410,7 @@ class Session:
         self.guard = Screen(prefix=self.prefix, ipc=self.ipc, logs=self.state, env=self.env,
                             saver_command=[self.wine],
                             idle_command=[str(idle)] if self.screen_saver and os.access(idle, os.X_OK) else None,
-                            lock_command=lock, logind_command=logind, dpms=self.dpms)
+                            lock_command=lock, logind_command=logind, dpms=self.dpms, standby=True)
         self.guard.start()
 
     def close_guard(self):

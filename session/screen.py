@@ -9,6 +9,9 @@ polls nothing, so an idle machine is not woken up.
    in the prefix's user.reg, which is watched with inotify; the wineserver
    writes it within half a minute of a change).
  * The screen saver is the .scr the user chose, run with /s as XP runs it.
+ * One lock screen waits, ready but not shown (--standby), so that locking
+   does not wait for a program to start; the next one is started when the
+   screen is unlocked.
  * The lock screen (greeter/xp-lock.py) comes up when it is asked for: by
    LockWorkStation (Wine patch 0159 writes IPC/lock-request), by logind (lid
    and suspend, session/logind-watch.py) or with "On resume, password
@@ -16,7 +19,8 @@ polls nothing, so an idle machine is not woken up.
    is locked; a lock screen that dies without unlocking is started again.
 
 Between this and the lock screen (its stdin and stdout):
-  to it:    yield        a screen saver starts over the locked screen
+  to it:    start        to the waiting one: lock now, with the options after it
+            yield        a screen saver starts over the locked screen
             saver-ended  the screen saver's process ended
             lock         lock now, also within the screen saver's grace time
   from it:  locked       it holds the keyboard and the pointer
@@ -166,15 +170,19 @@ class Helper:
 
 class Screen:
     def __init__(self, *, prefix, ipc, logs, env, saver_command, idle_command=None, lock_command=None,
-                 logind_command=None, dpms=0):
+                 logind_command=None, dpms=0, standby=False):
         """SAVER_COMMAND runs a Windows program (the session's Wine); a
         command that is None leaves its part out. DPMS: seconds idle before
-        the monitor goes off, 0 for never."""
+        the monitor goes off, 0 for never. STANDBY: keep a lock screen
+        started and waiting."""
         self.prefix, self.ipc, self.logs, self.env = Path(prefix), Path(ipc), Path(logs), env
         self.saver_command = list(saver_command)
         self.idle_command, self.lock_command, self.logind_command = idle_command, lock_command, logind_command
         self.dpms = dpms
         self.idle = self.logind = self.lock = None  # Helpers
+        self.standby = None                         # the lock screen that waits
+        self.standby_wanted = standby
+        self.standby_restarts = deque()
         self.saver = None                           # its process
         self.watch = None
         self.current = Settings('', 0, False)
@@ -197,6 +205,7 @@ class Screen:
             self.start_idle()
         if self.logind_command and self.lock_command:
             self.logind = Helper(self.logind_command, self.logs / 'logind.log', self.env)
+        self.start_standby()
 
     @property
     def request(self):
@@ -208,13 +217,13 @@ class Screen:
 
     def fds(self):
         fds = [self.watch.fd] if self.watch else []
-        for helper in (self.idle, self.logind, self.lock):
+        for helper in (self.idle, self.logind, self.lock, self.standby):
             if helper:
                 fds += helper.fds()
         return fds
 
     def processes(self):
-        helpers = [h.process for h in (self.idle, self.logind, self.lock) if h]
+        helpers = [h.process for h in (self.idle, self.logind, self.lock, self.standby) if h]
         return helpers + ([self.saver] if self.saver else [])
 
     def handle(self):
@@ -242,6 +251,8 @@ class Screen:
                 self.lock.send('saver-ended')
         if self.lock:
             self.handle_lock()
+        if self.standby:
+            self.handle_standby()
         if self.idle:
             self.handle_idle()
 
@@ -258,10 +269,10 @@ class Screen:
         processes = self.processes()
         if processes:
             halt(*processes)
-        for helper in (self.idle, self.logind, self.lock):
+        for helper in (self.idle, self.logind, self.lock, self.standby):
             if helper:
                 helper.close()
-        self.idle = self.logind = self.lock = self.saver = None
+        self.idle = self.logind = self.lock = self.standby = self.saver = None
         if self.watch:
             self.watch.close()
             self.watch = None
@@ -351,9 +362,17 @@ class Screen:
     def start_lock(self, behind, grace):
         self.lock_ready = False
         self.lock_file.write_text('locked\n')
-        command = [*self.lock_command, '--grace', str(grace)] + (['--behind'] if behind else [])
+        options = ['--grace', str(grace)] + (['--behind'] if behind else [])
+        waiting, self.standby = self.standby, None
+        if waiting:
+            if waiting.process.poll() is None:
+                # Should it die now, handle_lock starts another.
+                waiting.send(' '.join(['start', *options]))
+                self.lock = waiting
+                return
+            waiting.close()
         try:
-            self.lock = Helper(command, self.logs / 'lock.log', self.env)
+            self.lock = Helper([*self.lock_command, *options], self.logs / 'lock.log', self.env)
         except OSError as e:
             print(f'cannot start the lock screen: {e}', flush=True)
             self.unlocked()
@@ -372,6 +391,7 @@ class Screen:
         if status == 0:
             self.unlocked()
         elif status == 2:
+            self.standby_wanted = False
             print('the lock screen cannot work here; see lock.log', flush=True)
             self.unlocked()
         else:
@@ -388,6 +408,34 @@ class Screen:
     def unlocked(self):
         self.lock_file.unlink(missing_ok=True)
         self.locked()  # nothing left to wait for
+        self.start_standby()
+
+    def start_standby(self):
+        """A lock screen for the next time, ready but not shown."""
+        if not (self.standby_wanted and self.lock_command) or self.standby or self.lock:
+            return
+        try:
+            self.standby = Helper([*self.lock_command, '--standby'], self.logs / 'lock.log', self.env)
+        except OSError as e:
+            print(f'cannot start the lock screen ahead: {e}', flush=True)
+
+    def handle_standby(self):
+        status = self.standby.process.poll()
+        self.standby.lines()  # it has nothing to say; this notices the end of its stdout
+        if status is None:
+            return
+        self.standby.close()
+        self.standby = None
+        now = time.monotonic()
+        self.standby_restarts.append(now)
+        while self.standby_restarts and now - self.standby_restarts[0] > 120:
+            self.standby_restarts.popleft()
+        # Without one, a lock screen is started when it is asked for.
+        if status == 2 or len(self.standby_restarts) > 3:
+            self.standby_wanted = False
+            print(f'the waiting lock screen ended with status {status}: none is kept; see lock.log', flush=True)
+        else:
+            self.start_standby()
 
     def locked(self):
         """Let logind suspend the machine, if it waits for the lock."""

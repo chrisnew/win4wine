@@ -231,6 +231,10 @@ everything else: nothing polls, so an idle machine is not woken up.
     and takes them when the screen saver's window goes. Within 5 seconds of its start, no password is asked for (XP's grace period).
   - **logind** (`session/logind-watch.py`): the session's `Lock` signal (`loginctl lock-session`), and before sleep (a closed lid),
     which it delays with an inhibitor until the screen is locked (`lock_on_suspend`).
+- **One lock screen waits** (`--standby`), started with the guard and again after each unlock: starting one and its first
+  drawing take about 2 s on the EeePC. It loads the XP files, draws the screen once off screen and waits for `start` on its
+  stdin. It holds no X connection while it waits, so nothing wakes it, and it reads the keyboard layout, the screen's size and
+  the number of programs when it locks. If it dies, a lock screen is started when one is asked for.
 - The supervisor and the lock screen talk over its stdin and stdout (`session/screen.py` lists the words). While the screen is
   locked a screen saver may start over it: the lock screen lets go of the grabs and takes them back when it ends.
 - A lock screen that dies without unlocking (exit status 0) is started again. One that fails three times without ever locking is

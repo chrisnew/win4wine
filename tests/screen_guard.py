@@ -71,12 +71,12 @@ class Guard(unittest.TestCase):
                              f'"ScreenSaveTimeOut"="{timeout}"\n"ScreenSaverIsSecure"="{secure}"\n')
         temporary.replace(target)
 
-    def start(self, lock=True, logind=False):
+    def start(self, lock=True, logind=False, standby=False):
         self.guard = screen.Screen(
             prefix=self.root / 'prefix', ipc=self.root / 'ipc', logs=self.root / 'logs', env=None,
             saver_command=self.fake('saver'), idle_command=self.fake('idle'),
             lock_command=self.fake('lock') if lock else None,
-            logind_command=self.fake('logind') if logind else None, dpms=0)
+            logind_command=self.fake('logind') if logind else None, dpms=0, standby=standby)
         self.guard.start()
 
     def read(self, name):
@@ -232,6 +232,56 @@ class Guard(unittest.TestCase):
         self.pump(lambda: self.read('logind.in') == ['locked'])
         self.tell('logind', 'say lock')  # locked already: no wait
         self.pump(lambda: self.read('logind.in') == ['locked', 'locked'])
+
+    def test_standby_locks_and_is_replaced(self):
+        self.start(standby=True)
+        self.pump(lambda: self.read('lock.args') == ['--standby'])
+        self.assertFalse(self.locked)
+        self.request()
+        self.pump(lambda: self.read('lock.in') == ['start --grace 0'])
+        self.assertTrue(self.locked)
+        self.assertEqual(self.read('lock.args'), ['--standby'])
+        self.tell('lock', 'say locked', 'exit 0')
+        self.pump(lambda: self.read('lock.args') == ['--standby'] * 2)
+        self.assertFalse(self.locked)
+
+    def test_standby_behind_a_secure_saver(self):
+        self.registry(secure='1')
+        self.start(standby=True)
+        self.pump(lambda: self.read('lock.args'))
+        self.tell('idle', 'say idle')
+        self.pump(lambda: self.read('lock.in') == ['start --grace 5 --behind'])
+        self.tell('saver', 'exit 0')
+        self.pump(lambda: self.read('lock.in')[-1] == 'saver-ended')
+
+    def test_standby_that_dies_while_locked(self):
+        self.start(standby=True)
+        self.pump(lambda: self.read('lock.args'))
+        self.request()
+        self.pump(lambda: self.read('lock.in'))
+        self.tell('lock', 'say locked', 'exit 1')
+        self.pump(lambda: self.read('lock.args') == ['--standby', '--grace 0'])
+        self.assertTrue(self.locked)
+
+    def test_standby_given_up(self):
+        self.start(standby=True)
+        for count in (1, 2, 3, 4):
+            self.pump(lambda: len(self.read('lock.args')) == count)
+            self.tell('lock', 'exit 1')
+        self.pump(lambda: self.guard.standby is None)
+        self.settle()
+        self.assertEqual(self.read('lock.args'), ['--standby'] * 4)
+        self.request()  # one is started when asked for
+        self.pump(lambda: self.read('lock.args')[-1] == '--grace 0')
+
+    def test_standby_not_set_up(self):
+        self.start(standby=True)
+        self.pump(lambda: self.read('lock.args'))
+        self.tell('lock', 'exit 2')
+        self.pump(lambda: self.guard.standby is None)
+        self.settle()
+        self.assertEqual(self.read('lock.args'), ['--standby'])
+        self.assertFalse(self.locked)
 
     def test_idle_watch_restarted(self):
         self.start()

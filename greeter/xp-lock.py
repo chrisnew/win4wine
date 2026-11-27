@@ -12,12 +12,20 @@ saver's as soon as that one is there, takes no input, and comes to the front
 when the screen saver's window goes. Within --grace seconds of the start that
 unlocks without a password, as XP's grace period does.
 
+With --standby it is started ahead of the lock: it loads and draws what it
+can without the display, then waits on stdin for "start", followed by any
+of --behind and --grace, and locks. Starting it and its first drawing take
+about 2 s on an Atom, which a lock then does not wait for. It holds no X
+connection while it waits, so nothing wakes it, and it reads the keyboard
+layout and the screen's size when it locks.
+
 Lines on stdin:  yield (a screen saver starts over the locked screen),
 saver-ended, lock (no grace period any more).  Lines on stdout: locked (it
 holds the keyboard and the pointer), behind.
 
 Exit status: 0 unlocked, 2 it cannot lock on this machine (not set up), any
-other: it failed while the screen should be locked.
+other: it failed while the screen should be locked. One that had waited
+(--standby) and then fails exits with 1, so that a new one is tried.
 """
 import argparse
 import os
@@ -48,13 +56,58 @@ def report(word):
         pass  # The supervisor is gone; the screen stays locked.
 
 
-def parse():
+def parse(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dpi', type=int, default=96, help="the XP shell's LogPixels")
     parser.add_argument('--assets', help="extract/extract.py's output, without the greeter's configuration")
     parser.add_argument('--behind', action='store_true', help='below the screen saver that is starting')
     parser.add_argument('--grace', type=float, default=0, help='seconds in which no password is asked for')
-    return parser.parse_args()
+    parser.add_argument('--standby', action='store_true', help='get ready, then wait on stdin for "start [OPTIONS]"')
+    return parser.parse_args(arguments)
+
+
+def welcome_screen(welcome, config, assets, dpi):
+    """XP's Welcome screen with the session's user alone."""
+    entry = pwd.getpwuid(os.getuid())
+    full_name = entry.pw_gecos.split(',')[0]
+    picture = next((p for p in (Path('/var/lib/AccountsService/icons') / entry.pw_name,
+                                Path(entry.pw_dir) / '.face') if p.is_file() and os.access(p, os.R_OK)),
+                   welcome.default_picture(config, assets))
+    screen = welcome.Screen(assets, [welcome.User(entry.pw_name, full_name or None, picture)], dpi=dpi)
+    screen.power = False
+    return screen
+
+
+def warm(screen):
+    """Draw off screen what the lock screen will show, so that its images and
+    fonts are loaded: the list with the note, then the password box with the
+    balloon. The user's picture stays out: reading one that is no BMP needs
+    the display."""
+    account = screen.users[0]
+    picture, account.picture = account.picture, None
+    account.note = screen.assets.string('logonui', 30).replace('%d', '2')
+    screen.render(1024, 600)
+    screen.selected, screen.error = 0, True
+    screen.render(1024, 600)
+    screen.selected, screen.error = None, False
+    account.picture, account.note = picture, ''
+
+
+def wait_for_start():
+    """The options of the "start" line on stdin, or None when stdin ends.
+    Read a byte at a time: what follows it is for Lock.run()."""
+    line = b''
+    while True:
+        byte = os.read(sys.stdin.fileno(), 1)
+        if not byte:
+            return None
+        if byte != b'\n':
+            line += byte
+            continue
+        words = line.decode(errors='replace').split()
+        if words[:1] == ['start']:
+            return words[1:]
+        line = b''
 
 
 def programs(d, root, X):
@@ -85,20 +138,31 @@ def programs(d, root, X):
 def main():
     args = parse()
     started = time.monotonic()
+    waited = False  # asked to lock after waiting (--standby)
     try:
         if not Path('/etc/pam.d', SERVICE).is_file():
             raise RuntimeError(f'/etc/pam.d/{SERVICE} is missing (greeter/install.sh)')
         import welcome
         cache = Path(os.environ.get('XDG_CACHE_HOME') or Path.home() / '.cache') / 'win4wine/welcome'
         config, assets = welcome.setup(cache, args.assets)
-        import gi
-        gi.require_version('Gdk', '3.0')
-        gi.require_version('GdkX11', '3.0')
-        from gi.repository import Gdk, GdkX11
         from Xlib import X, display
         import pamauth
         import xdraw
         from welcomeinput import CARET_BLINK, Input
+        screen = welcome_screen(welcome, config, assets, args.dpi)
+        if args.standby:
+            warm(screen)
+            options = wait_for_start()
+            if options is None:
+                return 0  # never asked to lock
+            args = parse(sys.argv[1:] + options)
+            waited = True
+            started = time.monotonic()  # the grace period begins now
+        # From here on the display: importing Gdk connects to it.
+        import gi
+        gi.require_version('Gdk', '3.0')
+        gi.require_version('GdkX11', '3.0')
+        from gi.repository import Gdk, GdkX11
         Gdk.init([])
         gdk = Gdk.Display.get_default()
         if gdk is None:
@@ -106,19 +170,13 @@ def main():
     except Exception as e:
         traceback.print_exc()
         log(f'cannot lock the screen: {e}')
-        return 2
+        return 1 if waited else 2
 
     class Lock(Input):
         def __init__(self):
-            entry = pwd.getpwuid(os.getuid())
-            self.user = entry.pw_name
-            full_name = entry.pw_gecos.split(',')[0]
-            picture = next((p for p in (Path('/var/lib/AccountsService/icons') / self.user,
-                                        Path(entry.pw_dir) / '.face') if p.is_file() and os.access(p, os.R_OK)),
-                           welcome.default_picture(config, assets))
-            self.account = welcome.User(self.user, full_name or None, picture)
-            self.screen = welcome.Screen(assets, [self.account], dpi=args.dpi)
-            self.screen.power = False
+            self.screen = screen
+            self.account = screen.users[0]
+            self.user = self.account.name
             self.d = display.Display()
             self.root = self.d.screen().root
             geometry = self.root.get_geometry()
