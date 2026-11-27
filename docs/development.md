@@ -105,6 +105,13 @@ The list, order, format and the opt-in check are in [patches.md](patches.md). Ne
 | `tests/screen-saver.c` | The screen saver setting, its `system.ini` mapping and `LockWorkStation`, in the session's prefix |
 | `tests/*.c` | Probes of public APIs. The same program runs on Wine and on a real XP and the numbers are compared (DPI: `dpi-metrics.c`, `char-widths-dpi.c`, `caption-glyph-dpi.c`, `text-bits-dpi.c`) |
 
+## The session in Docker (`tools/bench`)
+
+On a machine with Docker but no Wine, `tools/bench/bench.sh` runs the whole XP session in a Debian 13 container on Xvfb at
+1024x600, with the Wine of `wine/container-build.sh` and `.local/assets`: `up NAME` (container, bridge and prefix), `start NAME`,
+`drive NAME ACTION...` (`tools/eeepc/drive.py`), `shot NAME OUT.png`, `sh NAME < SCRIPT`, `sync NAME` after a change,
+`stop`, `rm`. `bench.sh --help` lists them all.
+
 ## Trying it in a window (`xp.sh`)
 
 An entry point for trying the XP session on Arch / CachyOS and similar systems without leaving your current desktop (KDE etc.).
