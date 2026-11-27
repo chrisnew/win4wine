@@ -15,7 +15,7 @@ With the desktop active (clicked, or after the last window was closed), Alt+F4 o
 
 <img src="images/showcase/desktop-alt-f4.png" alt="XP's Turn off computer dialog with Stand By, Turn Off and Restart over the faded desktop" width="500" />
 
-*Bench, 2026-11-28 (repo 8034448 and this change).*
+*EeePC, 2026-11-28 (repo 5805617).*
 
 ## The desktop on the EeePC
 
