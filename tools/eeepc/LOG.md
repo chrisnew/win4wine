@@ -39,7 +39,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | X driver | `xserver-xorg-video-intel 2:2.99.917+git20210115-1+w4w1`, built by [xorg-intel/build.sh](xorg-intel/build.sh) with `sna-gen3-dri3.patch`; **held** with `apt-mark hold` | DRI3 on the GMA 3150, so OpenGL runs on the GPU instead of llvmpipe | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/20-intel.conf`: `Driver "intel"`, `Option "DRI" "3"` | The patched driver gives gen3 DRI3 only when asked | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/10-nodpms.conf`: blanking, standby, suspend and off times 0; `DPMS` false on LVDS1 | The screen never blanks (see "Not yet explained") | ? |
-| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0160 (repo d2619cd) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner | 2026-11-27 |
+| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0160, with the changes to 0066 and 0079 (repo 49f4a46) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner | 2026-11-27 |
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
 | PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
@@ -76,6 +76,16 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-27: Wine without the grey square on the tray's chevron button installed
+
+- **What** (logged off): `git fetch fork && git checkout -B eeepc fork/eeepc` (4a956d9 to 49f4a46); on the development machine
+  `wine/container-build.sh --deploy 192.168.1.9`, which went straight into `.local/wine-install` (the Wine up to d2619cd is
+  now `.local/wine-install-old`). The installed one before had the patch series of 4a956d9 (compared by its digest), so only
+  0066 and 0079 changed.
+- **Why:** a grey square showed around the round button that opens the hidden notification icons.
+- **Result:** checked before in the container session; on this machine not yet looked at.
+- **Undo:** logged off, `mv .local/wine-install .local/wine-install-chevron && mv .local/wine-install-old .local/wine-install`.
 
 ### 2026-11-27: Linux columns deployed
 
