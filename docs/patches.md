@@ -1,6 +1,6 @@
 # Wine patches
 
-`wine/patches/` holds 159 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
+`wine/patches/` holds 160 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
 `wine/build.sh` applies them, and the actual applying is done by `wine/patch-state.py` (on a partly patched source it applies only
 what is missing).
 
@@ -14,7 +14,7 @@ Changes for the XP shell only take effect in processes that have the environment
 
 - The check is gathered in one place, `win4wine_external_shell()` in `include/wine/win4wine.h`, added by 0019.
   ntdll reads the same variable with Rtl functions, and wow64.dll (0023) with ntdll functions.
-- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155–0157), 0025 and 0026,
+- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155–0157, 0160), 0025 and 0026,
   which do not change the look or behaviour of ordinary apps, most of the APIs and Wine fixes for the Windows 7 shell (0094–0112), and the
   theme fixes that only apply to version 4 styles (0113–0119).
 - 0024 only takes effect with `WIN4WINE_SESSION_REQUEST`, and 0159's `LockWorkStation` only with `WIN4WINE_LOCK_REQUEST`.
@@ -280,6 +280,7 @@ comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading
 | 0157 | opengl32: send immediate mode calls across in batches (glBegin, glEnd, glVertex, glTexCoord, glColor, glNormal and glMultiTexCoord2fARB are collected per thread and sent in one unix call before any other GL call; before, each was a unix call, and in a WoW64 process on a CPU without FSGSBASE each unix call is also an arch_prctl system call: Half-Life Alpha on the EeePC made 181,000 a second, about 59% of its render thread. `WINE_OPENGL_BATCH=0` turns it off. It belongs with 0001–0011 and has not been renumbered yet) | no |
 | 0158 | winex11: in the XP session, `SPI_GETSCREENSAVEACTIVE` and `SPI_SETSCREENSAVEACTIVE` are the user's setting in the registry, not the X server's blanking timer (Display Properties showed and switched Xorg's blanker, which the session turns off: it starts the screen savers itself) | yes (XP session) |
 | 0159 | user32, win32u: `LockWorkStation` asks the session to lock the screen (it writes the file `WIN4WINE_LOCK_REQUEST` names; before, a stub that failed), and Win+L reaches no program (the WM asks for the lock and passes the key on, so that Wine does not take the Windows key for pressed alone and open the Start menu after unlocking) | `WIN4WINE_LOCK_REQUEST`; Win+L: XP session |
+| 0160 | ntdll: `NtQueryInformationByName` (Windows 10) with `FileStatInformation` and `FileStatLxInformation`, which also gives a file's Unix mode, user, group and device numbers (`NtQueryInformationFile` takes it too). By name it opens nothing: it is a path conversion and `lstat()`, without a server request, and a symbolic link is reported itself. XP Explorer's Linux columns use it; before, no Win32 or NT call returned the mode or owner. The 32-bit `NtWow64*` system calls move up by one. It belongs with 0001–0011 and has not been renumbered yet | no |
 
 ## Order
 

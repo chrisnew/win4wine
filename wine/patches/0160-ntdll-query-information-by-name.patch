@@ -1,0 +1,375 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] ntdll: add NtQueryInformationByName and FileStatLxInformation
+
+Purpose: a Windows program learns the Unix mode, owner and group of a file
+(XP Explorer's Linux columns, xp-explorer/helpers/linuxcols.c) without
+opening it.
+Windows behavior: Windows 10 (1709) has NtQueryInformationByName, which
+asks about a file by its name, for FileStatInformation,
+FileStatLxInformation and a few other classes. FileStatLxInformation
+(class 70, FILE_STAT_LX_INFORMATION, which WSL uses) is
+FileStatInformation's fields followed by the Unix mode, user, group and
+device numbers.
+Wine before: no NtQueryInformationByName, and FileStatLxInformation was
+refused. No Win32 or NT call returned a file's mode or owner. Asking through
+a handle would also make the wineserver open() the file: a request for every
+file, side effects on some devices, and a hung mount holds up the
+single-threaded wineserver, and with it every Windows program.
+Change: NtQueryInformationByName answers the two classes from the Unix name
+with lstat(): nothing is opened, and only a name relative to a directory
+handle asks the wineserver. A symbolic link is reported itself, as a reparse
+point (IO_REPARSE_TAG_LX_SYMLINK) with its own mode and owner; a link to a
+directory also has FILE_ATTRIBUTE_DIRECTORY. FIFOs, sockets and devices are
+answered. Other classes return STATUS_INVALID_INFO_CLASS.
+NtQueryInformationFile takes FileStatLxInformation too, for any file type it
+has a Unix fd for. The new system call has number 0x102; the 32-bit
+NtWow64* calls after it move up by one.
+Evidence: tests/stat-lx-probe.c compared with stat(1).
+Scope: all programs; only adds what was refused or missing before.
+---
+ dlls/ntdll/ntdll.spec       |   2 +
+ dlls/ntdll/ntsyscalls.h     |  16 +++--
+ dlls/ntdll/signal_arm64ec.c |   1 +
+ dlls/ntdll/unix/file.c      | 163 ++++++++++++++++++++++++++++++++++++++------
+ dlls/wow64/file.c           |  22 ++++++
+ include/winternl.h          |  27 ++++++++
+ 6 files changed, 203 insertions(+), 28 deletions(-)
+diff --git a/dlls/ntdll/ntdll.spec b/dlls/ntdll/ntdll.spec
+index c0f345a..07dd7f4 100644
+--- a/dlls/ntdll/ntdll.spec
++++ b/dlls/ntdll/ntdll.spec
+@@ -314,6 +314,7 @@
+ @ stdcall -syscall NtQueryFullAttributesFile(ptr ptr)
+ @ stdcall -syscall NtQueryInformationAtom(long long ptr long ptr)
+ @ stdcall -syscall=0x0011 NtQueryInformationFile(long ptr ptr long long)
++@ stdcall -syscall=0x0102 NtQueryInformationByName(ptr ptr ptr long long)
+ @ stdcall -syscall NtQueryInformationJobObject(long long ptr long ptr)
+ # @ stub NtQueryInformationPort
+ @ stdcall -syscall=0x0019 NtQueryInformationProcess(long long ptr long ptr)
+@@ -1391,6 +1392,7 @@
+ @ stdcall -private ZwQueryEvent(long long ptr long ptr) NtQueryEvent
+ @ stdcall -private ZwQueryFullAttributesFile(ptr ptr) NtQueryFullAttributesFile
+ @ stdcall -private ZwQueryInformationAtom(long long ptr long ptr) NtQueryInformationAtom
++@ stdcall -private ZwQueryInformationByName(ptr ptr ptr long long) NtQueryInformationByName
+ @ stdcall -private ZwQueryInformationFile(long ptr ptr long long) NtQueryInformationFile
+ @ stdcall -private ZwQueryInformationJobObject(long long ptr long ptr) NtQueryInformationJobObject
+ # @ stub ZwQueryInformationPort
+diff --git a/dlls/ntdll/ntsyscalls.h b/dlls/ntdll/ntsyscalls.h
+index 30a07ab..280080a 100644
+--- a/dlls/ntdll/ntsyscalls.h
++++ b/dlls/ntdll/ntsyscalls.h
+@@ -259,12 +259,13 @@
+     SYSCALL_ENTRY( 0x00ff, NtWaitForAlertByThreadId, 8 ) \
+     SYSCALL_ENTRY( 0x0100, NtWaitForDebugEvent, 16 ) \
+     SYSCALL_ENTRY( 0x0101, NtWaitForKeyedEvent, 16 ) \
+-    SYSCALL_ENTRY( 0x0102, NtWow64AllocateVirtualMemory64, 28 ) \
+-    SYSCALL_ENTRY( 0x0103, NtWow64GetNativeSystemInformation, 16 ) \
+-    SYSCALL_ENTRY( 0x0104, NtWow64IsProcessorFeaturePresent, 4 ) \
+-    SYSCALL_ENTRY( 0x0105, NtWow64QueryInformationProcess64, 20 ) \
+-    SYSCALL_ENTRY( 0x0106, NtWow64ReadVirtualMemory64, 28 ) \
+-    SYSCALL_ENTRY( 0x0107, NtWow64WriteVirtualMemory64, 28 )
++    SYSCALL_ENTRY( 0x0102, NtQueryInformationByName, 20 ) \
++    SYSCALL_ENTRY( 0x0103, NtWow64AllocateVirtualMemory64, 28 ) \
++    SYSCALL_ENTRY( 0x0104, NtWow64GetNativeSystemInformation, 16 ) \
++    SYSCALL_ENTRY( 0x0105, NtWow64IsProcessorFeaturePresent, 4 ) \
++    SYSCALL_ENTRY( 0x0106, NtWow64QueryInformationProcess64, 20 ) \
++    SYSCALL_ENTRY( 0x0107, NtWow64ReadVirtualMemory64, 28 ) \
++    SYSCALL_ENTRY( 0x0108, NtWow64WriteVirtualMemory64, 28 )
+ #ifdef _WIN64
+ #define ALL_SYSCALLS \
+     SYSCALL_ENTRY( 0x0000, NtAccessCheck, 64 ) \
+@@ -524,7 +525,8 @@
+     SYSCALL_ENTRY( 0x00fe, NtUnmapViewOfSectionEx, 24 ) \
+     SYSCALL_ENTRY( 0x00ff, NtWaitForAlertByThreadId, 16 ) \
+     SYSCALL_ENTRY( 0x0100, NtWaitForDebugEvent, 32 ) \
+-    SYSCALL_ENTRY( 0x0101, NtWaitForKeyedEvent, 32 )
++    SYSCALL_ENTRY( 0x0101, NtWaitForKeyedEvent, 32 ) \
++    SYSCALL_ENTRY( 0x0102, NtQueryInformationByName, 40 )
+ #else
+ #define ALL_SYSCALLS ALL_SYSCALLS32
+ #endif
+diff --git a/dlls/ntdll/signal_arm64ec.c b/dlls/ntdll/signal_arm64ec.c
+index 97ad705..3a06107 100644
+--- a/dlls/ntdll/signal_arm64ec.c
++++ b/dlls/ntdll/signal_arm64ec.c
+@@ -484,6 +484,7 @@ DEFINE_SYSCALL(NtQueryEaFile, (HANDLE handle, IO_STATUS_BLOCK *io, void *buffer,
+ DEFINE_SYSCALL(NtQueryEvent, (HANDLE handle, EVENT_INFORMATION_CLASS class, void *info, ULONG len, ULONG *ret_len))
+ DEFINE_SYSCALL(NtQueryFullAttributesFile, (const OBJECT_ATTRIBUTES *attr, FILE_NETWORK_OPEN_INFORMATION *info))
+ DEFINE_SYSCALL(NtQueryInformationAtom, (RTL_ATOM atom, ATOM_INFORMATION_CLASS class, void *ptr, ULONG size, ULONG *retsize))
++DEFINE_SYSCALL(NtQueryInformationByName, (OBJECT_ATTRIBUTES *attr, IO_STATUS_BLOCK *io, void *ptr, ULONG len, FILE_INFORMATION_CLASS class))
+ DEFINE_SYSCALL(NtQueryInformationFile, (HANDLE handle, IO_STATUS_BLOCK *io, void *ptr, ULONG len, FILE_INFORMATION_CLASS class))
+ DEFINE_SYSCALL(NtQueryInformationJobObject, (HANDLE handle, JOBOBJECTINFOCLASS class, void *info, ULONG len, ULONG *ret_len))
+ DEFINE_SYSCALL(NtQueryInformationProcess, (HANDLE handle, PROCESSINFOCLASS class, void *info, ULONG size, ULONG *ret_len))
+diff --git a/dlls/ntdll/unix/file.c b/dlls/ntdll/unix/file.c
+index ac9e247..5374250 100644
+--- a/dlls/ntdll/unix/file.c
++++ b/dlls/ntdll/unix/file.c
+@@ -2120,6 +2120,50 @@ static NTSTATUS fill_file_info( const struct stat *st, ULONG attr, void *ptr,
+ }
+ 
+ 
++/* fill in FileStatInformation from the stat and attribute info */
++static void fill_stat_info( const struct stat *st, ULONG attr, ULONG reparse_tag, FILE_STAT_INFORMATION *info )
++{
++    FILE_BASIC_INFORMATION basic;
++    FILE_STANDARD_INFORMATION std;
++
++    fill_file_info( st, attr, &basic, FileBasicInformation );
++    fill_file_info( st, attr, &std, FileStandardInformation );
++
++    info->FileId.QuadPart = st->st_ino;
++    info->CreationTime   = basic.CreationTime;
++    info->LastAccessTime = basic.LastAccessTime;
++    info->LastWriteTime  = basic.LastWriteTime;
++    info->ChangeTime     = basic.ChangeTime;
++    info->AllocationSize = std.AllocationSize;
++    info->EndOfFile      = std.EndOfFile;
++    info->FileAttributes = attr;
++    info->ReparseTag     = reparse_tag;
++    info->NumberOfLinks  = std.NumberOfLinks;
++    info->EffectiveAccess = FILE_ALL_ACCESS; /* FIXME */
++}
++
++
++/* fill in FileStatLxInformation, which starts with FileStatInformation's fields */
++static void fill_stat_lx_info( const struct stat *st, ULONG attr, ULONG reparse_tag,
++                               FILE_STAT_LX_INFORMATION *info )
++{
++    fill_stat_info( st, attr, reparse_tag, (FILE_STAT_INFORMATION *)info );
++
++    info->LxFlags = LX_FILE_METADATA_HAS_UID | LX_FILE_METADATA_HAS_GID | LX_FILE_METADATA_HAS_MODE;
++    info->LxUid   = st->st_uid;
++    info->LxGid   = st->st_gid;
++    info->LxMode  = st->st_mode;
++    info->LxDeviceIdMajor = 0;
++    info->LxDeviceIdMinor = 0;
++    if (S_ISCHR( st->st_mode ) || S_ISBLK( st->st_mode ))
++    {
++        info->LxFlags |= LX_FILE_METADATA_HAS_DEVICE_ID;
++        info->LxDeviceIdMajor = major( st->st_rdev );
++        info->LxDeviceIdMinor = minor( st->st_rdev );
++    }
++}
++
++
+ static unsigned int server_get_unix_name( HANDLE handle, char **unix_name )
+ {
+     data_size_t size = 1024;
+@@ -4883,6 +4927,96 @@ NTSTATUS WINAPI NtQueryAttributesFile( const OBJECT_ATTRIBUTES *attr, FILE_BASIC
+ }
+ 
+ 
++/* the stat info and attributes of a file by name, of a symbolic link itself */
++static unsigned int get_link_info( const char *unix_name, struct stat *st, ULONG *attr, ULONG *reparse_tag )
++{
++    struct stat target;
++
++    *reparse_tag = 0;
++    if (lstat( unix_name, st ) == -1) return errno_to_status( errno );
++    if (!S_ISLNK( st->st_mode ))
++    {
++        if (get_file_info( unix_name, st, attr, reparse_tag ) == -1) return errno_to_status( errno );
++    }
++    else
++    {
++        /* a link to a directory is a directory reparse point; a dangling link is only a reparse point */
++        if (get_file_info( unix_name, &target, attr, reparse_tag ) == -1) *attr = 0;
++        *attr |= FILE_ATTRIBUTE_REPARSE_POINT;
++        *reparse_tag = IO_REPARSE_TAG_LX_SYMLINK;
++    }
++    return STATUS_SUCCESS;
++}
++
++
++/******************************************************************************
++ *              NtQueryInformationByName   (NTDLL.@)
++ *
++ * Looks at the file by its name only: nothing is opened, so that a FIFO or a
++ * device is safe to ask about, and the wineserver is not involved (except for
++ * a name relative to a directory handle).
++ */
++NTSTATUS WINAPI NtQueryInformationByName( OBJECT_ATTRIBUTES *attr, IO_STATUS_BLOCK *io,
++                                          void *ptr, ULONG len, FILE_INFORMATION_CLASS class )
++{
++    OBJECT_ATTRIBUTES new_attr;
++    UNICODE_STRING nt_name;
++    char *unix_name;
++    struct stat st;
++    ULONG attributes, reparse_tag, size;
++    unsigned int status;
++
++    TRACE( "(%p,%p,%p,0x%08x,0x%08x)\n", attr, io, ptr, len, class );
++
++    switch (class)
++    {
++    case FileStatInformation:   size = sizeof(FILE_STAT_INFORMATION); break;
++    case FileStatLxInformation: size = sizeof(FILE_STAT_LX_INFORMATION); break;
++    default:
++        FIXME( "Unsupported class (%d)\n", class );
++        return STATUS_INVALID_INFO_CLASS;
++    }
++    if (len < size) return STATUS_INFO_LENGTH_MISMATCH;
++    if (!attr || !attr->ObjectName) return STATUS_INVALID_PARAMETER;
++
++    new_attr = *attr;
++    if (!(status = get_nt_and_unix_names( &new_attr, &nt_name, &unix_name, FILE_OPEN, TRUE )))
++    {
++        if (!new_attr.RootDirectory)
++            status = get_link_info( unix_name, &st, &attributes, &reparse_tag );
++        else
++        {
++            /* the Unix name is relative to that directory */
++            int root_fd, needs_close, cwd;
++
++            if (!(status = server_get_unix_fd( new_attr.RootDirectory, 0, &root_fd, &needs_close, NULL, NULL )))
++            {
++                mutex_lock( &dir_mutex );
++                cwd = open( ".", O_RDONLY );
++                if (fchdir( root_fd ) != -1)
++                {
++                    status = get_link_info( unix_name, &st, &attributes, &reparse_tag );
++                    if (cwd == -1 || fchdir( cwd ) == -1) chdir( "/" );
++                }
++                else status = errno_to_status( errno );
++                mutex_unlock( &dir_mutex );
++                if (cwd != -1) close( cwd );
++                if (needs_close) close( root_fd );
++            }
++        }
++    }
++    else WARN( "%s not found (%x)\n", debugstr_us(attr->ObjectName), status );
++    free( unix_name );
++    free( nt_name.Buffer );
++
++    if (status) return status;
++    if (class == FileStatInformation) fill_stat_info( &st, attributes, reparse_tag, ptr );
++    else fill_stat_lx_info( &st, attributes, reparse_tag, ptr );
++    io->Information = size;
++    return io->Status = STATUS_SUCCESS;
++}
++
++
+ /******************************************************************************
+  *              NtQueryInformationFile   (NTDLL.@)
+  */
+@@ -4961,7 +5095,7 @@ NTSTATUS WINAPI NtQueryInformationFile( HANDLE handle, IO_STATUS_BLOCK *io,
+         0,                                             /* FileDesiredStorageClassInformation */
+         sizeof(FILE_STAT_INFORMATION),                 /* FileStatInformation */
+         0,                                             /* FileMemoryPartitionInformation */
+-        0,                                             /* FileStatLxInformation */
++        sizeof(FILE_STAT_LX_INFORMATION),              /* FileStatLxInformation */
+         0,                                             /* FileCaseSensitiveInformation */
+         0,                                             /* FileLinkInformationEx */
+         0,                                             /* FileLinkInformationExBypassAccessCheck */
+@@ -5111,26 +5245,13 @@ NTSTATUS WINAPI NtQueryInformationFile( HANDLE handle, IO_STATUS_BLOCK *io,
+         else if (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode))
+             status = STATUS_INVALID_INFO_CLASS;
+         else
+-        {
+-            FILE_STAT_INFORMATION *info = ptr;
+-            FILE_BASIC_INFORMATION basic;
+-            FILE_STANDARD_INFORMATION std;
+-
+-            fill_file_info( &st, attr, &basic, FileBasicInformation );
+-            fill_file_info( &st, attr, &std, FileStandardInformation );
+-
+-            info->FileId.QuadPart = st.st_ino;
+-            info->CreationTime   = basic.CreationTime;
+-            info->LastAccessTime = basic.LastAccessTime;
+-            info->LastWriteTime  = basic.LastWriteTime;
+-            info->ChangeTime     = basic.ChangeTime;
+-            info->AllocationSize = std.AllocationSize;
+-            info->EndOfFile      = std.EndOfFile;
+-            info->FileAttributes = attr;
+-            info->ReparseTag     = reparse_tag;
+-            info->NumberOfLinks  = std.NumberOfLinks;
+-            info->EffectiveAccess = FILE_ALL_ACCESS; /* FIXME */
+-        }
++            fill_stat_info( &st, attr, reparse_tag, ptr );
++        break;
++    case FileStatLxInformation:
++        if (fd_get_file_info( handle, fd, options, &st, &attr, &reparse_tag ) == -1)
++            status = errno_to_status( errno );
++        else
++            fill_stat_lx_info( &st, attr, reparse_tag, ptr );
+         break;
+     default:
+         FIXME("Unsupported class (%d)\n", class);
+diff --git a/dlls/wow64/file.c b/dlls/wow64/file.c
+index 09a455e..b44e47b 100644
+--- a/dlls/wow64/file.c
++++ b/dlls/wow64/file.c
+@@ -620,6 +620,28 @@ NTSTATUS WINAPI wow64_NtQueryFullAttributesFile( UINT *args )
+ }
+ 
+ 
++/**********************************************************************
++ *           wow64_NtQueryInformationByName
++ */
++NTSTATUS WINAPI wow64_NtQueryInformationByName( UINT *args )
++{
++    OBJECT_ATTRIBUTES32 *attr32 = get_ptr( &args );
++    IO_STATUS_BLOCK32 *io32 = get_ptr( &args );
++    void *info = get_ptr( &args );
++    ULONG len = get_ulong( &args );
++    FILE_INFORMATION_CLASS class = get_ulong( &args );
++
++    struct object_attr64 attr;
++    IO_STATUS_BLOCK io;
++    NTSTATUS status;
++
++    status = NtQueryInformationByName( objattr_32to64_redirect( &attr, attr32 ),
++                                       iosb_32to64( &io, io32 ), info, len, class );
++    put_iosb( io32, &io );
++    return status;
++}
++
++
+ /**********************************************************************
+  *           wow64_NtQueryInformationFile
+  */
+diff --git a/include/winternl.h b/include/winternl.h
+index 80c295f..046dc5d 100644
+--- a/include/winternl.h
++++ b/include/winternl.h
+@@ -1797,6 +1797,32 @@ typedef struct _FILE_STAT_INFORMATION {
+     ULONG EffectiveAccess;
+ } FILE_STAT_INFORMATION, *PFILE_STAT_INFORMATION;
+ 
++typedef struct _FILE_STAT_LX_INFORMATION {
++    LARGE_INTEGER FileId;
++    LARGE_INTEGER CreationTime;
++    LARGE_INTEGER LastAccessTime;
++    LARGE_INTEGER LastWriteTime;
++    LARGE_INTEGER ChangeTime;
++    LARGE_INTEGER AllocationSize;
++    LARGE_INTEGER EndOfFile;
++    ULONG FileAttributes;
++    ULONG ReparseTag;
++    ULONG NumberOfLinks;
++    ULONG EffectiveAccess;
++    ULONG LxFlags;
++    ULONG LxUid;
++    ULONG LxGid;
++    ULONG LxMode;
++    ULONG LxDeviceIdMajor;
++    ULONG LxDeviceIdMinor;
++} FILE_STAT_LX_INFORMATION, *PFILE_STAT_LX_INFORMATION;
++
++#define LX_FILE_METADATA_HAS_UID        0x00000001
++#define LX_FILE_METADATA_HAS_GID        0x00000002
++#define LX_FILE_METADATA_HAS_MODE       0x00000004
++#define LX_FILE_METADATA_HAS_DEVICE_ID  0x00000008
++#define LX_FILE_CASE_SENSITIVE_DIR      0x00000010
++
+ typedef struct _FILE_IO_COMPLETION_NOTIFICATION_INFORMATION {
+     ULONG Flags;
+ } FILE_IO_COMPLETION_NOTIFICATION_INFORMATION, *PFILE_IO_COMPLETION_NOTIFICATION_INFORMATION;
+@@ -4712,6 +4738,7 @@ NTSYSAPI NTSTATUS  WINAPI NtQueryEaFile(HANDLE,PIO_STATUS_BLOCK,PVOID,ULONG,BOOL
+ NTSYSAPI NTSTATUS  WINAPI NtQueryEvent(HANDLE,EVENT_INFORMATION_CLASS,PVOID,ULONG,PULONG);
+ NTSYSAPI NTSTATUS  WINAPI NtQueryFullAttributesFile(const OBJECT_ATTRIBUTES*,FILE_NETWORK_OPEN_INFORMATION*);
+ NTSYSAPI NTSTATUS  WINAPI NtQueryInformationAtom(RTL_ATOM,ATOM_INFORMATION_CLASS,PVOID,ULONG,ULONG*);
++NTSYSAPI NTSTATUS  WINAPI NtQueryInformationByName(POBJECT_ATTRIBUTES,PIO_STATUS_BLOCK,PVOID,ULONG,FILE_INFORMATION_CLASS);
+ NTSYSAPI NTSTATUS  WINAPI NtQueryInformationFile(HANDLE,PIO_STATUS_BLOCK,PVOID,ULONG,FILE_INFORMATION_CLASS);
+ NTSYSAPI NTSTATUS  WINAPI NtQueryInformationJobObject(HANDLE,JOBOBJECTINFOCLASS,PVOID,ULONG,PULONG);
+ NTSYSAPI NTSTATUS  WINAPI NtQueryInformationPort(HANDLE,PORT_INFORMATION_CLASS,PVOID,ULONG,PULONG);

@@ -157,3 +157,4 @@
 0157-opengl32-batch-immediate-mode.patch
 0158-winex11-external-xp-screen-saver-setting.patch
 0159-user32-lock-work-station-request.patch
+0160-ntdll-query-information-by-name.patch
