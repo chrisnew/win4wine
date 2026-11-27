@@ -43,7 +43,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
 | PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
-| Prefix | `prefix/extras.py` VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
+| Prefix | `prefix/extras.py` VERSION 12: "Open in Linux Terminal" (`C:\xp\bin\linux-launch.exe` and the context menu handler in `linuxcols.dll`). Since VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
 | Prefix | Office's `MDM` and `MOSEARCH` services `Start=3` (manual) instead of automatic | MOSEARCH failed at every login (missing `TQUERY.DLL`); neither is needed by the session | 2026-11-26 |
 | Boot | `GRUB_CMDLINE_LINUX_DEFAULT="zswap.enabled=1 zswap.compressor=zstd"` | Compressed swap cache, for 2 GB of RAM. **zstd is not actually used**, see "Open" | ? |
 | Disk | `/` mounted `noatime,nodiratime`; 9.5 GB swap partition `/dev/sda2` | ? (the disk is a spinning HDD, Toshiba MK2552GSX) | ? |
@@ -77,6 +77,30 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-27: Open in Linux Terminal on folders
+
+- **What** (logged off, repo 2cfaad2), in `~/win4wine`: `git fetch fork && git checkout -B eeepc fork/eeepc` (6d7dcb8 to
+  2cfaad2) and `bridge-wm/build.sh`; the registry files, `.xp-extras` and `.xp-defaults` copied to
+  `.local/backup-before-extras12/`; then the prefix additions as `scripts/setup.sh` runs them, and `wineserver -k` and `-w`:
+
+  ```sh
+  xvfb-run -a -s '-screen 0 1280x800x24' sh -c 'p=$PWD/.local/prefix w=$PWD/.local/wine-install/bin/wine
+      python3 prefix/extras.py $p --wine $w && python3 session/linux_apps.py $p --wine $w &&
+      python3 xp-explorer/scripts/pins.py $p --wine $w' > .local/extras12.log 2>&1
+  ```
+
+- **Why:** folders and drives open in a Linux terminal from their context menu ([plan](../../plans/linux-terminal.md)).
+- **Result:** additions 270 s, exit status 0, `extras.py --check` passes (VERSION 12), `tests/linuxcols.py` passes, and both
+  helpers in `C:\xp\bin` are the ones just built. Added to `system.reg`: the handler's class, its `Approved` value and its
+  three `ContextMenuHandlers` keys; `user.reg` and `userdef.reg` have the same keys and values as before. The display
+  adapter reads "Wine Adapter" after the run under Xvfb. One other change: IE6's registration took back
+  `HKCR\htmlfile\shell\Print\command`, which was Office XP's
+  `"C:\Program Files (x86)\Microsoft Office\Office10\msohtmed.exe" /p %1`; not put back. **Not yet checked in a session
+  on the machine**, and the time from the click to the prompt is not measured.
+- **Undo:** with `WINEPREFIX` set to the prefix, `wine reg delete 'HKCR\<class>\shellex\ContextMenuHandlers\LinuxTerminal' /f`
+  for `Directory`, `Drive` and `Directory\Background` (until `extras.py` is applied again). Or copy the backed up `*.reg` and
+  `.xp-extras` back with no wineserver running, and check out 6d7dcb8 and build again.
 
 ### 2026-11-27: My Network Places lists the local network
 
