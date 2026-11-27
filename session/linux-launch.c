@@ -16,12 +16,21 @@
  * rules of CommandLineToArgvW the closing quote of "C:\" would be escaped.
  * The folder becomes the terminal's working directory and nothing else, so its
  * name reaches no shell. A folder the terminal could not start in gets a
- * message box instead: Wine would start it in another directory. */
+ * message box instead: Wine would start it in another directory.
+ *
+ * linux-launch.exe --mount-iso PATH mounts the disc image PATH, "Mount" on .iso
+ * files (prefix/extras.py), and opens the CD drive Wine makes of it. PATH is the
+ * rest of the command line, as for --terminal. iso_mount.py beside this program
+ * (session/iso_mount.py) asks UDisks2 and writes what came of it into a file;
+ * Wine's mountmgr.sys, which follows UDisks2, gives the disc a drive letter. */
 #ifndef UNICODE
 #define UNICODE
 #endif
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <winioctl.h>
+#include <shellapi.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <wchar.h>
 
@@ -114,19 +123,10 @@ static BOOL can_enter(const WCHAR *folder)
     return TRUE;
 }
 
-static int terminal(WCHAR *path)
+/* PATH, the rest of the command line, without the blanks at its end and the quotes around it. */
+static WCHAR *unquoted(WCHAR *path)
 {
-    typedef char *(CDECL *unix_file_name)(const WCHAR *);
-    /* The session's debug channels and font configuration are not for the
-     * user's shell. Its Wine variables stay, so that "wine" there starts
-     * programs as the shell does (session/wine.py). */
-    static const WCHAR clean[] = L"/usr/bin/env -u WINEDEBUG -u FONTCONFIG_FILE ";
-    unix_file_name get_unix_file_name = (unix_file_name)(void *)
-        GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "wine_get_unix_file_name");
-    WCHAR folder[MAX_PATH], line[96];
     size_t length = wcslen(path);
-    DWORD size, attributes;
-    char *name;
 
     while (length && (path[length - 1] == ' ' || path[length - 1] == '\t')) path[--length] = 0;
     if (length >= 2 && path[0] == '"' && path[length - 1] == '"')
@@ -134,6 +134,30 @@ static int terminal(WCHAR *path)
         path[length - 1] = 0;
         path++;
     }
+    return path;
+}
+
+typedef char *(CDECL *unix_file_name)(const WCHAR *);
+
+/* The Unix name of the Windows path, to be freed with HeapFree, or NULL. */
+static char *unix_name(const WCHAR *path)
+{
+    unix_file_name get = (unix_file_name)(void *)
+        GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "wine_get_unix_file_name");
+    return get ? get(path) : NULL;
+}
+
+static int terminal(WCHAR *path)
+{
+    /* The session's debug channels and font configuration are not for the
+     * user's shell. Its Wine variables stay, so that "wine" there starts
+     * programs as the shell does (session/wine.py). */
+    static const WCHAR clean[] = L"/usr/bin/env -u WINEDEBUG -u FONTCONFIG_FILE ";
+    WCHAR folder[MAX_PATH], line[96];
+    DWORD size, attributes;
+    char *name;
+
+    path = unquoted(path);
     if (!*path) return 2;
     if (changed_by_wine(path))
         return refuse(path, L"has a name that ends with a dot or a space");
@@ -143,7 +167,7 @@ static int terminal(WCHAR *path)
         return refuse(path, L"is not on the Linux file system");
     attributes = GetFileAttributesW(folder);
     if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY) ||
-        !get_unix_file_name || !(name = get_unix_file_name(folder)))
+        !(name = unix_name(folder)))
         return refuse(path, L"is not on the Linux file system");
     HeapFree(GetProcessHeap(), 0, name);
     if (!can_enter(folder))
@@ -155,10 +179,217 @@ static int terminal(WCHAR *path)
     return start(line, folder);
 }
 
+/* Wine's Unix code page, in which its Unix file names are. */
+#define CP_UNIXCP 65010
+
+/* Wine's own request to mountmgr.sys (include/ddk/mountmgr.h): what a drive letter stands for. */
+#define IOCTL_MOUNTMGR_QUERY_UNIX_DRIVE CTL_CODE('m', 33, METHOD_BUFFERED, FILE_READ_ACCESS)
+struct unix_drive
+{
+    ULONG size, type, fs_type;
+    DWORD serial;
+    ULONGLONG unix_dev;
+    WCHAR letter;
+    USHORT mount_point_offset, device_offset, label_offset;
+};
+
+static int not_mounted(const WCHAR *text)
+{
+    MessageBoxW(NULL, text, L"Mount", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+    return 1;
+}
+
+/* Append NAME, a Unix file name, to the command line as one argument, quoted by
+ * the rules Wine splits a command line with. */
+static BOOL append_argument(WCHAR *line, size_t size, const char *name)
+{
+    WCHAR wide[4096], *in, *out = line + wcslen(line);
+    size_t backslashes = 0, i;
+
+    if (!MultiByteToWideChar(CP_UNIXCP, 0, name, -1, wide, 4096)) return FALSE;
+    if (out - line + 2 * wcslen(wide) + 4 > size) return FALSE;
+    *out++ = ' ';
+    *out++ = '"';
+    for (in = wide; *in; *out++ = *in++)
+    {
+        if (*in == '\\') backslashes++;
+        else
+        {
+            if (*in == '"') for (i = 0; i <= backslashes; i++) *out++ = '\\';
+            backslashes = 0;
+        }
+    }
+    for (i = 0; i < backslashes; i++) *out++ = '\\';
+    *out++ = '"';
+    *out = 0;
+    return TRUE;
+}
+
+/* Wait for iso_mount.py to put its result into FILE, and read it. */
+static BOOL read_result(const WCHAR *file, char *text, DWORD size)
+{
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    DWORD waited, read = 0;
+    HANDLE handle;
+
+    for (waited = 0; waited < 60000; waited += 100, Sleep(100))
+    {
+        if (!GetFileAttributesExW(file, GetFileExInfoStandard, &data) || !data.nFileSizeLow) continue;
+        handle = CreateFileW(file, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
+        if (handle == INVALID_HANDLE_VALUE) continue;
+        if (!ReadFile(handle, text, size - 1, &read, NULL)) read = 0;
+        CloseHandle(handle);
+        text[read] = 0;
+        return read != 0;
+    }
+    return FALSE;
+}
+
+/* The drive letter mountmgr.sys has given DEVICE, mounted on MOUNT_POINT, within
+ * five seconds; 0 if none. */
+static WCHAR drive_of(const char *device, const char *mount_point)
+{
+    union { struct unix_drive drive; char bytes[1024]; } out;
+    struct unix_drive in = {0};
+    HANDLE manager;
+    DWORD waited, read;
+    WCHAR letter, found = 0;
+
+    manager = CreateFileW(L"\\\\.\\MountPointManager", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+                          OPEN_EXISTING, 0, NULL);
+    if (manager == INVALID_HANDLE_VALUE) return 0;
+    for (waited = 0; !found && waited < 5000; waited += 100, Sleep(100))
+    {
+        for (letter = 'D'; !found && letter <= 'Z'; letter++)
+        {
+            in.letter = letter;
+            memset(&out, 0, sizeof(out));
+            if (!DeviceIoControl(manager, IOCTL_MOUNTMGR_QUERY_UNIX_DRIVE, &in, sizeof(in), &out, sizeof(out),
+                                 &read, NULL)) continue;
+            if (out.drive.device_offset && out.drive.mount_point_offset &&
+                !strcmp(out.bytes + out.drive.device_offset, device) &&
+                !strcmp(out.bytes + out.drive.mount_point_offset, mount_point))
+                found = letter;
+        }
+    }
+    CloseHandle(manager);
+    return found;
+}
+
+/* Why a mounted disc has no drive, for the session's log. */
+static void log_no_drive(const char *device, const char *mount_point)
+{
+    typedef int (CDECL *debug_output)(const char *);
+    debug_output output = (debug_output)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "__wine_dbg_output");
+    char message[640];
+
+    snprintf(message, sizeof(message), "linux-launch: mountmgr gave %.64s (%.480s) no drive letter within 5 s; "
+             "opening the folder\n", device, mount_point);
+    if (output) output(message);
+}
+
+/* Open an Explorer window of the folder PATH. By starting XP's Explorer: opening
+ * the folder as a document goes over DDE, which fails from a program that is not
+ * the shell ("DDE failure"), and "explorer.exe" would be Wine's. */
+static void open_folder(const WCHAR *path)
+{
+    WCHAR argument[MAX_PATH + 8];
+
+    /* XP's Explorer takes a quoted path as it is, with a backslash before the quote. */
+    _snwprintf(argument, MAX_PATH + 8, L"\"%ls\"", path);
+    argument[MAX_PATH + 7] = 0;
+    ShellExecuteW(NULL, NULL, L"C:\\xp\\xp-explorer.exe", argument, NULL, SW_SHOWNORMAL);
+}
+
+static void open_disc(const char *device, const char *mount_point)
+{
+    typedef WCHAR *(CDECL *dos_file_name)(const char *);
+    WCHAR root[] = L"D:\\", *folder;
+    dos_file_name get;
+
+    if ((root[0] = drive_of(device, mount_point)))
+    {
+        open_folder(root);
+        return;
+    }
+    log_no_drive(device, mount_point);
+    get = (dos_file_name)(void *)GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "wine_get_dos_file_name");
+    if (get && (folder = get(mount_point)))
+    {
+        open_folder(folder);
+        HeapFree(GetProcessHeap(), 0, folder);
+    }
+}
+
+static int mount_iso(WCHAR *path)
+{
+    static WCHAR line[20000];
+    static char result[8192];
+    WCHAR full[MAX_PATH], script[MAX_PATH], temp[MAX_PATH], answer[MAX_PATH], message[2048], reason[1024], *name;
+    char *image, *helper = NULL, *reply = NULL, *device, *mount_point, *end;
+    DWORD size, attributes;
+    int started = 1;
+
+    path = unquoted(path);
+    if (!*path) return 2;
+    size = GetFullPathNameW(path, MAX_PATH, full, NULL);
+    attributes = size && size < MAX_PATH ? GetFileAttributesW(full) : INVALID_FILE_ATTRIBUTES;
+    image = attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY) ?
+            unix_name(full) : NULL;
+    if (!image)
+    {
+        _snwprintf(message, 2048, L"%.400ls is not on the Linux file system, so it cannot be mounted.", path);
+        message[2047] = 0;
+        return not_mounted(message);
+    }
+    name = wcsrchr(full, '\\');
+    name = name ? name + 1 : full;
+
+    /* iso_mount.py lies beside this program; its result goes into a temporary file. */
+    size = GetModuleFileNameW(NULL, script, MAX_PATH);
+    if (size && size < MAX_PATH - 16 && wcsrchr(script, '\\'))
+    {
+        wcscpy(wcsrchr(script, '\\') + 1, L"iso_mount.py");
+        helper = unix_name(script);
+    }
+    if (GetTempPathW(MAX_PATH, temp) && GetTempFileNameW(temp, L"iso", 0, answer))
+        reply = unix_name(answer);
+    wcscpy(line, L"/usr/bin/env -u WINEDEBUG python3 -I");
+    if (helper && reply && append_argument(line, 20000, helper) && append_argument(line, 20000, image) &&
+        append_argument(line, 20000, reply))
+        /* Not in the image's folder: that may be on a disc that is to be ejected. */
+        started = start(line, L"C:\\");
+    HeapFree(GetProcessHeap(), 0, image);
+    if (started)
+    {
+        if (reply) DeleteFileW(answer);
+        _snwprintf(message, 2048, L"%.400ls could not be mounted.", name);
+        message[2047] = 0;
+        return not_mounted(message);
+    }
+
+    if (!read_result(answer, result, sizeof(result))) strcpy(result, "error\nThere was no answer within a minute.\n");
+    DeleteFileW(answer);
+    if (!strncmp(result, "ok\n", 3) && (end = strchr(device = result + 3, '\n')))
+    {
+        *end = 0;
+        mount_point = end + 1;
+        if ((end = strchr(mount_point, '\n'))) *end = 0;
+        open_disc(device, mount_point);
+        return 0;
+    }
+    end = !strncmp(result, "error\n", 6) ? result + 6 : result;
+    if (!MultiByteToWideChar(CP_UTF8, 0, end, -1, reason, 1024)) wcscpy(reason, L"The reason does not fit here.");
+    _snwprintf(message, 2048, L"%.400ls could not be mounted:\n\n%ls", name, reason);
+    message[2047] = 0;
+    return not_mounted(message);
+}
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, WCHAR *unused, int show)
 {
     static const WCHAR unreachable_option[] = L"--unreachable ";
     static const WCHAR terminal_option[] = L"--terminal ";
+    static const WCHAR mount_option[] = L"--mount-iso ";
     /* The XP session's debug channels are for its own logs, not for Linux programs. */
     static const WCHAR prefix[] = L"/usr/bin/env -u WINEDEBUG ";
     WCHAR *rest = arguments(GetCommandLineW()), *line;
@@ -169,6 +400,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, WCHAR *unused, int s
         return unreachable(rest + wcslen(unreachable_option));
     if (!wcsncmp(rest, terminal_option, wcslen(terminal_option)))
         return terminal(rest + wcslen(terminal_option));
+    if (!wcsncmp(rest, mount_option, wcslen(mount_option)))
+        return mount_iso(rest + wcslen(mount_option));
     if (!*rest || !(line = malloc(length * sizeof(WCHAR)))) return 2;
     wcscpy(line, prefix);
     wcscat(line, rest);

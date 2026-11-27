@@ -27,7 +27,7 @@ Preparation builds the following:
 | `wine/build.sh` | Fetches Wine 11.0, applies `wine/patches/` and builds it ([patches.md](patches.md)). |
 | `prefix/create.py`, `prefix/stage.py` | Create the Wine prefix for XP and install XP's DLLs, the COM registrations and the registry settings (registry profiles). Settings follow XP's language (Japanese: the MS UI Gothic font profile and MS Gothic for the console; English: classic Tahoma, Microsoft Sans Serif for MS Shell Dlg, Terminal for the console). The language is recorded as `language` in `xp-shell.json`. |
 | `bridge-wm/build.sh` | Builds proxy.exe and the other Win32 helper programs (`.local/bridge`). |
-| `prefix/extras.py` | Installs into the XP session's prefix the additions taken from the XP Explorer of [AshesTom's fork](https://github.com/AshesTom/win4wine) (XP icons in the notification area, Display Properties, sounds, Internet Explorer 6, Windows Media Player 9 and more), XP's `actxprxy.dll` in XP Explorer (the COM proxies that Taskbar Properties' Customize Notifications needs) and this fork's [Linux columns](#linux-columns-in-xps-folder-windows-xp-explorerhelperslinuxcolsc) and [Open in Linux Terminal](#open-in-linux-terminal-sessionlinux-launchc), with the code in `xp-explorer/scripts/`. The colour schemes of Display Properties (New Schemes), which XP creates at the first logon, are built by `prefix/xp_schemes.py` from the ISO's HIVEDEF.INF and themeui.dll. When they change, bump `VERSION` and setup.sh installs them again. |
+| `prefix/extras.py` | Installs into the XP session's prefix the additions taken from the XP Explorer of [AshesTom's fork](https://github.com/AshesTom/win4wine) (XP icons in the notification area, Display Properties, sounds, Internet Explorer 6, Windows Media Player 9 and more), XP's `actxprxy.dll` in XP Explorer (the COM proxies that Taskbar Properties' Customize Notifications needs) and this fork's [Linux columns](#linux-columns-in-xps-folder-windows-xp-explorerhelperslinuxcolsc), [Open in Linux Terminal](#open-in-linux-terminal-sessionlinux-launchc) and [Mount for disc images](#disc-images-sessioniso_mountpy), with the code in `xp-explorer/scripts/`. The colour schemes of Display Properties (New Schemes), which XP creates at the first logon, are built by `prefix/xp_schemes.py` from the ISO's HIVEDEF.INF and themeui.dll. When they change, bump `VERSION` and setup.sh installs them again. |
 
 ## How the XP shell runs
 
@@ -340,6 +340,38 @@ Folders and drives that exist on the Linux file system offer **Open in Linux Ter
 - **The environment** is the session's, without `WINEDEBUG` and `FONTCONFIG_FILE`. `WINEPREFIX`, the `PATH` with the session's
   Wine, `WIN4WINE_*` and `WINEDLLOVERRIDES` stay, so `wine notepad` typed there opens Notepad in the session with its XP frame
   (without them its frame is broken). Linux programs do not read them.
+
+## Disc images (`session/iso_mount.py`)
+
+A double click on an `.iso` file mounts it on the Linux side, and it becomes a CD drive in My Computer (the first free letter
+from `D:`) with the disc's label. Linux does the mounting (the kernel's loop device and iso9660 or UDF driver, through
+UDisks2); Wine does not read the file.
+
+- **The association** is written by `prefix/extras.py`: `.iso` becomes the class `win4wine.isoimage` ("Disc Image File",
+  shell32's CD drive icon) unless a program has given it a class of its own. Its default verb, **Mount**, runs
+  `linux-launch.exe --mount-iso "PATH"`.
+- **The work** is done by `C:\xp\bin\iso_mount.py`, which the launcher starts with the Unix names of the image and of a result
+  file. A script, because Wine gives a Windows program neither the exit status of a Unix program nor its output through a
+  pipe: the script writes `ok`, the device and the mount point, or `error` and a reason, and the launcher waits for that file
+  (up to a minute) and shows an error in a message box.
+- **The script** attaches the image to a loop device read-only and without partitions (`udisksctl loop-setup -r
+  --no-partition-scan`; a hybrid image would otherwise become several drives) and mounts it (`udisksctl mount`, at
+  `/media/USER/LABEL`). polkit allows both without a password to the user of the active local session. An image that already
+  is on a loop device is not attached again, and a lock keeps two double clicks from making two drives. A file that is not a
+  disc image leaves no loop device behind.
+- **The drive letter** comes from Wine's own `mountmgr.sys`, which follows UDisks2: an iso9660 or UDF block device becomes a
+  CD or DVD drive, and goes when the device does. `mountmgr` only follows UDisks2 if the service is there when it starts, so
+  after installing `udisks2`, log off and on. The launcher asks `mountmgr` for up to 5 s which letter has the device
+  (`IOCTL_MOUNTMGR_QUERY_UNIX_DRIVE`) and opens it; without one it opens the mount point through `Z:`. It starts
+  `xp-explorer.exe` with the path for that: opening a folder as a document goes over DDE, which fails from another program.
+- **Eject** is XP's own, on the drive's menu and in My Computer's task pane. XP's shell32 sends `IOCTL_DISK_EJECT_MEDIA` to
+  the volume, with no lock or dismount before it, and patch 0164 makes `mountmgr` unmount the image and delete its loop device
+  (`udisksctl`, which needs no password for a device the user set up). The drive goes with the device (0163 tells Explorer).
+  Only loop devices that are CD or DVD drives are touched. Real drives and USB sticks keep Wine's behaviour.
+- **Arrivals**: Explorer opens a window of a disc that arrives, so `mountmgr` announces a volume once, when it can be read
+  (0163). A disc's `autorun.inf` is **not** run: XP's Explorer looks for the file and does not read it (as far as traced, with
+  no Shell Hardware Detection service here).
+- **Images stay mounted across a log off**, like a disc left in a drive. A restart of the machine clears them.
 
 ## The login screen (`greeter/`)
 

@@ -182,6 +182,8 @@ arch_packages() {
         python-gobject glib2 gdk-pixbuf2 librsvg
         # My Network Places: mDNS (session/network_places.py; enable avahi-daemon.service)
         avahi
+        # "Mount" on .iso files (session/iso_mount.py)
+        udisks2
     )
     # 7z: 7zip, unless p7zip (which conflicts with it) already gives one
     command -v 7z >/dev/null || packages+=(7zip)
@@ -237,6 +239,8 @@ else
         python3-gi gir1.2-glib-2.0 gir1.2-gdkpixbuf-2.0 librsvg2-common
         # My Network Places: mDNS (session/network_places.py)
         avahi-daemon
+        # "Mount" on .iso files (session/iso_mount.py), without a password in the session
+        udisks2 polkitd libpam-systemd
         locales
     )
     if [[ $wayland == yes ]]; then

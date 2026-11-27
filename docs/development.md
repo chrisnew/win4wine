@@ -88,6 +88,7 @@ The list, order, format and the opt-in check are in [patches.md](patches.md). Ne
 | `tests/idle_watch.py IDLE_WATCH` | `session/idle-watch.c` on an Xvfb: idle and active, `XResetScreenSaver`, DPMS, no wakeups while idle |
 | `tests/logind_watch.py` | `session/logind-watch.py` with a stand-in for logind on a private bus: `Lock` and the delayed sleep |
 | `tests/linux_apps.py` | The Start menu of Linux apps |
+| `tests/iso_mount.py` | Mounting a disc image (`session/iso_mount.py`) with a stand-in for `udisksctl`; no Wine, no loop devices |
 | `tests/network_places.py` | My Network Places: names, URLs, mDNS, SSDP and UPnP descriptions (hostile ones too), the shortcuts per device, and which files are touched; no Wine, no network |
 | `tests/linuxcols.py` | The plain C part of XP Explorer's Linux columns: the permissions as `ls -l` writes them, user and group names, the paths left alone (host gcc; no Wine, no X) |
 | `tests/recovery_integration.py CONFIG.json` | Switching over when the shell crashes |

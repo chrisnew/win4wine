@@ -57,8 +57,10 @@ compile "$root/.local/bridge/user-profile.exe" -municode "$root/prefix/user-prof
 # Its manifest asks for common controls 6: themed buttons in its message boxes.
 i686-w64-mingw32-windres -I "$root/session" "$root/session/linux-launch.rc" -O coff -o "$root/.local/bridge/linux-launch.res"
 compile "$root/.local/bridge/linux-launch.exe" "$root/session/linux-launch.c" "$root/.local/bridge/linux-launch.res" \
-    -mwindows -luser32
+    -mwindows -luser32 -lshell32
 rm -f "$root/.local/bridge/linux-launch.res"
+# Its helper for "Mount" on disc images (--mount-iso), installed beside it.
+install -m 644 "$root/session/iso_mount.py" "$root/.local/bridge/iso_mount.py"
 compile "$root/.local/bridge/linux-links.exe" "$root/session/linux-links.c" -lole32 -lshell32 -luuid
 # XP's logon and log off sounds (session/supervisor.py).
 compile "$root/.local/bridge/playsound.exe" "$root/session/playsound.c" -mwindows -lwinmm -lshell32

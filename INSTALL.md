@@ -45,7 +45,7 @@ If it fails, just run it again: finished steps are skipped. Everything it builds
 
 ## 2. What the script does
 
-1. Installs packages (Wine's build dependencies, Xorg, python3-xlib, fcitx5 + Mozc, …), and LightDM if there is no display manager.
+1. Installs packages (Wine's build dependencies, Xorg, python3-xlib, fcitx5 + Mozc, UDisks2 for mounting disc images, …), and LightDM if there is no display manager.
 2. Fetches Wine 11.0, applies the patches and builds it (`.local/wine-install`; about 90 minutes on 4 cores; log in `.local/wine-build.log`).
    While it builds, only the step, the number and share of files compiled, an estimate of the time left and the last few lines of output are shown.
 3. Builds the bridge (the WM and the proxy windows).
@@ -137,6 +137,7 @@ Restart the display manager (or reboot).
 | toggle Japanese input | Ctrl+Space or Zenkaku/Hankaku, or click the icon in the notification area |
 | start a Linux application | Start → All Programs (names end in "(Linux)") |
 | install a Windows application | `wine setup.exe` in a terminal; the session's `PATH` starts with this Wine |
+| mount a disc image | double-click the `.iso` file: it becomes a CD drive in My Computer; its **Eject** takes it away |
 | start a Windows application from outside the session (ssh, another desktop) | `win4wine-wine setup.exe` (`~/.local/bin`): it runs with the session's prefix, Wine and settings, and looks as in the session. With more than one shell set up, choose with `--shell xp`, `reactos` or `win7`. Plain `wine` uses `~/.wine` and Wine's own look |
 | open the Start menu | the Windows key, Ctrl+Esc |
 | Run / Explorer | Win+R / Win+E |

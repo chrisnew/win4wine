@@ -11,8 +11,9 @@ programs); XP's proxies for the shell's COM interfaces, which Taskbar
 Properties' Customize Notifications needs; Linux permissions, owner, group and
 path as columns and in the task pane's Details section of folder windows, and
 "Open in Linux Terminal" on folders, drives and folder windows' backgrounds
-(linuxcols.dll, linux-launch.exe); and XP's Regional and Language Options,
-whose input languages the session's keyboard layout follows
+(linuxcols.dll, linux-launch.exe); "Mount" on .iso files, which makes a disc
+image a CD drive (linux-launch.exe, iso_mount.py); and XP's Regional and
+Language Options, whose input languages the session's keyboard layout follows
 (session/keyboard.py). This applies them to a prefix made by prefix/create.py, with
 xp-explorer/scripts/prefix.py's own code, and again when they change.
 
@@ -25,6 +26,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -35,11 +37,11 @@ import xp_schemes
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / '.local/bridge'
 # Bumped when apply() changes; setup.sh applies it again on existing prefixes.
-VERSION = '13'
+VERSION = '14'
 MARKER = '.xp-extras'
 # What goes from .local/bridge to C:\xp\bin.
 HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'linux-launch.exe',
-           'linuxcols.dll')
+           'linuxcols.dll', 'iso_mount.py')
 # linuxcols.dll's column handler (xp-explorer/helpers/linuxcols.c), and the
 # property set of its columns.
 LINUX_COLUMNS = '{48E91554-B8E3-45CE-A5C9-E7E65E654FF0}'
@@ -67,6 +69,8 @@ COM = ('actxprxy.dll',)
 COM_PROXY = '{B8DA6310-E19B-11D0-933C-00A0C90DCAA9}'
 TRAY_INTERFACES = (('{FB852B2C-6BAD-4605-9551-F15F87830935}', 'ITrayNotify'),
                    ('{D782CCBA-AFB0-43F1-94DB-FDA3779EACCB}', 'INotificationCB'))
+# The class of .iso files, whose "Mount" starts linux-launch.exe --mount-iso.
+ISO_CLASS = 'win4wine.isoimage'
 LAYOUTS_KEY = r'System\CurrentControlSet\Control\Keyboard Layouts'
 
 
@@ -154,7 +158,27 @@ def registry(xpx):
         r.add('HKCR\\' + key + '\\shellex\\ContextMenuHandlers\\LinuxTerminal', None, LINUX_TERMINAL)
     r.add(r'HKLM\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved', LINUX_TERMINAL,
           'Open in Linux Terminal')
+    iso = 'HKCR\\' + ISO_CLASS
+    r.add(iso, None, 'Disc Image File')
+    # shell32's CD drive.
+    r.add(iso + '\\DefaultIcon', None, r'%SystemRoot%\system32\shell32.dll,11', 'REG_EXPAND_SZ')
+    r.add(iso + '\\shell', None, 'mount')
+    r.add(iso + '\\shell\\mount', None, '&Mount')
+    r.add(iso + '\\shell\\mount\\command', None, r'"C:\xp\bin\linux-launch.exe" --mount-iso "%1"')
     return r
+
+
+def iso_class(wine, prefix):
+    """Make .iso files ISO_CLASS's, unless a program has given them a class of its own."""
+    env = dict(os.environ, WINEPREFIX=str(prefix), WINEDEBUG='-all', WINEDLLOVERRIDES='mscoree,mshtml=')
+    env.pop('WINEARCH', None)
+    query = subprocess.run([wine, 'reg', 'query', r'HKCR\.iso', '/ve'], env=env, capture_output=True,
+                           text=True, errors='replace', check=False)
+    value = re.search(r'REG_(?:EXPAND_)?SZ[ \t]+(.*)', query.stdout) if not query.returncode else None
+    # "(value not set)": a key without a default value.
+    if not value or value[1].strip() in ('', '(value not set)', ISO_CLASS):
+        regedit(wine, prefix, 'Windows Registry Editor Version 5.00\r\n\r\n'
+                f'[HKEY_CLASSES_ROOT\\.iso]\r\n@="{ISO_CLASS}"\r\n')
 
 
 def removals():
@@ -323,6 +347,7 @@ def apply(prefix, wine):
     regedit(wine, prefix, removals())
     regedit(wine, prefix, registry(xpx).text())
     regedit(wine, prefix, xpx.xp_registrations(assets))
+    iso_class(wine, prefix)
     screen_saver_mapping(wine, prefix)
     if (assets / 'intl/input.dll').is_file():
         for text in keyboard_layouts(assets):
