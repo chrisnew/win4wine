@@ -19,6 +19,7 @@ fits a 1024x600 screen, and has things worth showing. Ideas for features are in 
 - Building, tests and updating an install: [docs/development.md](docs/development.md).
 - Records from upstream's development are in [docs/history/](docs/history/), **in Japanese**. Read them there when a design choice
   needs its background (the other docs cite their section names). Don't translate them unless asked.
+- Our own icons are in `resources/`. Draw every new one after [XP-Style Icon Guide.md](XP-Style%20Icon%20Guide.md).
 - The EeePC itself, the helper tools for driving and measuring it, and the numbers measured so far: [tools/eeepc/](tools/eeepc/README.md).
 
 ## Rules kept from upstream

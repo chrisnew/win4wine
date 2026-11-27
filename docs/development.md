@@ -6,6 +6,7 @@ To just use win4wine, `scripts/setup.sh` from [INSTALL.md](../INSTALL.md) is eno
 
 | Path | Contents |
 |---|---|
+| `resources/` | Our own icons (`.ico`, with their SVG), drawn after [XP-Style Icon Guide.md](../XP-Style%20Icon%20Guide.md) |
 | `wine/` | The Wine it is based on (`upstream.env`), the patches (`patches/` and `series`), the build (`build.sh`), applying the patches (`patch-state.py`) |
 | `bridge-wm/` | The X11 WM (`wm.c`, and `wm.py` that behaves the same), the Win32 proxy (`proxy.c`), the tray broker (`tray.py`), a tool for investigations (`inspect.c`) |
 | `wayland/` | The Wayland session: labwc and wlroots versions (`upstream.env`), patches (`patches/`), the build (`build.sh`), labwc's configuration (`labwc/`), startup (`session.sh`) |
@@ -24,7 +25,8 @@ git config core.hooksPath .githooks
 ```
 
 The pre-commit check (`scripts/check-staged.py`) refuses files under `localres/` and `.local/`, PE files, registry hives, fonts
-and binaries containing NUL bytes (even with `git add -f`). The only exception is PNGs in `docs/images/` (the README screenshot).
+and binaries containing NUL bytes (even with `git add -f`). The only exceptions are PNGs in `docs/images/` (the README
+screenshot) and our own icons, `.ico` files in `resources/`.
 
 ## Development environment in a chroot
 
