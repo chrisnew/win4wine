@@ -1,10 +1,12 @@
 # Plan: screen savers and a lock screen
 
-Status (2026-11-27): phases 0 to 3 are written and checked in a Debian 13 container (the whole XP session on Xvfb with the
-patched Wine), **not yet on the EeePC**. Next: "Deployment on the EeePC". How it works now:
-[docs/architecture.md](../docs/architecture.md), "Screen savers and the lock screen"; the sections below are the plan as it was.
+Status (2026-11-27): phases 0 to 3 are **deployed on the EeePC** and passed the manual tests there. What happened is in
+[tools/eeepc/LOG.md](../tools/eeepc/LOG.md), the numbers in
+[tools/eeepc/README.md](../tools/eeepc/README.md#screen-savers-and-the-lock-screen). Next: "Left to do after the deployment".
+How it works now: [docs/architecture.md](../docs/architecture.md), "Screen savers and the lock screen"; the other sections below
+are the plan as it was.
 
-## Deployment on the EeePC (next session starts here)
+## Deployment on the EeePC (done 2026-11-27)
 
 State on 2026-11-27: the code is on `origin/eeepc` up to a3abf37 (the commits after it only change this plan). The development
 machine's `.local/wine-install` is built with patches up to 0159. Nothing was changed on the EeePC; it stopped answering SSH
@@ -320,7 +322,13 @@ print(f'lock screen after {time.monotonic() - start:.2f} s')
 
 ## Left to do after the deployment
 
-- Decide, from what step 9 shows, whether a full-screen game should hold the screen saver off (XP does not skip it; not done).
+- **Start the lock screen ahead of time**: locking takes 2.2 s on the EeePC, over the 1 s limit of step 10. A standby mode in
+  `greeter/xp-lock.py` that has drawn and waits on stdin for "lock", started by `session/screen.py` after the shell. The running
+  lock screen has 65 MB resident.
+- The Windows XP logo screen saver shows only black ([BUGS.md](../BUGS.md)).
+- Decide whether a full-screen game should hold the screen saver off. On the EeePC the saver and then the lock screen came over
+  VS Code left alone, and XP would start it too. A full-screen game or video was not tried (see also phase 4).
+- Not measured: the screen savers' frame rates. Not run: the probe `tests/screen-saver.c` on the EeePC.
 - Fast User Switching is still off, so the checkbox reads "On resume, password protect". Turning it on would also add "Switch
   User" to XP's Log Off dialog, which has nothing behind it yet.
 - Not done: hardening against VT switches (2.5, only if wanted), "Switch User" (3.4), phase 4 (only if needed).
@@ -377,7 +385,7 @@ not add wakeups while the machine is idle.
   the screen first. The checkbox reads "On resume, password protect", not "On resume, display Welcome screen": XP shows the second
   only with Fast User Switching on. Phase 2's lock screen is XP's FUS one, so the prefix should turn FUS on (the Winlogon setting
   that XP's User Accounts sets; find out which with a trace) once the lock screen exists.
-- Still to do: run each one with the Preview button (`/s`), and `setup.sh` on a prefix it updates (VERSION 6).
+- Run with `/s` and applied by `setup.sh` to the existing prefix on 2026-11-27 (see "Deployment on the EeePC").
 
 ## Phase 1: screen savers start when the machine is idle
 

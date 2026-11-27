@@ -113,3 +113,43 @@ On 2026-11-23, a 60 Hz drag of an xterm by its XP caption cost about 40% of a co
 - **Idle wakeups still open** (see [BUGS.md](../../BUGS.md)): the taskbar's
   notification area repaints whenever xptray's network icon lights up for traffic, and each repaint makes 27
   `GetProp("UxSubclassInfo")` server round trips (comctl32 subclassing).
+
+## Screen savers and the lock screen
+
+Measured 2026-11-27 (repo 6b3f9bc): CPU and context switches ("wakeups") from `/proc` over the user's processes and Xorg, in
+percent of one of the four logical CPUs (the sampling script is in the [plan](../../plans/screensaver-and-lock.md)).
+
+**The idle session**, 60 s without input:
+
+| | CPU | wakeups/s |
+|---|---|---|
+| before the deployment (da48e71) | 3.9% | 140 |
+| after, no screen saver chosen | 4.0% | 142 |
+| after, a screen saver set to 10 minutes, right after unlocking | 5.3% | 168 |
+| the same, a few minutes later (an `htop` and its SSH session taken out) | 3.2% | 118 |
+
+`idle-watch`, `logind-watch` and the supervisor were at 0 in all of them. The higher sample was mostly xp-explorer (3.2%).
+
+**Locking:** from the request until the lock window is mapped, 2.21, 2.26 and 2.21 s (the request file), 2.28 s
+(`loginctl lock-session`), and 2.29 s until a killed lock screen was back. With the password field's caret blinking, `xp-lock.py`
+takes 2.0% and 2.5 wakeups a second, with 65 MB resident (the whole machine 7.0%, 160).
+
+**Screen savers**, started with `/s`, a 10 s sample from 15 s after the start. The totals include the shell underneath. All covered
+the screen and the taskbar. Frame rates were not measured.
+
+| Screen saver | all | the saver | Xorg | saver's RSS |
+|---|---|---|---|---|
+| Windows XP (`logon`, shows only black) | 5.5% | 0% | 0.1% | 27 MB |
+| Blank | 6.6% | under 0.5% | 0.2% | |
+| Starfield | 17% | 8% | 5% | 26 MB |
+| Marquee | 20% | 8% | 5% | 28 MB |
+| My Pictures (no pictures, only the message) | 8% | under 0.5% | 1% | |
+| Beziers | 49% | 23% | 15% | 26 MB |
+| Mystify | 66% | 34% | 20% | 26 MB |
+| 3D Pipes (OpenGL) | 33% | 16% | 8% | 165 MB |
+| 3D Text (OpenGL, `htop` running) | 64% | 48% | 8% | 167 MB |
+| 3D Flying Objects (OpenGL) | 79% | 64% | 9% | 170 MB |
+| 3D FlowerBox (OpenGL, `htop` running) | 147% | 129% | 6% | 169 MB |
+
+Mouse movement ended each one. 3D Pipes did not end on three XTEST jumps 0.3 s apart, but did on real movement; the others
+measured after it ended within 0.4 s of continuous XTEST movement.

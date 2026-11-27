@@ -29,7 +29,7 @@ machine (a new Wine install, a relogin).
 
 ## Current state
 
-The machine against a fresh Debian 13 (trixie) install. Last checked on the machine: 2026-11-26.
+The machine against a fresh Debian 13 (trixie) install. Last checked on the machine: 2026-11-27.
 
 | Area | Setting | Why | Since |
 |---|---|---|---|
@@ -39,10 +39,11 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | X driver | `xserver-xorg-video-intel 2:2.99.917+git20210115-1+w4w1`, built by [xorg-intel/build.sh](xorg-intel/build.sh) with `sna-gen3-dri3.patch`; **held** with `apt-mark hold` | DRI3 on the GMA 3150, so OpenGL runs on the GPU instead of llvmpipe | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/20-intel.conf`: `Driver "intel"`, `Option "DRI" "3"` | The patched driver gives gen3 DRI3 only when asked | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/10-nodpms.conf`: blanking, standby, suspend and off times 0; `DPMS` false on LVDS1 | The screen never blanks (see "Not yet explained") | ? |
-| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0157 (repo fd9ec4a) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls | 2026-11-26 22:16 |
-| Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23 |
+| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0159 (repo 6b3f9bc) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen | 2026-11-27 |
+| Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
+| PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
-| Prefix | XP's screen savers (`logon.scr`, `scrnsave.scr`, `ss*.scr`) in `drive_c/windows/syswow64`, copied by hand ahead of `prefix/extras.py` VERSION 6 | Trying the Screen Saver tab ([plan](../../plans/screensaver-and-lock.md)) | 2026-11-27 |
+| Prefix | `prefix/extras.py` VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties: Starfield, 10 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
 | Prefix | Office's `MDM` and `MOSEARCH` services `Start=3` (manual) instead of automatic | MOSEARCH failed at every login (missing `TQUERY.DLL`); neither is needed by the session | 2026-11-26 |
 | Boot | `GRUB_CMDLINE_LINUX_DEFAULT="zswap.enabled=1 zswap.compressor=zstd"` | Compressed swap cache, for 2 GB of RAM. **zstd is not actually used**, see "Open" | ? |
 | Disk | `/` mounted `noatime,nodiratime`; 9.5 GB swap partition `/dev/sda2` | ? (the disk is a spinning HDD, Toshiba MK2552GSX) | ? |
@@ -74,6 +75,26 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-27: screen savers and the lock screen deployed
+
+- **What** (logged off): `git fetch fork && git checkout -B eeepc fork/eeepc` (da48e71 to 6b3f9bc); on the development machine
+  `wine/container-build.sh --deploy 192.168.1.9` (the Wine of 0157 is now `.local/wine-install-old`); copies of the prefix's
+  `*.reg`, `system.ini` and `.xp-extras` in `.local/backup-2026-11-27/`; `scripts/setup.sh --media
+  ~/Images/en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso --greeter`, which installed no packages,
+  rebuilt the bridge (now with `idle-watch`), applied `extras.py` VERSION 7, installed `/etc/pam.d/win4wine-lock` and
+  reinstalled the greeter; `sudo systemctl restart lightdm`.
+- **Why:** XP's screen savers did not start and nothing locked the screen ([plan](../../plans/screensaver-and-lock.md)).
+- **Result:** the password check answers right, the login screen works, and the plan's manual tests passed: Win+L (also from
+  Notepad and xterm), the wrong-password balloon, no keys past the lock screen, `LockWorkStation`, the saver chosen in the tab,
+  the 5 s grace of "password protect", a saver over the lock screen and over VS Code, lid close and wake, log off.
+  `loginctl lock-session` locks, and a killed lock screen is back after 2.3 s. Idle use did not go up; locking takes 2.2 s
+  (numbers in the [README](README.md#screen-savers-and-the-lock-screen)). The Windows XP logo screen saver shows only black.
+  `tests/logind_watch.py` passes; `tests/screen_guard.py` had a race of its own on the Atom (fixed in 9e39fba). Each unlock
+  logs `pam_unix(win4wine-lock:account): setuid failed: Operation not permitted`; the unlock works all the same.
+  The probe `tests/screen-saver.c` was not run.
+- **Undo:** the plan, "The way back". Only the new features: `"lock_screen": false` and `"screen_saver": false` in
+  `~/.config/win4wine/session.json`, then log in again.
 
 ### 2026-11-27: XP's screen savers copied into the prefix
 
