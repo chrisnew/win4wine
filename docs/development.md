@@ -77,6 +77,7 @@ The list, order, format and the opt-in check are in [patches.md](patches.md). Ne
 |---|---|
 | `tests/wm_integration.py` | The WM alone (Alt+Tab, focus, minimizing, passing on the Windows key). Runs against either WM |
 | `tests/wm_parity.py --wm CMD` | Drives a WM through frames, commands, icons, maximizing and stacking and prints its state after each step; the output of `wm.py` and `wm.c` must be identical (run each on a fresh Xvfb and `diff`) |
+| `tests/alt-tab.c` | Windows for the proxy's Alt+Tab rules (modal dialog, hidden owner, tool window) in a running session; its header says which are listed |
 | `tests/wine_restore.py` | A Wine window minimized and restored from Win32 is shown again (pass `WINE` and `WINEPREFIX`) |
 | `tests/bridge_integration.py` | The WM, the proxy and the XP shell together |
 | `tests/native_frames.py` | XP frames on Linux windows (Luna and Classic) |

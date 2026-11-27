@@ -158,6 +158,9 @@ same directory and then renamed, so readers never see a half-written file. Each 
 
 - **Alt+Tab**: while Alt is held the WM grabs the keyboard and writes `switch.tsv`. The proxy draws XP's switcher window, and on
   confirmation sends `switch XID`; the WM activates that window. If the proxy is not running, the WM cycles through windows itself.
+  As on XP, windows related by ownership share one entry, the first of them that shows: an application with a modal dialog is
+  listed and choosing it activates the dialog, and a dialog whose owners are hidden (a file's properties, Run) is listed although it
+  has no taskbar button. Tool windows and dialogs beside their visible owner have no entry of their own.
   The window's look depends on the shell (`WIN4WINE_SWITCHER`): XP (the default), ReactOS or Windows 7. The Windows 7 look is drawn with
   the parts of the `AltTab` class of the theme (aero.msstyles), and its items include "Desktop" (choosing it minimizes all windows).
 - **The Windows key and Ctrl+Esc**: when a Wine window has focus they go straight to Wine (patch 0029 opens the Start menu, and Wine

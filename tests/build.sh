@@ -30,6 +30,7 @@ compile "$out/margin-shrink-test.exe" "$root/tests/margin-shrink.c" -luxtheme -l
 compile "$out/text-wrap-test.exe" "$root/tests/text-wrap.c" -lgdi32 -luser32
 compile "$out/text-underline-test.exe" -municode "$root/tests/text-underline.c" -lgdi32 -luser32
 compile "$out/foreground-focus-test.exe" -mwindows "$root/tests/foreground-focus.c" -luser32
+compile "$out/alt-tab-test.exe" -municode "$root/tests/alt-tab.c" -luser32
 compile "$out/alpha-blend-test.exe" "$root/tests/alpha-blend.c" -lgdi32
 compile "$out/part-black-test.exe" "$root/tests/part-black.c" -luxtheme -lgdi32 -luser32
 compile "$out/notify-icon-test.exe" "$root/tests/notify-icon.c" -luxtheme -lshell32 -lgdi32 -luser32

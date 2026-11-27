@@ -1085,17 +1085,86 @@ static void ros_switch_paint(HDC dc, const RECT *rect)
     SelectObject(dc, old_font);
 }
 
+/* The desktop and the taskbar, which own dialogs but are never in the list. */
+static BOOL switch_shell_window(HWND hwnd)
+{
+    WCHAR name[64];
+    GetClassNameW(hwnd, name, ARRAYSIZE(name));
+    return !wcscmp(name, L"Progman") || !wcscmp(name, L"Shell_TrayWnd");
+}
+
+/* Where HWND's chain of owners ends, short of the desktop and the taskbar. */
+static HWND switch_root(HWND hwnd)
+{
+    HWND owner;
+    unsigned depth;
+    for (depth = 0; depth < MAX_CLIENTS; ++depth)
+    {
+        if (!(owner = GetWindow(hwnd, GW_OWNER)) || switch_shell_window(owner)) break;
+        hwnd = owner;
+    }
+    return hwnd;
+}
+
+static BOOL switch_owned_by(HWND hwnd, HWND owner)
+{
+    unsigned depth;
+    for (depth = 0; hwnd && depth < MAX_CLIENTS; ++depth, hwnd = GetWindow(hwnd, GW_OWNER))
+        if (hwnd == owner) return TRUE;
+    return FALSE;
+}
+
+struct switch_search
+{
+    HWND owner, found;
+};
+
+static BOOL CALLBACK find_popup(HWND hwnd, LPARAM param)
+{
+    struct switch_search *search = (struct switch_search *)param;
+    if (hwnd == search->owner || !IsWindowVisible(hwnd) || !IsWindowEnabled(hwnd) ||
+        !switch_owned_by(hwnd, search->owner)) return TRUE;
+    search->found = hwnd;
+    return FALSE;
+}
+
+/* The window to activate for an entry, as on XP: the popup it owns that was
+ * active last, otherwise the entry itself, or, while a modal dialog has it
+ * disabled, a popup that takes input. NULL if nothing does. */
+static HWND switch_popup(HWND hwnd)
+{
+    struct switch_search search = {hwnd, NULL};
+    HWND popup = GetLastActivePopup(hwnd);
+    if (popup && popup != hwnd && IsWindowVisible(popup) && IsWindowEnabled(popup)) return popup;
+    if (IsWindowEnabled(hwnd)) return hwnd;
+    EnumWindows(find_popup, (LPARAM)&search);
+    return search.found;
+}
+
+/* One entry for a chain of owners: its first window that shows. A dialog
+ * whose owners are hidden (a file's properties, Run) has no taskbar button
+ * but is listed; one beside its owner is reached through the owner's entry. */
 static BOOL CALLBACK switch_candidate(HWND hwnd, LPARAM param)
 {
     DWORD style = GetWindowLongW(hwnd, GWL_STYLE), ex = GetWindowLongW(hwnd, GWL_EXSTYLE);
-    WCHAR name[64];
     (void)param;
     if (switcher.count >= switcher.limit) return FALSE;
-    if (hwnd == switcher.window || !(style & WS_VISIBLE) || (style & WS_DISABLED)) return TRUE;
-    if (!(ex & WS_EX_APPWINDOW) && ((ex & WS_EX_TOOLWINDOW) || GetWindow(hwnd, GW_OWNER))) return TRUE;
-    if (ex & WS_EX_NOACTIVATE) return TRUE;
-    GetClassNameW(hwnd, name, ARRAYSIZE(name));
-    if (!wcscmp(name, L"Progman") || !wcscmp(name, L"Shell_TrayWnd")) return TRUE;
+    if (hwnd == switcher.window || !(style & WS_VISIBLE) || (ex & WS_EX_NOACTIVATE)) return TRUE;
+    if (switch_shell_window(hwnd)) return TRUE;
+    if (!(ex & WS_EX_APPWINDOW))
+    {
+        HWND owner, root = switch_root(hwnd);
+        unsigned depth;
+        int i;
+        if (ex & WS_EX_TOOLWINDOW) return TRUE;
+        for (owner = hwnd, depth = 0; owner != root && depth < MAX_CLIENTS; ++depth)
+            if (IsWindowVisible(owner = GetWindow(owner, GW_OWNER))) return TRUE;
+        /* Of two dialogs of a hidden owner, the upper one. */
+        for (i = 0; root != hwnd && i < switcher.count; ++i)
+            if (switch_root(switcher.items[i]) == root) return TRUE;
+    }
+    /* A minimized window's popups are hidden with it. */
+    if (!IsIconic(hwnd) && !switch_popup(hwnd)) return TRUE;
     switcher.items[switcher.count++] = hwnd;
     return TRUE;
 }
@@ -1117,14 +1186,16 @@ static void switch_collect(void)
         switcher.limit = rows * SWITCH_COLUMNS - 1;
     }
     EnumWindows(switch_candidate, 0);
-    /* Start from the active window, which is not always the topmost one. */
-    for (i = 0; i < switcher.count; ++i)
-        if (switcher.items[i] == foreground && i)
-        {
-            memmove(switcher.items + 1, switcher.items, i * sizeof(HWND));
-            switcher.items[0] = foreground;
-            break;
-        }
+    /* Start from the active window, which is not always the topmost one: its
+     * own entry, or that of an owner when it is a dialog without one. */
+    for (; foreground; foreground = GetWindow(foreground, GW_OWNER))
+    {
+        for (i = 0; i < switcher.count && switcher.items[i] != foreground; ++i) {}
+        if (i == switcher.count) continue;
+        memmove(switcher.items + 1, switcher.items, i * sizeof(HWND));
+        switcher.items[0] = foreground;
+        break;
+    }
     if (switcher.win7)
     {
         i = switcher.count < W7_DESKTOP_INDEX ? switcher.count : W7_DESKTOP_INDEX;
@@ -1134,15 +1205,25 @@ static void switch_collect(void)
     }
 }
 
-static HICON switch_icon(HWND hwnd)
+static HICON window_icon(HWND hwnd)
 {
     DWORD_PTR icon = 0;
-    if (hwnd == SWITCH_DESKTOP) return w7.desktop_icon ? w7.desktop_icon : default_icon;
     if (!SendMessageTimeoutW(hwnd, WM_GETICON, ICON_BIG, 0, SMTO_ABORTIFHUNG, 100, &icon)) icon = 0;
     if (!icon) icon = GetClassLongPtrW(hwnd, GCLP_HICON);
     if (!icon && !SendMessageTimeoutW(hwnd, WM_GETICON, ICON_SMALL2, 0, SMTO_ABORTIFHUNG, 100, &icon)) icon = 0;
     if (!icon) icon = GetClassLongPtrW(hwnd, GCLP_HICONSM);
-    return icon ? (HICON)icon : default_icon;
+    return (HICON)icon;
+}
+
+static HICON switch_icon(HWND hwnd)
+{
+    HICON icon = NULL;
+    unsigned depth;
+    if (hwnd == SWITCH_DESKTOP) return w7.desktop_icon ? w7.desktop_icon : default_icon;
+    /* A dialog without an icon of its own shows its owner's. */
+    for (depth = 0; !icon && hwnd && depth < MAX_CLIENTS; ++depth, hwnd = GetWindow(hwnd, GW_OWNER))
+        icon = window_icon(hwnd);
+    return icon ? icon : default_icon;
 }
 
 static int switch_rows(void)
@@ -1303,6 +1384,7 @@ static void switch_show(void)
 static void switch_commit(void)
 {
     HWND target = switcher.selected < switcher.count ? switcher.items[switcher.selected] : NULL;
+    HWND popup;
     unsigned i;
     if (switcher.window) ShowWindow(switcher.window, SW_HIDE);
     if (!target) return;
@@ -1314,6 +1396,7 @@ static void switch_commit(void)
                 ShowWindowAsync(switcher.items[j], SW_MINIMIZE);
         return;
     }
+    if (!IsIconic(target) && (popup = switch_popup(target))) target = popup;
     /* The WM activates the chosen window as for a click; Wine gives a
      * managed window X focus only through the WM. Linux windows are named by
      * their own X window, Wine windows by the one Wine created. */
