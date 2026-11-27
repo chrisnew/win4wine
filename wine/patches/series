@@ -160,3 +160,4 @@
 0160-ntdll-query-information-by-name.patch
 0161-ole32-clipboard-window-thread-exit.patch
 0162-mountmgr-udisks2-signals-only.patch
+0163-mountmgr-drive-change-notifications.patch

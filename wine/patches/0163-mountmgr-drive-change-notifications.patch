@@ -1,0 +1,80 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] mountmgr: announce a volume when it is mounted, and its removal
+
+Purpose: XP Explorer opens a mounted disc once, when it can be read, and My
+Computer loses the drive when the disc image is ejected.
+Windows behavior: WM_DEVICECHANGE says DBT_DEVICEARRIVAL when a volume
+becomes available and DBT_DEVICEREMOVECOMPLETE when it is gone.
+Wine before: every change UDisks2 reported broadcast DBT_DEVICEARRIVAL, also
+for a volume without a mount point: mounting one disc image broadcast it
+nine times, five of them before the volume could be read, and unmounting it
+broadcast an arrival too, on which XP Explorer showed "D:\ refers to a
+location that is unavailable". DBT_DEVICEREMOVECOMPLETE was only broadcast
+for a volume that still was mounted when it was removed; after an unmount and
+then a removal nothing was said, and My Computer kept a drive with a question
+mark.
+Change: an arrival when a volume gets a mount point (or another one), a
+removal when it loses it, and a removal whenever a dynamic drive's letter
+goes.
+Evidence: on the EeePC with +mountmgr traces and XP Explorer, before and
+after.
+Scope: all programs; dynamic volumes only (those UDisks, UDisks2 and the
+like report).
+---
+ dlls/mountmgr.sys/device.c | 17 +++++++++++++----
+ 1 file changed, 13 insertions(+), 4 deletions(-)
+
+diff --git a/dlls/mountmgr.sys/device.c b/dlls/mountmgr.sys/device.c
+index 733d48a..7fb6b7f 100644
+--- a/dlls/mountmgr.sys/device.c
++++ b/dlls/mountmgr.sys/device.c
+@@ -1254,7 +1254,7 @@ NTSTATUS add_dos_device( int letter, const char *udi, const char *device,
+     NTSTATUS status = STATUS_SUCCESS;
+     struct dos_drive *drive, *next;
+     struct volume *volume;
+-    int notify = -1;
++    int notify = -1, event = 0;
+     char dosdev[] = "a::";
+ 
+     EnterCriticalSection( &device_section );
+@@ -1305,6 +1305,14 @@ found:
+         struct set_dosdev_symlink_params params = { dosdev, mount_point };
+         MOUNTMGR_CALL( set_dosdev_symlink, &params );
+     }
++    /* A volume arrives when it can be read: once, when it gets a mount point. It is gone when it loses it. */
++    if (udi)
++    {
++        const char *old = volume->device->unix_mount;
++
++        if (mount_point && (!old || strcmp( mount_point, old ))) event = DBT_DEVICEARRIVAL;
++        else if (!mount_point && old) event = DBT_DEVICEREMOVECOMPLETE;
++    }
+     set_volume_info( volume, drive, device, mount_point, type, guid, label, NULL );
+ 
+     TRACE( "added device %c: udi %s for %s on %s type %u\n",
+@@ -1327,13 +1335,13 @@ found:
+         RegCloseKey( hkey );
+     }
+ 
+-    if (udi) notify = drive->drive;
++    if (event) notify = drive->drive;
+     if (scsi_info) create_scsi_entry( volume, scsi_info );
+ 
+ done:
+     if (volume) release_volume( volume );
+     LeaveCriticalSection( &device_section );
+-    if (notify != -1) send_notify( notify, DBT_DEVICEARRIVAL );
++    if (notify != -1) send_notify( notify, event );
+     return status;
+ }
+ 
+@@ -1371,7 +1379,8 @@ NTSTATUS remove_dos_device( int letter, const char *udi )
+             RegCloseKey( hkey );
+         }
+ 
+-        if (udi && drive->volume->device->unix_mount) notify = drive->drive;
++        /* The letter goes: also for a volume that was unmounted first. */
++        if (udi) notify = drive->drive;
+ 
+         delete_dos_device( drive );
+         status = STATUS_SUCCESS;

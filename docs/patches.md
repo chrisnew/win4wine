@@ -1,6 +1,6 @@
 # Wine patches
 
-`wine/patches/` holds 162 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
+`wine/patches/` holds 163 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
 `wine/build.sh` applies them, and the actual applying is done by `wine/patch-state.py` (on a partly patched source it applies only
 what is missing).
 
@@ -14,7 +14,7 @@ Changes for the XP shell only take effect in processes that have the environment
 
 - The check is gathered in one place, `win4wine_external_shell()` in `include/wine/win4wine.h`, added by 0019.
   ntdll reads the same variable with Rtl functions, and wow64.dll (0023) with ntdll functions.
-- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155–0157, 0160–0162), 0025 and 0026,
+- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155–0157, 0160–0163), 0025 and 0026,
   which do not change the look or behaviour of ordinary apps, most of the APIs and Wine fixes for the Windows 7 shell (0094–0112), and the
   theme fixes that only apply to version 4 styles (0113–0119).
 - 0024 only takes effect with `WIN4WINE_SESSION_REQUEST`, and 0159's `LockWorkStation` only with `WIN4WINE_LOCK_REQUEST`.
@@ -249,7 +249,7 @@ Matched pixel by pixel against a real Windows 7 SP1 (the reference VM).
 | 0136 | riched20: text in Windows 7's search boxes (Start menu, folder windows; windowless RichEdit). Use the default format the host announces later (Meiryo 9 pt) (whole external shell), measure and draw paragraphs without complex scripts (Arabic and so on) with GDI, and create the font with DEFAULT_CHARSET (Latin in that font, Japanese through font linking; the same glyphs and positions as on real hardware). Japanese showed as boxes or overlapping | partly (`WIN4WINE_SHELL=win7`) |
 | 0137 | comdlg32: give the Windows 7 shell session's item dialogs (IFileDialog) Windows 7's form. The top row (back/forward, the breadcrumb address bar, refresh, search) is drawn by a new part (navbar7.c) with theme parts and explorerframe.dll's images and strings. 640x478, the message font, no details or preview pane, a size grip, "Folder:" and "Select Folder" when choosing a folder. Search filters by name within the folder (Windows 7 searches the index) | yes (`WIN4WINE_SHELL=win7`) |
 
-### Details of the XP and ReactOS shells (0138–0162)
+### Details of the XP and ReactOS shells (0138–0163)
 
 Changes for the XP and ReactOS shells that use mechanisms added for the Windows 7 shell (0117's themed menus, 0119's TS_MIN, 0126's
 comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading, 0133's message box layout).
@@ -283,6 +283,7 @@ comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading
 | 0160 | ntdll: `NtQueryInformationByName` (Windows 10) with `FileStatInformation` and `FileStatLxInformation`, which also gives a file's Unix mode, user, group and device numbers (`NtQueryInformationFile` takes it too). By name it opens nothing: it is a path conversion and `lstat()`, without a server request, and a symbolic link is reported itself. XP Explorer's Linux columns use it; before, no Win32 or NT call returned the mode or owner. The 32-bit `NtWow64*` system calls move up by one. It belongs with 0001–0011 and has not been renumbered yet | no |
 | 0161 | ole32: the OLE clipboard makes its hidden window again when the thread that made it has ended (before, every later `OleSetClipboard` in the process failed with `CLIPBRD_E_CANT_OPEN`. XP Explorer calls `OleFlushClipboard` when a folder window closes, so after the first closed window no file could be copied and Paste stayed grey). It belongs with 0001–0011 and has not been renumbered yet | no |
 | 0162 | mountmgr: ask only for UDisks2's own property changes, of block devices (before, every `PropertiesChanged` on the system bus made `mountmgr.sys` fetch UDisks2's whole object tree: on the EeePC one ssh login cost about 0.5 s of CPU time in udisksd, dbus-daemon and winedevice.exe. Only where UDisks2 is installed. It belongs with 0001–0011 and has not been renumbered yet) | no |
+| 0163 | mountmgr: `DBT_DEVICEARRIVAL` when a volume gets a mount point, `DBT_DEVICEREMOVECOMPLETE` when it loses it or its letter goes (before, every change UDisks2 reported was an arrival, nine for one mounted image, and unmounting one made XP Explorer say "D:\ refers to a location that is unavailable"; a volume unmounted and then removed stayed in My Computer with a question mark. It belongs with 0001–0011 and has not been renumbered yet) | no |
 
 ## Order
 
