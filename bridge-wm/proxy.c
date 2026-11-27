@@ -342,7 +342,15 @@ static void shell_key_events(BOOL start)
         return;
     }
     seen = number;
-    if (!strcmp(kind, "ctrl-escape"))
+    if (!strcmp(kind, "alt-f4"))
+    {
+        /* Alt+F4 while the desktop or the taskbar has the keyboard (the WM
+         * keeps Alt+F4): XP's desktop shows "Turn off computer" on WM_CLOSE,
+         * which is what Alt+F4 there comes to on XP. */
+        HWND desktop = FindWindowW(L"Progman", NULL);
+        if (desktop) PostMessageW(desktop, WM_CLOSE, 0, 0);
+    }
+    else if (!strcmp(kind, "ctrl-escape"))
     {
         key_input(&inputs[count++], VK_CONTROL, FALSE);
         key_input(&inputs[count++], VK_ESCAPE, FALSE);

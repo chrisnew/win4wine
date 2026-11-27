@@ -85,6 +85,10 @@ try:
     subprocess.run(['xdotool', 'key', 'super'], check=True)
     time.sleep(.3)
     assert (ipc / 'shellkeys.tsv').read_text() == '3 ctrl-escape\n', 'Wine windows get the Windows key themselves'
+    # Alt+F4 with only the desktop holding the keyboard: XP's "Turn off
+    # computer", which the proxy asks the desktop for.
+    subprocess.run(['xdotool', 'key', 'alt+F4'], check=True)
+    wait(shell_keys('4 alt-f4\n'), 'Alt+F4 on the desktop passed to the proxy')
     for index, (op, target) in enumerate((('minimize', first), ('activate', first), ('close', second))):
         (ipc / f'test-{index}.tmp').write_text(f'{op} {target.id:x}\n')
         (ipc / f'test-{index}.tmp').replace(ipc / f'test-{index}.cmd')
@@ -114,7 +118,8 @@ try:
     wait(lambda: prop(first, 'WM_STATE')[:1] == [3], 'single window stays minimized')
     time.sleep(.3)
     assert first.get_attributes().map_state != X.IsViewable
-    print('PASS: workarea, native snapshot, Alt+Tab, shell keys, desktop focus, minimize, restore, activation, close')
+    print('PASS: workarea, native snapshot, Alt+Tab, shell keys, desktop focus, Alt+F4 on the desktop, minimize, restore, '
+          'activation, close')
 finally:
     for w in windows:
         try:

@@ -2998,7 +2998,12 @@ static void handle_event(xcb_generic_event_t *ev)
         else if (switching) switch_event(type, e->detail, e->state);
         else if (type == XCB_KEY_PRESS && e->detail == f4_code)
         {
+            struct client *shell = find_client(focused_client());
             if (find_client(active)) close_window(active);
+            /* Nothing but the desktop or the taskbar has the keyboard: XP
+             * shows "Turn off computer"; the proxy asks the desktop for it. */
+            else if (!shell || shell->kind == KIND_DESKTOP || shell->kind == KIND_DOCK)
+                write_shell_keys("alt-f4", NULL, 0);
         }
         else if (type == XCB_KEY_PRESS && e->detail == tab_code) switch_key(e->state & XCB_MOD_MASK_SHIFT);
         break;

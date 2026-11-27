@@ -1265,8 +1265,13 @@ class Manager:
         elif self.switch is not None and e.type in (X.KeyPress, X.KeyRelease):
             self.switch_event(e)
         elif e.type == X.KeyPress and e.detail == self.d.keysym_to_keycode(XK.string_to_keysym('F4')):
+            shell = self.clients.get(self.focused_client())
             if self.active in self.clients:
                 self.close(self.clients[self.active]['w'])
+            elif shell is None or shell['kind'] in ('desktop', 'dock'):
+                # Nothing but the desktop or the taskbar has the keyboard: XP
+                # shows "Turn off computer"; the proxy asks the desktop for it.
+                self.write_shell_keys('alt-f4', [])
         elif e.type == X.KeyPress and e.detail == self.tab:
             self.switch_key(bool(e.state & X.ShiftMask))
         elif e.type == X.FocusIn and e.mode == X.NotifyNormal and e.detail not in (X.NotifyPointer, X.NotifyPointerRoot, X.NotifyDetailNone) and e.window.id in self.clients:

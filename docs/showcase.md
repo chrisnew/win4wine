@@ -9,6 +9,14 @@ Each picture says where it was taken: **EeePC** (the real machine, 1024x600) or 
 and few Linux apps). The pictures are in [images/showcase/](images/showcase/). The XP screens in them are copyrighted by
 Microsoft.
 
+## Alt+F4 on the desktop
+
+With the desktop active (clicked, or after the last window was closed), Alt+F4 opens XP's "Turn off computer", as on XP.
+
+<img src="images/showcase/desktop-alt-f4.png" alt="XP's Turn off computer dialog with Stand By, Turn Off and Restart over the faded desktop" width="500" />
+
+*Bench, 2026-11-28 (repo 8034448 and this change).*
+
 ## The desktop on the EeePC
 
 The whole desktop on the machine it is made for: an xterm with screenfetch on Debian 13, Excel 2002 from Office XP, XP's folder
