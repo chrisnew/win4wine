@@ -54,7 +54,11 @@ compile "$root/.local/bridge/wallpaper-convert.exe" -municode "$root/prefix/wall
 compile "$root/.local/bridge/theme-fonts.exe" "$root/prefix/theme-fonts.c" -luxtheme
 compile "$root/.local/bridge/user-profile.exe" -municode "$root/prefix/user-profile.c" -lole32 -lshell32 -luuid
 # Linux applications in the XP Start menu (session/linux_apps.py).
-compile "$root/.local/bridge/linux-launch.exe" "$root/session/linux-launch.c" -mwindows -luser32
+# Its manifest asks for common controls 6: themed buttons in its message boxes.
+i686-w64-mingw32-windres -I "$root/session" "$root/session/linux-launch.rc" -O coff -o "$root/.local/bridge/linux-launch.res"
+compile "$root/.local/bridge/linux-launch.exe" "$root/session/linux-launch.c" "$root/.local/bridge/linux-launch.res" \
+    -mwindows -luser32
+rm -f "$root/.local/bridge/linux-launch.res"
 compile "$root/.local/bridge/linux-links.exe" "$root/session/linux-links.c" -lole32 -lshell32 -luuid
 # XP's logon and log off sounds (session/supervisor.py).
 compile "$root/.local/bridge/playsound.exe" "$root/session/playsound.c" -mwindows -lwinmm -lshell32

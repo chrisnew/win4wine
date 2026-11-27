@@ -13,6 +13,7 @@ Display manager (LightDM)
       ├─ session/idle-watch.c ......... says when the user is idle (screen savers)
       ├─ greeter/xp-lock.py ........... the lock screen, while the screen is locked
       ├─ session/logind-watch.py ...... locks on logind's request and before sleep
+      ├─ session/network_places.py .... devices on the local network in My Network Places
       ├─ proxy.exe (on Wine) .......... stand-ins for Linux windows, and their XP frames
       └─ xp-explorer.exe (on Wine) .... the XP shell (explorer.exe extracted from the ISO)
                     ↑ ↓  files in the IPC directory (WM ⇄ proxy ⇄ tray.py)
@@ -251,6 +252,43 @@ everything else: nothing polls, so an idle machine is not woken up.
   Icons are made into .ico files from the icon theme.
 - What it created is recorded in `C:\xp\linux-apps\state.json`, and only the entries of apps that disappeared are cleaned up. During the
   session it watches with inotify and follows packages being installed and removed.
+
+## My Network Places (`session/network_places.py`)
+
+XP's own My Network Places lists the devices on the local network as plain shortcuts in the user's `Network Shortcuts`
+folder, which the folder shows and follows while it is open. The supervisor starts the helper once the shell is up (XP shell).
+
+| Announced | Shortcut | A double click |
+|---|---|---|
+| `_http._tcp`, `_https._tcp`; a UPnP device with a presentation URL | Web page on NAME | `C:\xp\bin\iexplore.exe` opens the Linux browser |
+| `_ipp._tcp`, `_ipps._tcp`, `_printer._tcp`, `_pdl-datastream._tcp`; a UPnP printer | Printer on NAME | its web page; without one, "not accessible" |
+| `_ssh._tcp`, `_sftp-ssh._tcp` (with `ssh` and a terminal installed) | SSH on NAME | a terminal running `ssh` |
+| `_workstation._tcp`, `_smb._tcp`, a UPnP device without a page, and nothing else | NAME | XP's "\\NAME is not accessible" (`linux-launch.exe --unreachable`) |
+
+- **Sources**: Avahi's D-Bus API for mDNS (needs `avahi-daemon`; without it only UPnP is shown), IPv4, without this machine's
+  own services. For UPnP it listens for SSDP `NOTIFY` on 239.255.255.250:1900 and sends an `M-SEARCH` at start, when the
+  machine's addresses change (netlink) and every 10 minutes, then reads each root device's description.
+- **A device** is what shares an address or a host name. Its name is the UPnP friendly name, else the mDNS host name. One page
+  announced twice is one shortcut, and of the same page over http and https the http one stays.
+- **Departures**: mDNS removals, SSDP `byebye` and an expired `max-age` take effect after a grace period (60 s). After a
+  change of addresses, UPnP devices that do not answer again go too.
+- **Writing**: changes are collected for 3 s (at most 10) and written by one `linux-links.exe` run, since each starts Wine.
+  Removing a file needs no Wine; Explorer notices it.
+- **Only its own files** are touched: they are listed in `C:\xp\network-places\state.json` before they are written, and a
+  name the user already has gets ` (2)`. All of them are removed at start and at the session's end, so that none stay behind
+  from a crash or another network.
+- **Announcements are not trusted**: only private and link-local addresses count; names lose control, formatting and file name
+  characters; URLs are rebuilt from the announced address (http or https, percent encoded), and a UPnP or printer page gets the
+  device's own address whatever host it names; SSH gets the address after `--`, never the name; an SSDP location must be on
+  the sender's own address; a description is read with a time and
+  size limit, without redirects, and refused if it has a DTD. The numbers of devices tracked and shortcuts shown are capped.
+- **Settings**: `network_places` in session.json: `false`, or `{"show": ["web", "printer", "ssh", "computer"], "limit": 30,
+  "grace": 60}`.
+- **Grouping**: XP puts every shortcut under "Unspecified", and its folder has no Type column (what was tried:
+  [plans/network-places.md](../plans/network-places.md#grouping-and-columns)). Windows shares are not listed as such (Wine has
+  no SMB client).
+- XP's `HIVESFT.INF` also adds a namespace item whose class nothing here registers, an item without a name; the prefix leaves
+  it out (`xp-explorer/scripts/prefix.py`).
 
 ## Linux columns in XP's folder windows (`xp-explorer/helpers/linuxcols.c`)
 

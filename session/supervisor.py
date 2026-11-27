@@ -108,6 +108,12 @@ class Session:
         # Japanese XP, Tahoma on English XP (the prefix's "language").
         self.linux_font = config.get('linux_font', 'Tahoma' if self.language() == 'en' else 'MS UI Gothic')
         self.linux_menu = config.get('linux_menu', True)
+        # Devices on the local network in My Network Places (session/network_places.py):
+        # true, false, or its options ("show", "limit", "grace").
+        self.network_places = config.get('network_places', True)
+        if not isinstance(self.network_places, (bool, dict)):
+            raise SystemExit('Invalid network_places')
+        self.network = None
         self.composite = config.get('composite', True)
         # The WM: bridge-wm/wm.c as bridge-wm/build.sh built it, else wm.py
         # ("wm": "python" picks wm.py; the two behave the same).
@@ -292,6 +298,20 @@ class Session:
         # started it; let the shell start it with the session's own.
         self.stop_wine()
         self.spawn([*menu, '--watch'], 'linux-apps')
+
+    def start_network_places(self):
+        """Once the shell is up: it starts Wine, whose desktop process the shell
+        must be the first to start. Switched off, it removes its shortcuts."""
+        if self.network or self.shell['marker'] != 'xp-shell.json':
+            return
+        if not (ROOT / '.local/bridge/linux-links.exe').is_file():
+            return
+        command = [sys.executable, str(ROOT / 'session/network_places.py'), str(self.prefix), '--wine', self.wine]
+        if self.network_places is False:
+            command.append('--remove')
+        elif isinstance(self.network_places, dict):
+            command += ['--options', json.dumps(self.network_places)]
+        self.network = self.spawn(command, 'network-places')
 
     def play_sound(self, event):
         """An event of XP's sound scheme (the XP shell only), as XP plays it."""
@@ -611,6 +631,7 @@ class Session:
                     self.status('xp-shell', attempt=attempt)
                     self.hide_welcome()
                     self.start_guard()
+                    self.start_network_places()
                     if attempt == 1:
                         self.play_sound('SystemStart')
                 if ready and has_tray:

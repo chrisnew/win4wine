@@ -180,6 +180,8 @@ arch_packages() {
         # the session: X, the WM and tray bridge, recovery terminal, root cursor
         xorg-server xorg-xsetroot xorg-setxkbmap xterm python python-xlib
         python-gobject glib2 gdk-pixbuf2 librsvg
+        # My Network Places: mDNS (session/network_places.py; enable avahi-daemon.service)
+        avahi
     )
     # 7z: 7zip, unless p7zip (which conflicts with it) already gives one
     command -v 7z >/dev/null || packages+=(7zip)
@@ -233,6 +235,8 @@ else
         # the WM in C (bridge-wm/wm.c); without it the session runs wm.py
         libxcb1-dev
         python3-gi gir1.2-glib-2.0 gir1.2-gdkpixbuf-2.0 librsvg2-common
+        # My Network Places: mDNS (session/network_places.py)
+        avahi-daemon
         locales
     )
     if [[ $wayland == yes ]]; then

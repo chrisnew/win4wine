@@ -1,8 +1,10 @@
 /* Write Start menu shortcuts for session/linux_apps.py through IShellLinkW.
  * Reads UTF-8 lines from standard input, one shortcut each, with tab-separated
  * fields: LINK TARGET ARGUMENTS WORKING-DIRECTORY ICON DESCRIPTION (Windows
- * paths; empty fields are left unset). Creates the link's folder as needed and
- * prints "ok LINK" or "fail HRESULT LINK" per line. Public Win32 APIs only. */
+ * paths; empty fields are left unset; ICON may end in |INDEX to take another
+ * icon of the file than its first). Creates the link's folder as needed and
+ * prints "ok LINK" or "fail HRESULT LINK" per line. Public Win32 APIs only.
+ * session/network_places.py writes its shortcuts with it too. */
 #ifndef UNICODE
 #define UNICODE
 #endif
@@ -10,6 +12,7 @@
 #include <windows.h>
 #include <shlobj.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
 
@@ -34,7 +37,12 @@ static HRESULT save(WCHAR **field)
     hr = IShellLinkW_SetPath(link, field[TARGET]);
     if (SUCCEEDED(hr)) hr = IShellLinkW_SetArguments(link, field[ARGUMENTS]);
     if (SUCCEEDED(hr) && *field[DIRECTORY]) hr = IShellLinkW_SetWorkingDirectory(link, field[DIRECTORY]);
-    if (SUCCEEDED(hr) && *field[ICON]) hr = IShellLinkW_SetIconLocation(link, field[ICON], 0);
+    if (SUCCEEDED(hr) && *field[ICON])
+    {
+        WCHAR *bar = wcsrchr(field[ICON], '|');
+        if (bar) *bar = 0;
+        hr = IShellLinkW_SetIconLocation(link, field[ICON], bar ? _wtoi(bar + 1) : 0);
+    }
     if (SUCCEEDED(hr) && *field[DESCRIPTION]) hr = IShellLinkW_SetDescription(link, field[DESCRIPTION]);
     if (SUCCEEDED(hr)) hr = IShellLinkW_QueryInterface(link, &IID_IPersistFile, (void **)&persist);
     if (SUCCEEDED(hr))

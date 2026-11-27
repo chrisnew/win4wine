@@ -79,6 +79,8 @@ With a Windows 7 ISO, it can also run **Windows 7's shell** (the Windows 7 Basic
   XP's sounds (startup, logon and logoff too),
   Network Connections, Internet Explorer 6, Windows Media Player 9, and the Start menu's left column (Internet,
   E-mail and the most used programs), all from your own ISO's files (`prefix/extras.py`).
+- **My Network Places**: lists what the local network announces (mDNS and UPnP): web pages open in the Linux browser,
+  SSH servers in a terminal (`session/network_places.py`).
 - **Keyboard layout**: the Linux system's (`localectl`) at first. Add input languages or change the default in
   Control Panel, Regional and Language Options, Languages, Details (XP's own), and the session's layout (labwc on
   Wayland, setxkbmap on X11) follows at once; with two or more, Left Alt+Shift switches them as on XP

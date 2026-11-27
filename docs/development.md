@@ -9,7 +9,7 @@ To just use win4wine, `scripts/setup.sh` from [INSTALL.md](../INSTALL.md) is eno
 | `wine/` | The Wine it is based on (`upstream.env`), the patches (`patches/` and `series`), the build (`build.sh`), applying the patches (`patch-state.py`) |
 | `bridge-wm/` | The X11 WM (`wm.c`, and `wm.py` that behaves the same), the Win32 proxy (`proxy.c`), the tray broker (`tray.py`), a tool for investigations (`inspect.c`) |
 | `wayland/` | The Wayland session: labwc and wlroots versions (`upstream.env`), patches (`patches/`), the build (`build.sh`), labwc's configuration (`labwc/`), startup (`session.sh`) |
-| `session/` | Starting and watching the session (`supervisor.py`), the Start menu of Linux apps (`linux_apps.py`), `win4wine-wine` for use outside the session (`wine.py`; the Wine environment is in `wineenv.py`), registering the session |
+| `session/` | Starting and watching the session (`supervisor.py`), the Start menu of Linux apps (`linux_apps.py`), My Network Places (`network_places.py`), `win4wine-wine` for use outside the session (`wine.py`; the Wine environment is in `wineenv.py`), registering the session |
 | `prefix/` | Creating the prefix (`create.py`), updating it (`stage.py`), appearance and DPI (`display.py`), registry settings (registry profiles) |
 | `extract/` | Taking only the needed files from the ISO (`extract.py`), detecting the XP language (`media.py`) |
 | `greeter/` | The XP Welcome screen for LightDM, the log on/log off screens, XP's cursors |
@@ -88,6 +88,7 @@ The list, order, format and the opt-in check are in [patches.md](patches.md). Ne
 | `tests/idle_watch.py IDLE_WATCH` | `session/idle-watch.c` on an Xvfb: idle and active, `XResetScreenSaver`, DPMS, no wakeups while idle |
 | `tests/logind_watch.py` | `session/logind-watch.py` with a stand-in for logind on a private bus: `Lock` and the delayed sleep |
 | `tests/linux_apps.py` | The Start menu of Linux apps |
+| `tests/network_places.py` | My Network Places: names, URLs, mDNS, SSDP and UPnP descriptions (hostile ones too), the shortcuts per device, and which files are touched; no Wine, no network |
 | `tests/linuxcols.py` | The plain C part of XP Explorer's Linux columns: the permissions as `ls -l` writes them, user and group names, the paths left alone (host gcc; no Wine, no X) |
 | `tests/recovery_integration.py CONFIG.json` | Switching over when the shell crashes |
 | `tests/reactos_session.py CONFIG.json` | The ReactOS shell session: taskbar and desktop, folders opened with `explorer.exe` (0090), log off (0024) |

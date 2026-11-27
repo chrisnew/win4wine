@@ -151,6 +151,7 @@ Restart the display manager (or reboot).
 | `input_method` | `fcitx5` (none for English XP) | the input method; leave it out to start none |
 | `linux_font` | `MS UI Gothic` (`Tahoma` for English XP) | font of Linux applications; `null` leaves it alone |
 | `linux_menu` | `true` | list Linux applications in the Start menu |
+| `network_places` | `true` | show the local network's web pages, printers, SSH servers and computers in My Network Places (XP shell; mDNS needs `avahi-daemon`). `false` turns it off; `{"show": ["web", "printer"], "limit": 10}` shows only some kinds (`web`, `printer`, `ssh`, `computer`) or fewer entries (30 by default), `"grace"` is the seconds a device that left stays (60) |
 | `welcome_screen` | `true` | show XP's screens after login and while logging off (Windows 7's "Welcome", "Logging off" and so on for the Windows 7 shell) |
 | `screen_saver` | `true` | start the screen saver chosen in XP's Display Properties after its wait time (XP shell, X11) |
 | `lock_screen` | `true` | lock the screen on Win+L, `LockWorkStation` and "On resume, password protect", behind XP's Welcome screen (XP shell, X11; needs `/etc/pam.d/win4wine-lock`, which `greeter/install.sh` and so `setup.sh --greeter` install) |
