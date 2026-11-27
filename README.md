@@ -156,7 +156,7 @@ Interest, Inc. No Microsoft files are included; you supply your own XP installat
   is built; most of what is described here comes from it.
 - [AshesTom](https://github.com/AshesTom) ([fork](https://github.com/AshesTom/win4wine)): XP's Display Properties, sounds,
   keyboard layouts, XP's own notification area icons, the Start menu's left column, Internet Explorer 6 and Windows Media
-  Player 9, the welcome screen while the shell starts, caption animation and small icons, Arch Linux support, `xp.sh` and more.
+  Player 9, the welcome screen while the shell starts, caption animation and small icons, and more.
 
 ## License
 

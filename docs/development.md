@@ -115,22 +115,6 @@ On a machine with Docker but no Wine, `tools/bench/bench.sh` runs the whole XP s
 `drive NAME ACTION...` (`tools/eeepc/drive.py`), `shot NAME OUT.png`, `sh NAME < SCRIPT`, `sync NAME` after a change,
 `stop`, `rm`. `bench.sh --help` lists them all.
 
-## Trying it in a window (`xp.sh`)
-
-An entry point for trying the XP session on Arch / CachyOS and similar systems without leaving your current desktop (KDE etc.).
-It does not touch system files (it tells you which packages are missing).
-
-```sh
-./xp.sh setup /path/to/WindowsXP-SP3.iso   # Wine, bridge, extraction, prefix (in the same .local/ as setup.sh)
-./xp.sh run 1280x800                       # run the real session (supervisor.py) inside a Xephyr window
-./xp.sh log proxy                          # the running session's log (default: xp-shell)
-./xp.sh kill                               # stop the session and the prefix's processes
-```
-
-A `run` session has its own D-Bus (so tray.py does not take the desktop's StatusNotifierWatcher), and "Turn Off Computer"
-in the Start menu only ends that window's session (`shutdown_command` is set to `true`). `XP_PREFIX`, `XP_LOG`, `XP_DISPLAY`
-and `XP_WINEDEBUG` choose another prefix, log location, X display and Wine debug channels.
-
 ## Installing by hand
 
 To install without `setup.sh`, build Wine, the bridge, the extracted files and the prefix as above, and write
