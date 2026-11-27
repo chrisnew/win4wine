@@ -18,11 +18,11 @@ Changes for the XP shell only take effect in processes that have the environment
   which do not change the look or behaviour of ordinary apps, most of the APIs and Wine fixes for the Windows 7 shell (0094–0112), and the
   theme fixes that only apply to version 4 styles (0113–0119).
 - 0024 only takes effect with `WIN4WINE_SESSION_REQUEST`, and 0159's `LockWorkStation` only with `WIN4WINE_LOCK_REQUEST`.
-- 0090 additionally needs `WIN4WINE_FOLDER_SHELL` (set only by the ReactOS shell session).
-- The ReactOS shell session also sets `WIN4WINE_SHELL=reactos`. 0067 then does not swap in the parts meant for XP.
-- What is marked "XP session" only takes effect with `WIN4WINE_EXTERNAL_SHELL` set and `WIN4WINE_SHELL` unset (the XP shell session). It
-  does not affect the ReactOS and Windows 7 shells.
-- Most of the Windows 7 shell session and look (0120–0137) only takes effect with `WIN4WINE_EXTERNAL_SHELL` set and `WIN4WINE_SHELL=win7`
+- 0090 additionally needs `WIN4WINE_FOLDER_SHELL`, which upstream's ReactOS shell session set; LunaticOS sets it nowhere.
+- `WIN4WINE_SHELL=reactos` (upstream's ReactOS shell session; nothing sets it here) makes 0067 leave out the parts meant for XP.
+- What is marked "XP session" only takes effect with `WIN4WINE_EXTERNAL_SHELL` set and `WIN4WINE_SHELL` unset (the XP shell session, the
+  only one LunaticOS has).
+- Most of upstream's Windows 7 shell session and look (0120–0137) only takes effect with `WIN4WINE_EXTERNAL_SHELL` set and `WIN4WINE_SHELL=win7`
   (how far is given in the table's opt-in column; 0120 decides from the environment the wineserver was started with). The shell type check
   is gathered in one place, `win4wine_shell()` in 0019's header.
   0122 then skips 0079's and 0080's replacements meant for XP.
@@ -182,7 +182,7 @@ Fixes towards documented behaviour; they apply to every Wine app.
 
 The labwc and wlroots patches are in `wayland/patches/` ([wayland.md](wayland.md)). Their format is the same as the Wine patches'.
 
-### The ReactOS shell (0090–0093)
+### The ReactOS shell (0090–0093; upstream's; 0090 and 0093 dormant here)
 
 | No. | Contents | Opt-in |
 |---|---|---|
@@ -191,7 +191,7 @@ The labwc and wlroots patches are in `wayland/patches/` ([wayland.md](wayland.md
 | 0092 | user32: SwitchToThisWindow also brings the window to the foreground (ReactOS's taskbar; in the Wayland session a restored window was not activated) | yes |
 | 0093 | user32: pass the resource numbers of dialog items as "#number" names, as ReactOS does (so ReactOS's Static can load the banner and icons; only with `WIN4WINE_SHELL=reactos`) | yes |
 
-### APIs the Windows 7 shell calls, and Wine fixes (0094–0112)
+### APIs the Windows 7 shell calls, and Wine fixes (0094–0112; upstream's, still applied)
 
 Functions Wine lacked, and behaviour that differed from Windows, used by Windows 7's explorer, shell32 and others. Most take effect
 without the opt-in.
@@ -218,7 +218,7 @@ without the opt-in.
 | 0111 | win32u: WM_SETTINGCHANGE and WM_DEVMODECHANGE sent to HWND_BROADCAST with SendNotifyMessage are sent with their string copied to the receiving thread (as in Windows 7; to a single window, and broadcasts with SendMessageCallback or PostMessage, still give ERROR_MESSAGE_SYNC_ONLY). Windows 7's Taskbar Properties announces "TraySettings" this way after writing the settings, and the taskbar reloads them. It was refused, so small icons and button combining did not change until the shell restarted | no |
 | 0112 | user32: DefDlgProc's DM_REPOSITION. Fit a top-level dialog into its monitor's work area (right edge to the work area's right, bottom edge to 4 px above the work area's bottom, then left and top edges inside the work area; measured on real Windows 7; ReactOS does the same). The buttons of Windows 7's Taskbar Properties were hidden under the taskbar | no |
 
-### Windows Vista and 7 themes (version 4 styles) (0113–0119)
+### Windows Vista and 7 themes (version 4 styles) (0113–0119; upstream's, still applied)
 
 Reads msstyles format 4 and draws the parts of version 4 styles. Behaviour does not change for XP's and ReactOS's themes (format 3).
 
@@ -232,7 +232,7 @@ Reads msstyles format 4 and draws the parts of version 4 styles. Behaviour does 
 | 0118 | uxtheme: DrawThemeTextEx's DTT_CALLBACK (draw with the caller's function) and DTT_COMPOSITED (draw opaquely on a surface with alpha). "Search programs and files" in Windows 7's Start menu search box did not show | no |
 | 0119 | uxtheme: Windows 7's minimum part size (TS_MIN = the sum of the content margins). The folder window's address bar and search box were too tall at 47 px | only with v4 styles (Windows 7) |
 
-### The Windows 7 shell session (0120–0128)
+### The Windows 7 shell session (0120–0128; upstream's, dormant here)
 
 | No. | Contents | Opt-in |
 |---|---|---|
@@ -246,7 +246,7 @@ Reads msstyles format 4 and draws the parts of version 4 styles. Behaviour does 
 | 0127 | user32: DrawText's DT_PREFIXONLY (draw only the underline). Windows 7's comctl32 list view calls it for the underline after drawing an item's name, so "Control Panel" and others in the Start menu were drawn twice and looked bold | yes |
 | 0128 | combase, explorer, shell32: open folders opened from Wine's programs (`explorer C:\path`, `start C:\path` and so on) in Windows 7's explorer (REG_EXPAND_SZ expansion of LocalServer32, waiting for the /factory server, passing the file to DelegateExecute verbs). A library opened instead | partly (REG_EXPAND_SZ expansion always, as in Windows) |
 
-### The Windows 7 look (0129–0137)
+### The Windows 7 look (0129–0137; upstream's, dormant here)
 
 Matched pixel by pixel against a real Windows 7 SP1 (the reference VM).
 
@@ -262,9 +262,9 @@ Matched pixel by pixel against a real Windows 7 SP1 (the reference VM).
 | 0136 | riched20: text in Windows 7's search boxes (Start menu, folder windows; windowless RichEdit). Use the default format the host announces later (Meiryo 9 pt) (whole external shell), measure and draw paragraphs without complex scripts (Arabic and so on) with GDI, and create the font with DEFAULT_CHARSET (Latin in that font, Japanese through font linking; the same glyphs and positions as on real hardware). Japanese showed as boxes or overlapping | partly (`WIN4WINE_SHELL=win7`) |
 | 0137 | comdlg32: give the Windows 7 shell session's item dialogs (IFileDialog) Windows 7's form. The top row (back/forward, the breadcrumb address bar, refresh, search) is drawn by a new part (navbar7.c) with theme parts and explorerframe.dll's images and strings. 640x478, the message font, no details or preview pane, a size grip, "Folder:" and "Select Folder" when choosing a folder. Search filters by name within the folder (Windows 7 searches the index) | yes (`WIN4WINE_SHELL=win7`) |
 
-### Details of the XP and ReactOS shells (0138–0165)
+### Details of the XP shell (0138–0165)
 
-Changes for the XP and ReactOS shells that use mechanisms added for the Windows 7 shell (0117's themed menus, 0119's TS_MIN, 0126's
+Changes for the XP shell (and upstream's ReactOS shell) that use mechanisms added for the Windows 7 shell (0117's themed menus, 0119's TS_MIN, 0126's
 comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading, 0133's message box layout).
 0144–0150 come from AshesTom's fork (XP's Display Properties, Internet Explorer 6 and more); they touch places the Windows 7 patches changed
 (apphelp's function table, uxtheme's function table and title bar, comctl32 switching), so they are placed here.

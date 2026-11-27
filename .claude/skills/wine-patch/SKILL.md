@@ -1,6 +1,6 @@
 ---
 name: wine-patch
-description: Change Wine for win4wine, either a new patch in wine/patches/ or a fix to an existing one. Covers editing the patched source, compiling one module in seconds, writing the patch and its docs, building the install in Docker and testing it. Use for any change to Wine's behaviour.
+description: Change Wine for LunaticOS, either a new patch in wine/patches/ or a fix to an existing one. Covers editing the patched source, compiling one module in seconds, writing the patch and its docs, building the install in Docker and testing it. Use for any change to Wine's behaviour.
 ---
 
 # Changing Wine

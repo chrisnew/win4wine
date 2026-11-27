@@ -5,7 +5,7 @@
 | [architecture.md](architecture.md) | How it works: what each part does, the WM, the proxy and their IPC, XP frames for Linux windows, the tray, the session, the login screen, DPI |
 | [design.md](design.md) | The design in brief: which parts were taken from XP, the rules the project keeps and why |
 | [patches.md](patches.md) | The list of Wine's 165 patches, the opt-in check, their order and format, how to add one |
-| [development.md](development.md) | How to develop: building in the chroot, tests, installing by hand, updating an existing setup |
+| [development.md](development.md) | How to develop: building in Docker or a chroot, the bench session, tests, installing by hand, updating an existing setup |
 | [wayland.md](wayland.md) | The Wayland session (in testing): the patched labwc, per-monitor scaling, how it differs from the X11 session |
 | [original-features.md](original-features.md) | Features XP does not have (off by default): window snapping (`window_snap`) |
 

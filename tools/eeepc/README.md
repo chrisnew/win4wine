@@ -1,6 +1,6 @@
 # EeePC tools
 
-Helpers for testing and measuring win4wine on the target machine, an Asus EeePC 1015PEM. Most of them run **on the EeePC**,
+Helpers for testing and measuring LunaticOS on the target machine, an Asus EeePC 1015PEM. Most of them run **on the EeePC**,
 inside its X session (`DISPLAY=:0 XAUTHORITY=~/.Xauthority`). `eee.sh` runs the everyday ones from the development machine: it
 copies `drive.py`, `shot.py` and `sample.py` to `/tmp/w4w-*.py` there and calls them over ssh (the host: `$EEEPC` or
 `.local/eeepc-host`). Copy the others over with `scp`; `wmbench.sh` expects `/tmp/w4w-wmbench.py`. `drive.py`, `shot.py` and
