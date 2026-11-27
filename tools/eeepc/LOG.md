@@ -43,7 +43,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
 | PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
-| Prefix | `prefix/extras.py` VERSION 12: "Open in Linux Terminal" (`C:\xp\bin\linux-launch.exe` and the context menu handler in `linuxcols.dll`). Since VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
+| Prefix | `prefix/extras.py` VERSION 12: "Open in Linux Terminal" (`C:\xp\bin\linux-launch.exe` and the context menu handler in `linuxcols.dll`). Since VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. Set by hand ahead of VERSION 13: IE's `NoUpdateCheck`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
 | Prefix | Office's `MDM` and `MOSEARCH` services `Start=3` (manual) instead of automatic | MOSEARCH failed at every login (missing `TQUERY.DLL`); neither is needed by the session | 2026-11-26 |
 | Boot | `GRUB_CMDLINE_LINUX_DEFAULT="zswap.enabled=1 zswap.compressor=zstd"` | Compressed swap cache, for 2 GB of RAM. **zstd is not actually used**, see "Open" | ? |
 | Disk | `/` mounted `noatime,nodiratime`; 9.5 GB swap partition `/dev/sda2` | ? (the disk is a spinning HDD, Toshiba MK2552GSX) | ? |
@@ -77,6 +77,24 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-27: Internet Explorer opens web pages
+
+- **What** (at the logon screen, no session running), in `~/win4wine`: `git fetch fork && git checkout -B eeepc fork/eeepc`
+  (2cfaad2 to dba2ad6), then in the prefix:
+
+  ```sh
+  python3 session/wine.py reg add 'HKCU\Software\Microsoft\Internet Explorer\Main' /v NoUpdateCheck /t REG_DWORD /d 1 /f
+  ```
+
+  `prefix/extras.py` (VERSION 13 sets the same value) was not applied, so `.xp-extras` still says 12 and the next
+  `scripts/setup.sh` runs it.
+- **Why:** IE offered every page as a download (39082ae: the session disabled its HTML engine), and started without an
+  address it went to a microsoft.com update page (dba2ad6).
+- **Result:** the value is in `user.reg`, the session's environment now has `mscoree=` without `mshtml`, and the
+  wineserver ended by itself. In IE itself not yet checked on the machine; both fixes were checked in the container session.
+- **Undo:** `python3 session/wine.py reg delete 'HKCU\Software\Microsoft\Internet Explorer\Main' /v NoUpdateCheck /f`, and
+  check out 2cfaad2.
 
 ### 2026-11-27: Open in Linux Terminal on folders
 
