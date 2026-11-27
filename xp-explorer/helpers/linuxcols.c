@@ -102,6 +102,28 @@ static int skip_path(const char *path)
     return same_ignoring_case(p, "/gvfs", 5) && (!p[5] || p[5] == '/');
 }
 
+/* Whether the Details section may wrap a path after its character "c", the one
+ * after "previous" (0 at the start): the narrow pane wraps its lines at spaces
+ * only, and cuts off what does not fit. After the separators of a path and a
+ * file name, but not the dot of a hidden file; and after 14 characters without
+ * such a place, though not within a surrogate pair. "run" counts them, from 0. */
+static int wraps_after(unsigned int c, unsigned int previous, unsigned int *run)
+{
+    if (c == ' ')
+    {
+        *run = 0;
+        return 0;
+    }
+    ++*run;
+    if (c == '/' || c == '_' || c == '-' || (c == '.' && previous != '/') ||
+        (*run >= 14 && (c < 0xd800 || c > 0xdbff)))
+    {
+        *run = 0;
+        return 1;
+    }
+    return 0;
+}
+
 #ifdef _WIN32
 
 #ifndef UNICODE
@@ -368,34 +390,42 @@ static BOOL item_info(const WCHAR *path, BOOL update, struct stat_lx *info)
 }
 
 /* "label" and the UTF-8 text after it. In the Details section (a label) a path
- * also gets a zero width space after each "/": the narrow pane wraps its lines
- * at spaces only, and cut a long path off. The columns' values stay as they
- * are. */
+ * also gets zero width spaces where it may be wrapped (wraps_after). The
+ * columns' values stay as they are. */
 static HRESULT return_string(VARIANT *value, const WCHAR *label, const char *text)
 {
     int prefix = wcslen(label), length = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
-    int i, out, breaks = 0;
-    WCHAR *wide;
+    int i, out = 0;
+    unsigned int run = 0;
+    BOOL path;
+    WCHAR *wide, *line;
     BSTR string;
 
     if (!length || !(wide = malloc(length * sizeof(WCHAR)))) return E_OUTOFMEMORY;
     MultiByteToWideChar(CP_UTF8, 0, text, -1, wide, length);
     length--;  /* without the terminating 0 */
-    if (prefix)
-        for (i = 1; i < length - 1; i++) if (wide[i] == '/') breaks++;
-    if ((string = SysAllocStringLen(NULL, prefix + length + breaks)))
+    if (!(line = malloc((prefix + 2 * length + 1) * sizeof(WCHAR))))
     {
-        memcpy(string, label, prefix * sizeof(WCHAR));
-        for (i = 0, out = prefix; i < length; i++)
-        {
-            string[out++] = wide[i];
-            if (prefix && wide[i] == '/' && i && i < length - 1) string[out++] = 0x200b;
-        }
-        V_VT(value) = VT_BSTR;
-        V_BSTR(value) = string;
+        free(wide);
+        return E_OUTOFMEMORY;
     }
+    path = prefix && text[0] == '/';
+    memcpy(line, label, prefix * sizeof(WCHAR));
+    out = prefix;
+    for (i = 0; i < length; i++)
+    {
+        line[out++] = wide[i];
+        /* not after the leading "/", nor at the end */
+        if (path && wraps_after(wide[i], i ? wide[i - 1] : 0, &run) && i && i < length - 1)
+            line[out++] = 0x200b;
+    }
+    string = SysAllocStringLen(line, out);
+    free(line);
     free(wide);
-    return string ? S_OK : E_OUTOFMEMORY;
+    if (!string) return E_OUTOFMEMORY;
+    V_VT(value) = VT_BSTR;
+    V_BSTR(value) = string;
+    return S_OK;
 }
 
 struct provider

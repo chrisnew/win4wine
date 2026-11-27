@@ -268,8 +268,8 @@ task pane. Wine's own shell32 does not use column handlers, so only XP's Explore
 - **The Details section** reads a property list from the value `Details` of the item's type; `extras.py` sets it on `*` and
   `Directory`. XP reads a property ID only after a space (`{FMTID} 6`; after a comma it takes 0), and it shows a property it
   does not know without a name. So the handler has the four columns twice: the second set is hidden (`SHCOLSTATE_HIDDEN`,
-  not in the column menus), and its values carry the name (`Owner: root`). The path there has zero width spaces after each `/`,
-  where the narrow pane can wrap it.
+  not in the column menus), and its values carry the name (`Owner: root`). The path there has zero width spaces after `/`, `_`,
+  `-` and `.`, and in long runs, where the narrow pane can wrap it.
 - **To see XP's calls**: `HKCU\Software\win4wine\LinuxColumns`, DWORD `Debug` = 1, and `"debug": "warn+seh"` in
   `session.json` (Wine prints `OutputDebugString` on the `seh` channel).
 

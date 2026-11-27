@@ -6,7 +6,8 @@
 
 The permissions are compared with "ls -ld" for files of every type and special
 bit this user can make or find, then the owner and group names with the pwd and
-grp modules, and the paths the columns leave alone.
+grp modules, the paths the columns leave alone, and where the Details section
+may wrap a path.
 """
 import grp
 import os
@@ -44,6 +45,16 @@ int main(int argc, char **argv)
     {
         if (!find_name(slurp(argv[2]), (unsigned int)strtoul(argv[3], NULL, 10), out, sizeof(out))) return 1;
         puts(out);
+    }
+    else if (argc == 3 && !strcmp(argv[1], "wrap"))
+    {
+        unsigned int run = 0, previous = 0;
+        for (const char *c = argv[2]; *c; previous = (unsigned char)*c++)
+        {
+            putchar(*c);
+            if (wraps_after((unsigned char)*c, previous, &run)) putchar('|');
+        }
+        putchar('\n');
     }
     else if (argc == 3 && !strcmp(argv[1], "skip"))
         puts(skip_path(argv[2]) ? "skip" : "keep");
@@ -138,6 +149,15 @@ def main():
                                ('/run/user/gvfs', 'keep'), ('/run/user/', 'keep'), ('/usr/proc/x', 'keep'),
                                ('', 'keep')):
             check(f'skip {path}', run('skip', path), expected)
+
+        for path, expected in (
+                ('/usr/bin/7z', '/|usr/|bin/|7z'),
+                ('/home/u/.local/x.so', '/|home/|u/|.local/|x.|so'),
+                ('/i/usa__2296_x86fre.pro_whistler.iso', '/|i/|usa_|_|2296_|x86fre.|pro_|whistler.|iso'),
+                ('/abcdefghijklmnopqrstuvwxyz0123456789', '/|abcdefghijklmn|opqrstuvwxyz01|23456789'),
+                ('/a b c d e f g h i j k l', '/|a b c d e f g h i j k l'),
+                ('/x/a-b', '/|x/|a-|b')):
+            check(f'wrap {path}', run('wrap', path), expected)
 
     print(f'{checks} checks, {failures} failed')
     sys.exit(failures != 0)
