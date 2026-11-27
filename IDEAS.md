@@ -29,3 +29,9 @@ Done and on the EeePC, except Windows shares: [plans/network-places.md](plans/ne
 ## Make Internet Explorer working again
 
 Right now it seems it’s broken.
+
+## Wayland session on par with X11
+
+The Wayland session (labwc) should do what the X11 session does, and no more than it. Known gaps and leftovers are in
+[docs/wayland.md](docs/wayland.md) ("Differences from the X11 session"). Its labwc patch still writes `classes.tsv`, which only
+the removed Windows 7 taskbar read: drop it with the next change to that patch, or use it for something the X11 WM does too.
