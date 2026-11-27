@@ -1,6 +1,6 @@
 # Architecture
 
-What win4wine is made of and how the parts connect. Why it was done this way is in [design.md](design.md).
+What LunaticOS is made of and how the parts connect. Why it was done this way is in [design.md](design.md).
 
 ## Overview
 

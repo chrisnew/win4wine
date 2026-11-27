@@ -1,6 +1,6 @@
 # Original features
 
-win4wine's baseline is reproducing XP's look and behaviour as it is, but it adds a few features XP does not have.
+LunaticOS's baseline is reproducing XP's look and behaviour as it is, but it adds a few features XP does not have.
 All of them are off by default and only work when chosen in `session.json` (`reactos-session.json` for the ReactOS shell).
 When they are off, behaviour is the same as XP's.
 

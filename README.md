@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="docs/images/screenshot-en.png" alt="win4wine: the English Windows XP shell with Linux and Windows applications on Debian 13" width="800" />
+  <img src="docs/images/screenshot-en.png" alt="LunaticOS: the English Windows XP shell with Linux and Windows applications on Debian 13" width="800" />
 </p>
+<h1 align="center">LunaticOS</h1>
 <p align="center">
-  <strong>Your Linux desktop, with the Windows XP shell.</strong>
+  <strong>A Windows XP desktop for old netbooks, built on Debian.</strong>
 </p>
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-LGPL--2.1--or--later-blue?style=flat" alt="License: LGPL-2.1-or-later"></a>
@@ -12,6 +13,8 @@
 </p>
 
 A personal fork of [mikuta0407/win4wine](https://github.com/mikuta0407/win4wine), tuned for an old Asus EeePC and taking its own direction.
+Upstream supports several Windows shells; LunaticOS aims at Windows XP on low-end and older notebooks.
+In the code, paths and settings it keeps upstream's name (`~/.config/win4wine`, `WIN4WINE_*`, `win4wine-wine`), so that both stay compatible.
 What the fork has added, in pictures: [docs/showcase.md](docs/showcase.md).
 
 > [!IMPORTANT]
@@ -142,7 +145,9 @@ With a Windows 7 ISO, it can also run **Windows 7's shell** (the Windows 7 Basic
 > - **Obtain the Windows XP (and Windows 7) ISO yourself.** Neither this repository nor its scripts download any Microsoft files.
 >   Follow Microsoft's license terms for the ISO and the files extracted from it.
 > - **Use at your own risk.** The author is not responsible for data loss or any other problems.
-> - This is an unofficial project, not affiliated with Microsoft or the Wine project.
+> - This is an unofficial project, not affiliated with or endorsed by Microsoft, the Debian Project or the Wine project.
+>   Windows and Windows XP are trademarks of Microsoft Corporation. Debian is a registered trademark of Software in the Public
+>   Interest, Inc. No Microsoft files are included; you supply your own XP installation media.
 > - Only the Japanese and the English XP SP3 (x86) have been tested. XP in other languages is set up the same way as English XP
 >   and might work, but it has not been tested at all (`setup.sh` warns and goes on).
 
@@ -163,7 +168,7 @@ The design documents are listed in [docs/README.md](docs/README.md).
 ## Similar projects
 
 - [loss32](https://loss32.org/): a planned Linux distribution whose desktop is made only of Win32 software on Wine,
-  with parts of ReactOS. While win4wine runs XP's own shell on Debian, loss32 is built from free software only.
+  with parts of ReactOS. While LunaticOS runs XP's own shell on Debian, loss32 is built from free software only.
 
 ## Ground rules
 

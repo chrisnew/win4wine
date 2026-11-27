@@ -1,6 +1,6 @@
 # Design
 
-win4wine's main decisions and the reasons for them, by topic. What was investigated and the details of the tests are in the
+LunaticOS's main decisions (most of them made upstream, in win4wine) and the reasons for them, by topic. What was investigated and the details of the tests are in the
 chronological record [history/investigations.md](history/investigations.md) (section names are given in parentheses).
 
 ## Rules the project keeps

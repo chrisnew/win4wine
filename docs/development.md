@@ -1,6 +1,6 @@
 # Development
 
-To just use win4wine, `scripts/setup.sh` from [INSTALL.md](../INSTALL.md) is enough. This document covers how to change and test the patches or the bridge.
+To just use LunaticOS, `scripts/setup.sh` from [INSTALL.md](../INSTALL.md) is enough. This document covers how to change and test the patches or the bridge.
 
 ## Repository layout
 

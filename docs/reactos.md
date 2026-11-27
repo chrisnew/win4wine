@@ -1,6 +1,6 @@
 # The ReactOS shell
 
-A session that runs [ReactOS](https://reactos.org/)'s `explorer.exe` and the DLLs around it instead of the XP shell, so that win4wine can
+A session that runs [ReactOS](https://reactos.org/)'s `explorer.exe` and the DLLs around it instead of the XP shell, so that LunaticOS can
 be tried without an XP ISO. It looks like ReactOS's "Classic" (the colours of Windows 2000's "Windows Standard").
 It runs on the same Wine, the same bridge (window manager, stand-in windows, tray) and the same supervisor as the XP shell.
 
@@ -32,7 +32,7 @@ The 32-bit version (i386) is used: it runs on the same WoW64 32-bit path as the 
 
 ReactOS as a whole is GPL-2.0-or-later. Most of the source of the DLLs used is LGPL-2.1-or-later (including what comes from Wine), and
 some files are GPL-2.0. The fonts have their own licences (Bitstream Vera family, GPL with the font exception, Apache-2.0).
-win4wine does not bundle ReactOS's files; it only downloads them from the official release. If you distribute the extracted files,
+LunaticOS does not bundle ReactOS's files; it only downloads them from the official release. If you distribute the extracted files,
 follow the GPL and LGPL and point to the corresponding source (`source` in `manifest.json`, ReactOS's `0.4.16-release` tag).
 
 ## The prefix (`prefix/reactos.py`)

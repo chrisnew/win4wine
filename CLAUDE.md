@@ -1,9 +1,9 @@
-# win4wine (EeePC fork)
+# LunaticOS
 
-A Windows XP shell on Linux: XP's own explorer.exe running on a patched Wine 11.0, with a WM and a proxy that give Linux windows
-real XP frames and taskbar buttons. It is a personal fork of [mikuta0407/win4wine](https://github.com/mikuta0407/win4wine),
-and it now goes its own way. **Nothing is sent upstream any more**, so there is no need to keep changes small for review or in
-upstream's shape.
+A Windows XP desktop for old netbooks, built on Debian: XP's own explorer.exe running on a patched Wine 11.0, with a WM and a
+proxy that give Linux windows real XP frames and taskbar buttons. It is a personal fork of
+[mikuta0407/win4wine](https://github.com/mikuta0407/win4wine), and it now goes its own way under its own name, LunaticOS.
+**Nothing is sent upstream any more**, so there is no need to keep changes small for review or in upstream's shape.
 
 ## The goal
 
@@ -11,6 +11,12 @@ A weird, Frankenstein-like OS on an old Asus EeePC 1015PEM, to show off at a **r
 What counts is that it looks and feels convincing **on that machine**: it starts reliably, responds quickly on an Atom N550,
 fits a 1024x600 screen, and has things worth showing. Ideas for features are in [IDEAS.md](IDEAS.md) and known bugs in
 [BUGS.md](BUGS.md). Work that only helps other setups (VMs, Wayland, HiDPI, Japanese XP) is low priority unless asked for.
+
+## The name
+
+The name stays clear of others' trademarks: "Windows", "XP" and "Debian" describe what it is ("built on Debian", "the Windows
+XP shell") but are never part of its name or logo, and the README carries the disclaimer. In code, paths, settings and the Git
+remotes the old name `win4wine` stays (`~/.config/win4wine`, `WIN4WINE_*`, X atoms, patch headers): don't rename those.
 
 ## Where things are
 
