@@ -1,8 +1,10 @@
 # EeePC tools
 
 Helpers for testing and measuring win4wine on the target machine, an Asus EeePC 1015PEM. Most of them run **on the EeePC**,
-inside its X session (`DISPLAY=:0 XAUTHORITY=~/.Xauthority`). Copy them over with `scp`. Several expect to sit in `/tmp` under a
-`w4w-` name: `drive.py` calls `/tmp/w4w-shot.py`, and `wmbench.sh` calls `/tmp/w4w-wmbench.py`.
+inside its X session (`DISPLAY=:0 XAUTHORITY=~/.Xauthority`). `eee.sh` runs the everyday ones from the development machine: it
+copies `drive.py`, `shot.py` and `sample.py` to `/tmp/w4w-*.py` there and calls them over ssh (the host: `$EEEPC` or
+`.local/eeepc-host`). Copy the others over with `scp`; `wmbench.sh` expects `/tmp/w4w-wmbench.py`. `drive.py`, `shot.py` and
+`sample.py` also work on the bench's display ([tools/bench](../bench/bench.sh)).
 
 ## The machine
 
@@ -69,7 +71,8 @@ What is left: `set_context_attribute` and `replay_batch` 2.3% each, and `read_hp
 
 | Tool | What it does |
 |---|---|
-| `drive.py ACTION...` | Drive the X display with XTest: `move X Y`, `click X Y`, `rclick X Y`, `dblclick X Y`, `key KEYSYM`, `sleep S`, `shot NAME` |
+| `eee.sh drive\|shot\|sample\|insession\|x ...` | From the development machine: drive.py, a PNG screenshot here, sample.py, a script run inside the logind session (through Start, Run and `linux-launch.exe`, for polkit), a command there |
+| `drive.py ACTION...` | Drive the X display with XTest: `move`, `click`, `rclick`, `dblclick X Y`, `scroll up\|down N`, `key KEYSYM`, `chord Super_L+r`, `type TEXT` (on the layout's keys and levels: the EeePC's is German), `wait TITLE [S]` (prints how long), `windows`, `sleep S`, `shot NAME` |
 | `shot.py OUT.ppm` | A screenshot that stacks each viewable top-level window's own image (`xwd -root` misses redirected windows) |
 | `capture.py` | Capture a screen region frame by frame after a trigger, stacking each window's own image |
 | `mapcap.py` | Capture a window's own image as fast as possible from the moment a window of class CLASS maps |
@@ -81,6 +84,7 @@ What is left: `set_context_attribute` and `replay_batch` 2.3% each, and `read_hp
 
 | Tool | What it does |
 |---|---|
+| `sample.py SECONDS [DELAY]`, `sample.py -- COMMAND...` | CPU (percent of one logical CPU), wakeups a second and RSS of the user's processes and Xorg, from `/proc` |
 | `dragbench.py` | Drag a native client's XP frame by its caption with XTest, at 60 Hz, and report each process's CPU and the client's lag |
 | `wmbench.sh WM_PY [STEPS] [HZ]` + `wmbench.py` | Profile a WM on Xvfb while a fake frame is dragged (`PROFILE=1` for cProfile) |
 | `traybench.sh BRIDGE_DIR` | tray.py's CPU while `geometry.tsv` is renamed into its IPC directory 600 times at 60 Hz |
