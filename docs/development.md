@@ -15,6 +15,7 @@ To just use LunaticOS, `scripts/setup.sh` from [INSTALL.md](../INSTALL.md) is en
 | `extract/` | Taking only the needed files from the ISO (`extract.py`), detecting the XP language (`media.py`) |
 | `greeter/` | The XP Welcome screen for LightDM, the log on/log off screens, XP's cursors |
 | `scripts/` | Installing everything (`setup.sh`), the development chroot (`debian.sh`), the pre-commit check |
+| `tools/` | The bench session in Docker (`bench/`), driving, measuring and deploying to the EeePC (`eeepc/`), `stage-edit.py` |
 | `tests/` | Integration tests, and probes of public APIs (C) that run both on Wine and on a real XP |
 | `localres/`, `.local/` | ISOs, extracted files, prefixes, builds, logs, screenshots. **Not tracked by Git** |
 
@@ -28,7 +29,40 @@ The pre-commit check (`scripts/check-staged.py`) refuses files under `localres/`
 and binaries containing NUL bytes (even with `git add -f`). The only exceptions are PNGs in `docs/images/` and its folders
 (screenshots, see [showcase.md](showcase.md)) and our own icons, `.ico` files in `resources/`.
 
-## Development environment in a chroot
+## Building and testing in Docker
+
+This is the usual way, and the one this fork's work is done with: the development machine needs Docker, git and nothing else
+(no Wine, MinGW or Xvfb of its own). Everything builds and runs in Debian 13 containers, with the same compilers and libraries
+as the EeePC, so what is built here runs there.
+
+```sh
+wine/container-build.sh                         # Wine into .local/wine-install (the first build takes long, later ones
+                                                # recompile only what changed patches touch)
+wine/container-build.sh --deploy HOST           # the same, then copy the install to HOST's checkout over ssh
+tools/bench/bench.sh up NAME                    # a container with this checkout, the bridge built and a new prefix
+tools/bench/bench.sh start NAME                 # Xvfb at 1024x600 and the whole XP session in it
+tools/bench/bench.sh shot NAME OUT.png          # a screenshot; drive NAME ACTION... types, clicks and presses keys
+tools/bench/bench.sh sync NAME                  # after a change: copy the checkout again and rebuild the bridge
+```
+
+- `wine/container-build.sh` makes the image `win4wine-wine-build:trixie` the first time; `tools/bench/bench.sh image` builds
+  the bench's image on top of it. The bench needs `.local/wine-install` and `.local/assets` (`extract/extract.py`).
+- `bench.sh --help` lists all its commands (`sh NAME < SCRIPT` runs a script in the session, `logs`, `stop`, `rm`). The bench
+  is for seeing and testing a change; speed is only measured on the EeePC.
+- Tests that need X but no session run in a throwaway bench container on a copy of the checkout, for example the WM's:
+
+  ```sh
+  docker run --rm -v "$PWD":/src:ro w4w-bench:trixie bash -c 'cp -r /src /tmp/w && cd /tmp/w &&
+      bridge-wm/build.sh && { Xvfb :7 -screen 0 1024x600x24 & sleep 1; } && mkdir -m 700 /tmp/ipc &&
+      { DISPLAY=:7 .local/bridge/wm --ipc /tmp/ipc & sleep 1; } &&
+      DISPLAY=:7 XP_BRIDGE_DIR=/tmp/ipc python3 tests/wm_integration.py'
+  ```
+
+- Wine changes are made with `wine/patch-edit.py` ("Patches" below), which compiles single modules in the same container.
+
+## Development environment in a chroot (upstream's way)
+
+Upstream builds in a chroot instead. It is kept as upstream left it; this fork has not used it since it moved to Docker.
 
 The host needs git, sudo and debootstrap, and at least 15 GB free. The chroot is created in `.local/debian`; `/work` inside it is this repository.
 
@@ -108,16 +142,9 @@ from upstream again. `wine/patch-edit.py --help` has the details.
 | `tests/screen-saver.c` | The screen saver setting, its `system.ini` mapping and `LockWorkStation`, in the session's prefix |
 | `tests/*.c` | Probes of public APIs. The same program runs on Wine and on a real XP and the numbers are compared (DPI: `dpi-metrics.c`, `char-widths-dpi.c`, `caption-glyph-dpi.c`, `text-bits-dpi.c`) |
 
-## The session in Docker (`tools/bench`)
-
-On a machine with Docker but no Wine, `tools/bench/bench.sh` runs the whole XP session in a Debian 13 container on Xvfb at
-1024x600, with the Wine of `wine/container-build.sh` and `.local/assets`: `up NAME` (container, bridge and prefix), `start NAME`,
-`drive NAME ACTION...` (`tools/eeepc/drive.py`), `shot NAME OUT.png`, `sh NAME < SCRIPT`, `sync NAME` after a change,
-`stop`, `rm`. `bench.sh --help` lists them all.
-
 ## Installing by hand
 
-To install without `setup.sh`, build Wine, the bridge, the extracted files and the prefix as above, and write
+To install without `setup.sh`, build Wine, the bridge, the extracted files and the prefix as above (in Docker or the chroot), and write
 `~/.config/win4wine/session.json` (the keys are in [INSTALL.md](../INSTALL.md#settings-configwin4winesessionjson)).
 
 ```sh
