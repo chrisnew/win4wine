@@ -161,3 +161,4 @@
 0161-ole32-clipboard-window-thread-exit.patch
 0162-mountmgr-udisks2-signals-only.patch
 0163-mountmgr-drive-change-notifications.patch
+0164-mountmgr-eject-disc-images.patch

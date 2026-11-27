@@ -1,0 +1,90 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] mountmgr: ejecting a mounted disc image unmounts it
+
+Purpose: XP's own "Eject" on the CD drive of a mounted disc image unmounts
+it, and the drive goes away.
+Windows behavior: Eject takes the disc out of the drive. XP's shell32 opens
+the volume (\\?\Volume{GUID}) and sends it IOCTL_DISK_EJECT_MEDIA, without
+locking or dismounting it first (traced on the EeePC).
+Wine before: mountmgr.sys, which handles the volume device, answered neither
+IOCTL_DISK_EJECT_MEDIA nor IOCTL_STORAGE_EJECT_MEDIA ("Unsupported ioctl
+74808"), so Eject did nothing.
+Change: for a CD or DVD drive whose Unix device is a loop device, the two
+requests run "udisksctl unmount" and "udisksctl loop-delete" on it. UDisks2
+allows both to the user who set the device up, without a password. A volume
+that cannot be unmounted (files open on it) gives STATUS_DEVICE_BUSY and
+stays. The drive goes because its device does (0163 announces it). Other
+devices, real drives among them, are answered as before.
+Evidence: on the EeePC, XP Explorer's Eject on a mounted image.
+Scope: all programs; only loop devices that are CD or DVD drives.
+---
+ dlls/mountmgr.sys/device.c | 49 ++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 49 insertions(+)
+
+diff --git a/dlls/mountmgr.sys/device.c b/dlls/mountmgr.sys/device.c
+index 7fb6b7f..06508a8 100644
+--- a/dlls/mountmgr.sys/device.c
++++ b/dlls/mountmgr.sys/device.c
+@@ -1790,6 +1790,46 @@ done:
+     return status;
+ }
+ 
++/* Eject a disc image: a loop device that UDisks2 follows as a CD or DVD drive.
++ * Unmount it and delete the loop device, with UDisks2, which lets the user of
++ * the session do both without a password; the drive goes with the device.
++ * Anything else is left as it is. */
++static NTSTATUS eject_disc_image( struct disk_device *dev )
++{
++    static char udisksctl[] = "udisksctl", unmount[] = "unmount", loop_delete[] = "loop-delete",
++                no_questions[] = "--no-user-interaction", block_device[] = "-b";
++    char *argv[] = { udisksctl, unmount, no_questions, block_device, NULL, NULL };
++    char *device = NULL;
++    BOOL mounted = FALSE;
++    NTSTATUS status = STATUS_NOT_SUPPORTED;
++
++    EnterCriticalSection( &device_section );
++    if ((dev->type == DEVICE_CDROM || dev->type == DEVICE_DVD) && dev->unix_device &&
++        !strncmp( dev->unix_device, "/dev/loop", 9 ))
++    {
++        device = strdup( dev->unix_device );
++        mounted = dev->unix_mount != NULL;
++    }
++    LeaveCriticalSection( &device_section );
++    if (!device) return status;
++
++    /* Not within device_section: mountmgr learns of the changes while we wait. */
++    argv[4] = device;
++    if (mounted && __wine_unix_spawnvp( argv, TRUE ))
++    {
++        WARN( "could not unmount %s\n", debugstr_a(device) );
++        status = STATUS_DEVICE_BUSY;
++    }
++    else
++    {
++        argv[1] = loop_delete;
++        status = __wine_unix_spawnvp( argv, TRUE ) ? STATUS_UNSUCCESSFUL : STATUS_SUCCESS;
++        if (status) WARN( "could not delete %s\n", debugstr_a(device) );
++    }
++    free( device );
++    return status;
++}
++
+ /* handler for ioctls on the harddisk device */
+ static NTSTATUS WINAPI harddisk_ioctl( DEVICE_OBJECT *device, IRP *irp )
+ {
+@@ -1802,6 +1842,15 @@ static NTSTATUS WINAPI harddisk_ioctl( DEVICE_OBJECT *device, IRP *irp )
+            irpsp->Parameters.DeviceIoControl.InputBufferLength,
+            irpsp->Parameters.DeviceIoControl.OutputBufferLength );
+ 
++    if (irpsp->Parameters.DeviceIoControl.IoControlCode == IOCTL_DISK_EJECT_MEDIA ||
++        irpsp->Parameters.DeviceIoControl.IoControlCode == IOCTL_STORAGE_EJECT_MEDIA)
++    {
++        status = eject_disc_image( dev );
++        irp->IoStatus.Status = status;
++        IoCompleteRequest( irp, IO_NO_INCREMENT );
++        return status;
++    }
++
+     EnterCriticalSection( &device_section );
+ 
+     switch(irpsp->Parameters.DeviceIoControl.IoControlCode)
