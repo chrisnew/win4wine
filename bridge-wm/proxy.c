@@ -363,6 +363,31 @@ static void shell_key_events(BOOL start)
     if (count) SendInput(count, inputs, sizeof(INPUT));
 }
 
+/* Top-level windows by their last activation, newest first: Alt+Tab's
+ * order. On Windows activating a window raises it, so the Z order is this
+ * order; here a Linux window's frame is not raised in Win32 when its window
+ * is activated, so the proxy keeps the order itself. */
+static HWND recent[MAX_CLIENTS * 4];
+static unsigned recent_count;
+
+static void note_recent(HWND hwnd)
+{
+    unsigned i;
+    if (!hwnd) return;
+    for (i = 0; i < recent_count && recent[i] != hwnd; ++i) {}
+    if (i == recent_count && recent_count < ARRAYSIZE(recent)) recent_count++;
+    if (i == ARRAYSIZE(recent)) i = recent_count - 1;
+    memmove(recent + 1, recent, i * sizeof(HWND));
+    recent[0] = hwnd;
+}
+
+static unsigned recent_rank(HWND hwnd)
+{
+    unsigned i;
+    for (i = 0; i < recent_count; ++i) if (recent[i] == hwnd) return i;
+    return ARRAYSIZE(recent);
+}
+
 static BOOL CALLBACK collect(HWND hwnd, LPARAM unused)
 {
     WCHAR name[80];
@@ -421,6 +446,7 @@ static void shell_events(void)
     }
     if (foreground != last_foreground)
     {
+        note_recent(foreground);
         notify(HSHELL_WINDOWACTIVATED, foreground);
         last_foreground = foreground;
     }
@@ -667,6 +693,23 @@ static unsigned long owner_of(unsigned long xid)
     return 0;
 }
 
+/* SetForegroundWindow for the proxy, which gets no input of its own: the
+ * Linux windows and the WM get it. Wine's server, like Windows, refuses the
+ * foreground to a process that is not in the foreground and had no input
+ * since the foreground process had some; then the frame of the Linux window
+ * the user switched to stayed inactive in Win32, and the next Alt+Tab
+ * started from the wrong window. Sharing the foreground thread's input
+ * while asking, as Windows programs do, passes that check. */
+static void make_foreground(HWND hwnd)
+{
+    HWND foreground = GetForegroundWindow();
+    DWORD self = GetCurrentThreadId(), other = foreground ? GetWindowThreadProcessId(foreground, NULL) : 0;
+    BOOL attached = other && other != self && AttachThreadInput(self, other, TRUE);
+    note_recent(hwnd);
+    SetForegroundWindow(hwnd);
+    if (attached) AttachThreadInput(self, other, FALSE);
+}
+
 /* The window XP activates when the active one goes: the topmost visible,
  * enabled window that can be activated, other than the frames that close;
  * without one, the desktop (Progman), never the taskbar. */
@@ -800,16 +843,15 @@ static void snapshot(void)
     for (i = 0; i < activations; ++i)
     {
         /* The frame looks active while its client has the X focus. Win32
-         * activation cannot always follow: like Windows, Wine refuses
-         * SetForegroundWindow to a process that did not get the last
-         * input, and the input goes to the native client, not to this
-         * process. So the frame's caption is set directly, both ways;
+         * activation could not always follow (Wine refuses the foreground
+         * to a process without the last input; make_foreground works
+         * around it). The frame's caption is set directly, both ways;
          * it would otherwise keep the look of its last real activation.
          * SetForegroundWindow sends the shell its activation messages and
          * waits for them, while XP Explorer adds the new taskbar button. */
         struct client *c = activated[i];
         if (!c->xid) continue; /* gone in this pass */
-        if (c->active) SetForegroundWindow(c->hwnd);
+        if (c->active) make_foreground(c->hwnd);
         SendMessageW(c->hwnd, WM_NCACTIVATE, c->active, 0);
         /* Activations of other processes' windows around this one
          * sometimes leave its caption painted in the previous state,
@@ -988,13 +1030,37 @@ static BOOL CALLBACK switch_candidate(HWND hwnd, LPARAM param)
     return TRUE;
 }
 
+static unsigned switch_rank(HWND hwnd)
+{
+    unsigned rank = ARRAYSIZE(recent), depth;
+    for (depth = 0; hwnd && depth < MAX_CLIENTS; ++depth, hwnd = GetWindow(hwnd, GW_OWNER))
+    {
+        unsigned r = recent_rank(hwnd);
+        if (r < rank) rank = r;
+    }
+    return rank;
+}
+
 static void switch_collect(void)
 {
     HWND foreground = GetForegroundWindow();
     int i;
     switcher.count = 0;
     switcher.limit = SWITCH_COLUMNS * SWITCH_ROWS;
+    note_recent(foreground);
     EnumWindows(switch_candidate, 0);
+    /* By last activation, stably; windows never activated keep their Z order
+     * behind the others. An entry's rank is its own or its owner's. */
+    for (i = 1; i < switcher.count; ++i)
+    {
+        int k;
+        for (k = i; k > 0 && switch_rank(switcher.items[k - 1]) > switch_rank(switcher.items[k]); --k)
+        {
+            HWND item = switcher.items[k];
+            switcher.items[k] = switcher.items[k - 1];
+            switcher.items[k - 1] = item;
+        }
+    }
     /* Start from the active window, which is not always the topmost one: its
      * own entry, or that of an owner when it is a dialog without one. */
     for (; foreground; foreground = GetWindow(foreground, GW_OWNER))
@@ -1116,10 +1182,17 @@ static void switch_commit(void)
     for (i = 0; i < MAX_CLIENTS; ++i)
         if (clients[i].xid && clients[i].hwnd == target)
         {
+            /* The frame stands for the Linux window in Win32 (see below). */
+            make_foreground(target);
             command("switch", clients[i].xid);
             return;
         }
     if (IsIconic(target)) ShowWindowAsync(target, SW_RESTORE);
+    /* Win32's foreground too: Wine may let the WM's focus pass without
+     * activating the window, and the foreground stayed where it was (a Linux
+     * window's frame), so the next Alt+Tab started from there and chose
+     * the window that was already active. */
+    make_foreground(target);
     command("switch", (unsigned long)(uintptr_t)GetPropW(target, L"__wine_x11_whole_window"));
 }
 
