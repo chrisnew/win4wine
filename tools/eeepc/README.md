@@ -159,3 +159,15 @@ with `loginctl lock-session`, and it feels immediate at the machine. The waiting
 (the idle session after the relogin: 4.8%, 159, mostly xp-explorer at 2.8%). A profile of the start before, off screen: Python
 0.18 s, `import welcome` (cairo, Pango) 0.49, other imports and the X connections 0.5, the first drawing of the screen 0.78, a
 second one 0.13, the first with the password box 0.44, the upload 0.06.
+
+## Linux columns
+
+Measured 2026-11-27 (repo d2619cd) with no session running: a 32-bit program calling `linuxcols.dll` for each of the 1248
+entries of `Z:\usr\bin`, with the file system's caches warm (not measured cold).
+
+| | time | per entry |
+|---|---|---|
+| all four columns, entry by entry (as the view asks) | 134-141 ms | 0.11 ms |
+| one column over all entries (as a sort asks) | 102-106 ms | 0.08 ms |
+| Wine listing the folder (`FindFirstFile`), first and second time | 903 and 52 ms | |
+
