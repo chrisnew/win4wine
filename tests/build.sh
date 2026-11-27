@@ -75,6 +75,7 @@ compile "$out/folder-icons-test.exe" -municode "$root/tests/folder-icons.c" -lsh
 compile "$out/desktop-menu-test.exe" -municode "$root/tests/desktop-menu.c" -lshell32 -lole32 -luuid -ladvapi32 -luser32
 compile "$out/reg-dump-test.exe" -municode "$root/tests/reg-dump.c" -ladvapi32
 compile "$out/string-id-test.exe" -municode "$root/tests/string-id.c"
+compile "$out/ole-clipboard-thread-test.exe" "$root/tests/ole-clipboard-thread.c" -lole32
 compile "$out/transparent-shrink-test.exe" -municode "$root/tests/transparent-shrink.c" -lmsimg32 -lgdi32
 
 compile "$out/nonclient-theme-test.exe" -municode "$root/tests/nonclient-theme.c" -luxtheme -lgdi32

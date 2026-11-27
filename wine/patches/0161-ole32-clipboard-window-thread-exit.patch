@@ -1,0 +1,38 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] ole32: recreate the OLE clipboard window when its thread has ended
+
+Purpose: copying files in XP Explorer keeps working after a folder window
+has been closed.
+Windows behavior: the OLE clipboard works from any thread that has
+initialized OLE, whatever happened to the threads that used it before.
+Wine before: the process has one hidden clipboard window, made by the first
+thread that needs it. Windows are destroyed with their thread, but the
+handle was kept, so every later OleSetClipboard in the process failed in
+OpenClipboard with CLIPBRD_E_CANT_OPEN. XP Explorer calls OleFlushClipboard
+when a folder window closes, which makes the window even if nothing was ever
+copied, and then the window's thread ends: from then on Copy in the shell
+process did nothing and Paste stayed grey.
+Change: get_clipbrd_window() makes a new window when the old handle is no
+longer a window.
+Evidence: tests/ole-clipboard-thread.c (0x800401d0 before, S_OK after); on
+the EeePC the Windows clipboard's sequence number was still 1 after copies in
+the shell process, while a new Explorer process copied.
+Scope: all programs; only a destroyed clipboard window is replaced.
+---
+ dlls/ole32/clipboard.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+diff --git a/dlls/ole32/clipboard.c b/dlls/ole32/clipboard.c
+index c546089..88d1d1b 100644
+--- a/dlls/ole32/clipboard.c
++++ b/dlls/ole32/clipboard.c
+@@ -1899,7 +1899,9 @@ static HWND create_clipbrd_window(void);
+  */
+ static inline HRESULT get_clipbrd_window(ole_clipbrd *clipbrd, HWND *wnd)
+ {
+-    if ( !clipbrd->window )
++    /* The window belongs to the thread that made it and is destroyed when that
++     * thread ends, while the process and its OLE clipboard go on. */
++    if ( !clipbrd->window || !IsWindow(clipbrd->window) )
+         clipbrd->window = create_clipbrd_window();
+ 
+     *wnd = clipbrd->window;
