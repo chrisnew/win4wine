@@ -87,12 +87,14 @@ The list, order, format and the opt-in check are in [patches.md](patches.md). Ne
 | `tests/idle_watch.py IDLE_WATCH` | `session/idle-watch.c` on an Xvfb: idle and active, `XResetScreenSaver`, DPMS, no wakeups while idle |
 | `tests/logind_watch.py` | `session/logind-watch.py` with a stand-in for logind on a private bus: `Lock` and the delayed sleep |
 | `tests/linux_apps.py` | The Start menu of Linux apps |
+| `tests/linuxcols.py` | The plain C part of XP Explorer's Linux columns: the permissions as `ls -l` writes them, user and group names, the paths left alone (host gcc; no Wine, no X) |
 | `tests/recovery_integration.py CONFIG.json` | Switching over when the shell crashes |
 | `tests/reactos_session.py CONFIG.json` | The ReactOS shell session: taskbar and desktop, folders opened with `explorer.exe` (0090), log off (0024) |
 | `tests/reactos_greeter.py ASSETS [OUTDIR]` | The ReactOS login screen's layout (English and Japanese). ASSETS is what `extract/reactos.py` extracted |
 | `tests/greeter_layout.py ASSETS`, `tests/cursor_theme.py ASSETS` | The Welcome screen's layout (96, 120 and 144 DPI), the cursors (32 and 64) |
 | `tests/patch_state.py`, `tests/font_*.py`, `tests/workarea.py`, `tests/dpi_settings.py` | Unit tests |
 | `tests/xp_language.py [ja=ASSETS] [en=ASSETS]` | The registry settings that differ between Japanese and English XP, and detecting the language of extracted files |
+| `tests/stat-lx-probe.c` | `NtQueryInformationByName` (Wine patch 0160) in the session's Wine, to compare with `stat`; 32-bit and 64-bit |
 | `tests/screen-saver.c` | The screen saver setting, its `system.ini` mapping and `LockWorkStation`, in the session's prefix |
 | `tests/*.c` | Probes of public APIs. The same program runs on Wine and on a real XP and the numbers are compared (DPI: `dpi-metrics.c`, `char-widths-dpi.c`, `caption-glyph-dpi.c`, `text-bits-dpi.c`) |
 

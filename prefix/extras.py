@@ -7,8 +7,10 @@ flyouts (xptray.exe), Network Connections, the folder task pane (DirectUser),
 XP's Display Properties, image thumbnails and the picture viewer, XP's sound
 scheme and Explorer defaults, Internet Explorer 6, Windows Media Player 9, and
 the Start menu's full left column (Internet, E-mail and the most used
-programs); and XP's Regional and Language Options, whose input languages
-the session's keyboard layout follows (session/keyboard.py). This applies them to a prefix made by prefix/create.py, with
+programs); Linux permissions, owner, group and path as columns and in the task
+pane's Details section of folder windows (linuxcols.dll); and XP's Regional and Language Options, whose input
+languages the session's keyboard layout follows (session/keyboard.py). This
+applies them to a prefix made by prefix/create.py, with
 xp-explorer/scripts/prefix.py's own code, and again when they change.
 
   extras.py PREFIX --wine WINE      apply (scripts/setup.sh runs it)
@@ -30,9 +32,18 @@ import xp_schemes
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / '.local/bridge'
 # Bumped when apply() changes; setup.sh applies it again on existing prefixes.
-VERSION = '7'
+VERSION = '8'
 MARKER = '.xp-extras'
-HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe')
+# What goes from .local/bridge to C:\xp\bin.
+HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'linuxcols.dll')
+# linuxcols.dll's column handler (xp-explorer/helpers/linuxcols.c), and the
+# property set of its columns.
+LINUX_COLUMNS = '{48E91554-B8E3-45CE-A5C9-E7E65E654FF0}'
+LINUX_PROPERTIES = '{9EFE7827-D3D3-4E38-BE40-BBFF8B12F657}'
+# The task pane's Details section for files and folders: XP's own lines, and
+# between them the handler's hidden columns with a name in their values (IDs 6
+# to 9). XP reads a property ID after a space; after a comma it takes 0.
+LINUX_DETAILS = 'prop:Name;Type;' + ''.join(f'{LINUX_PROPERTIES} {n};' for n in range(6, 10)) + 'Write;Size'
 # XP's Regional and Language Options and what it loads (assets/intl), native
 # in rundll32 and in XP Explorer, whose Control Panel lists it.
 INTL = ('intl.cpl', 'input.dll', 'syssetup.dll', 'sfcfiles.dll')
@@ -94,6 +105,19 @@ def registry(xpx):
     for clsid, dll in xpx.SERVERS:
         r.add('HKCR\\CLSID\\' + clsid + '\\InprocServer32', None, dll)
         r.add('HKCR\\CLSID\\' + clsid + '\\InprocServer32', 'ThreadingModel', 'Apartment')
+    # Linux permissions, owner, group and path in folder windows' Details view.
+    linux_columns = 'HKCR\\CLSID\\' + LINUX_COLUMNS
+    r.add(linux_columns, None, 'Linux columns')
+    r.add(linux_columns + '\\InprocServer32', None, r'C:\xp\bin\linuxcols.dll')
+    r.add(linux_columns + '\\InprocServer32', 'ThreadingModel', 'Apartment')
+    r.add('HKCR\\Folder\\shellex\\ColumnHandlers\\' + LINUX_COLUMNS, None, 'Linux columns')
+    # Where XP lists its own extensions (checked with EnforceShellExtensionSecurity).
+    r.add(r'HKLM\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved', LINUX_COLUMNS,
+          'Linux columns')
+    # XP's setup gives these keys no Details list in this prefix, and a file
+    # type's own list comes first.
+    for key in ('*', 'Directory'):
+        r.add('HKCR\\' + key, 'Details', LINUX_DETAILS)
     return r
 
 

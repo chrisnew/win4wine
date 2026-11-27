@@ -1,6 +1,32 @@
 # Plan: Linux columns in XP's folder windows
 
-Status: planned (2026-11-27). Nothing built yet.
+Status: phases 1 and 2, and the Details section of the task pane (asked for during the work), built and tested on the
+development machine (2026-11-27, session in Docker with Xvfb at 1024x600). **Not yet on the EeePC**: the deployment, the
+check there and the measurements (phase 2, steps 4 and 5) are open. How it works now:
+[docs/architecture.md](../docs/architecture.md#linux-columns-in-xps-folder-windows-xp-explorerhelperslinuxcolsc).
+
+## As built: where it differs from the plan
+
+The sections after this one are the plan as written. These points turned out differently:
+
+- The patch is **0160** (0158 and 0159 were taken in the meantime). Its system call has number 0x102, and the 32-bit
+  `NtWow64*` calls after it moved up by one.
+- **`wine_get_unix_file_name` does open the file** (`NtOpenFile`, then the server's name for the handle), so the handler calls
+  it only on a drive's root, which gives the resolved directory, and appends the rest. The server opens with `O_NONBLOCK`, so
+  a FIFO would not block it as the plan says; devices and hung mounts remain the reason not to open items.
+- A name relative to a directory handle needs the Unix side to change into that directory (as directory listing does).
+- Column widths are 20, 15, 15 and 40: at 10 and 8 the titles were cut off.
+- `OutputDebugString` appears with `WINEDEBUG=warn+seh`, not `+debugstr`.
+- **XP's background filling works**: the view's thread initializes the handler, another thread asks for the visible rows only,
+  again after scrolling and F5. The fallback worker was not needed. F5 shows changed modes and groups.
+- `Z:\dev`, `Z:\proc` and `Z:\sys` cannot be opened: Wine hides them from directory listings. FIFOs and sockets were checked in
+  `/tmp`. Wine does not list dangling links either.
+- **The Details section** (not in the plan): the value `Details` on `*` and `Directory`, `prop:...;{FMTID} 6;...`. XP's
+  property syntax takes the ID after a space, and shows unknown properties without a name, hence four hidden columns whose
+  values carry the name. Infotips (phase 3) can probably use the same.
+- Sorting by a Linux column in a folder of 2000 files asked for all of them on the view's thread within 0.1 s here, with the
+  debug output on. Nothing called the handler while the session was idle, and selecting all 2000 files asked for nothing.
+- Not checked: the Details section in the Recycle Bin and in search results.
 
 Goal: in XP's own folder windows (Details view), files and folders can show their Linux permissions, owner, group and path as extra
 columns, chosen like any other column (right click on the header, or View → Choose Details). A visitor opens `Z:\usr\bin` in XP's

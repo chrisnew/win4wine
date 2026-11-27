@@ -70,3 +70,6 @@ compile "$root/.local/bridge/xptray.exe" -std=gnu11 "$helpers/xptray.c" "$root/.
 rm -f "$root/.local/bridge/xptray.res"
 compile "$root/.local/bridge/startmenu.exe" -std=gnu11 "$helpers/startmenu.c" -lshell32 -lole32 -luuid -ladvapi32 -luser32
 compile "$root/.local/bridge/iexplore.exe" -std=gnu11 "$helpers/iexplore.c" -mwindows -lshell32
+# XP Explorer's Linux columns, an in-process column handler.
+compile "$root/.local/bridge/linuxcols.dll" -std=gnu11 -shared "$helpers/linuxcols.c" "$helpers/linuxcols.def" \
+    -Wl,--kill-at -static-libgcc -lole32 -loleaut32 -ladvapi32 -luuid

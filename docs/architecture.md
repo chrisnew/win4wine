@@ -26,7 +26,7 @@ Preparation builds the following:
 | `wine/build.sh` | Fetches Wine 11.0, applies `wine/patches/` and builds it ([patches.md](patches.md)). |
 | `prefix/create.py`, `prefix/stage.py` | Create the Wine prefix for XP and install XP's DLLs, the COM registrations and the registry settings (registry profiles). Settings follow XP's language (Japanese: the MS UI Gothic font profile and MS Gothic for the console; English: classic Tahoma, Microsoft Sans Serif for MS Shell Dlg, Terminal for the console). The language is recorded as `language` in `xp-shell.json`. |
 | `bridge-wm/build.sh` | Builds proxy.exe and the other Win32 helper programs (`.local/bridge`). |
-| `prefix/extras.py` | Installs into the XP session's prefix the additions taken from the XP Explorer of [AshesTom's fork](https://github.com/AshesTom/win4wine) (XP icons in the notification area, Display Properties, sounds, Internet Explorer 6, Windows Media Player 9 and more), with the code in `xp-explorer/scripts/`. The colour schemes of Display Properties (New Schemes), which XP creates at the first logon, are built by `prefix/xp_schemes.py` from the ISO's HIVEDEF.INF and themeui.dll. When they change, bump `VERSION` and setup.sh installs them again. |
+| `prefix/extras.py` | Installs into the XP session's prefix the additions taken from the XP Explorer of [AshesTom's fork](https://github.com/AshesTom/win4wine) (XP icons in the notification area, Display Properties, sounds, Internet Explorer 6, Windows Media Player 9 and more) and this fork's [Linux columns](#linux-columns-in-xps-folder-windows-xp-explorerhelperslinuxcolsc), with the code in `xp-explorer/scripts/`. The colour schemes of Display Properties (New Schemes), which XP creates at the first logon, are built by `prefix/xp_schemes.py` from the ISO's HIVEDEF.INF and themeui.dll. When they change, bump `VERSION` and setup.sh installs them again. |
 
 ## How the XP shell runs
 
@@ -248,6 +248,30 @@ everything else: nothing polls, so an idle machine is not woken up.
   Icons are made into .ico files from the icon theme.
 - What it created is recorded in `C:\xp\linux-apps\state.json`, and only the entries of apps that disappeared are cleaned up. During the
   session it watches with inotify and follows packages being installed and removed.
+
+## Linux columns in XP's folder windows (`xp-explorer/helpers/linuxcols.c`)
+
+XP's Explorer can show **Linux Permissions** (`-rwsr-xr-x`), **Linux Owner**, **Linux Group** and **Linux Path** as columns in
+Details view (right click on the column header, or View → Choose Details), and the same four in the **Details** section of the
+task pane. Wine's own shell32 does not use column handlers, so only XP's Explorer has them. It only reads.
+
+- **The handler** is a 32-bit in-process COM server, `C:\xp\bin\linuxcols.dll`, with `IColumnProvider`, listed under
+  `HKCR\Folder\shellex\ColumnHandlers`. `prefix/extras.py` copies and registers it.
+- **Mode, user and group** come from `NtQueryInformationByName` with `FileStatLxInformation` (Wine patch 0160): a path conversion
+  and `lstat()`. A symbolic link shows itself (`l`, its own owner), as `ls -l` does. Without the patch only the path is filled in.
+  Names are read from `\\?\unix\etc\passwd` and `group`, again when they change; users only NSS knows show as numbers.
+- **No item is opened.** `wine_get_unix_file_name` opens the file in the wineserver, so it is asked only for a drive's root
+  (it returns the resolved directory), and the rest of the path is appended in the folder window's spelling. Items under
+  `/proc` and `/run/user/*/gvfs` are left empty. (Wine hides `/dev`, `/proc` and `/sys` from folder listings anyway.)
+- **Filled in the background** (`SHCOLSTATE_SLOW`): XP's own task asks from its thread, for the visible rows, and again after
+  scrolling or F5. Nothing wakes afterwards. Sorting by one of these columns asks for every item on the view's thread.
+- **The Details section** reads a property list from the value `Details` of the item's type; `extras.py` sets it on `*` and
+  `Directory`. XP reads a property ID only after a space (`{FMTID} 6`; after a comma it takes 0), and it shows a property it
+  does not know without a name. So the handler has the four columns twice: the second set is hidden (`SHCOLSTATE_HIDDEN`,
+  not in the column menus), and its values carry the name (`Owner: root`). The path there has zero width spaces after each `/`,
+  where the narrow pane can wrap it.
+- **To see XP's calls**: `HKCU\Software\win4wine\LinuxColumns`, DWORD `Debug` = 1, and `"debug": "warn+seh"` in
+  `session.json` (Wine prints `OutputDebugString` on the `seh` channel).
 
 ## The login screen (`greeter/`)
 

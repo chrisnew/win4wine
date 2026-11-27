@@ -1,0 +1,4 @@
+LIBRARY linuxcols.dll
+EXPORTS
+    DllCanUnloadNow@0 PRIVATE
+    DllGetClassObject@12 PRIVATE
