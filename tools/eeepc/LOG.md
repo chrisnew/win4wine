@@ -95,7 +95,7 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   area's COM interfaces.
 - **Result:** extraction 35 s, additions 262 s, exit status 0. XP's DLL is in `drive_c/xp/native` and `syswow64`, the two
   interfaces are registered, and in `user.reg` the only values that differ from the backup are the two `actxprxy` DLL
-  overrides. The dialog itself is not yet checked on the machine.
+  overrides. The dialog was then confirmed to work on the machine.
 - **Undo:** `wine reg delete 'HKCU\Software\Wine\AppDefaults\xp-explorer.exe\DllOverrides' /v actxprxy /f` with
   `WINEPREFIX` set to the prefix; Explorer then loads Wine's DLL again (until `extras.py` is applied again).
 
