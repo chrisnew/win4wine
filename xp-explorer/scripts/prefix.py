@@ -137,6 +137,9 @@ def ie_registry(r):
     # ask to become the default browser (the Linux browser opens web links).
     r.add(main, 'Start Page', 'about:blank')
     r.add(main, 'Check_Associations', 'no')
+    # XP's setup turns off IE's update check (HIVEDEF.INF); without this a
+    # start without an address goes to microsoft.com's page of 2001.
+    r.add(main, 'NoUpdateCheck', '1', 'REG_DWORD')
     # No first-run or "update finished" page (it needs microsoft.com of 2008).
     r.add(main, 'RunOnceHasShown', '1', 'REG_DWORD')
     r.add(main, 'RunOnceComplete', '1', 'REG_DWORD')
