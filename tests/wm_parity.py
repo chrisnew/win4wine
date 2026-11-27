@@ -117,7 +117,7 @@ def dump(step):
         states = sorted(d.get_atom_name(s) for s in prop(w, '_NET_WM_STATE'))
         print(n, ['unmapped', 'unviewable', 'viewable'][a.map_state], (g.x, g.y, g.width, g.height, g.border_width),
               'WM_STATE', prop(w, 'WM_STATE'), 'state', states, 'extents', prop(w, '_NET_FRAME_EXTENTS'))
-    for file in ('windows.tsv', 'classes.tsv', 'owners.tsv', 'geometry.tsv', 'shellkeys.tsv'):
+    for file in ('windows.tsv', 'owners.tsv', 'geometry.tsv', 'shellkeys.tsv'):
         print(file, repr(ipc_text(file)))
     for path in sorted(ipc.glob('icon-*.argb')):
         n = path.name

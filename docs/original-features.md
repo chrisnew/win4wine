@@ -1,7 +1,7 @@
 # Original features
 
 LunaticOS's baseline is reproducing XP's look and behaviour as it is, but it adds a few features XP does not have.
-All of them are off by default and only work when chosen in `session.json` (`reactos-session.json` for the ReactOS shell).
+All of them are off by default and only work when chosen in `session.json`.
 When they are off, behaviour is the same as XP's.
 
 ## Window snapping (`window_snap`)
@@ -14,7 +14,7 @@ Like Windows 7's Aero Snap, windows can be snapped to the left or right half of 
 }
 ```
 
-It takes effect from the next login. It works in the XP shell and the ReactOS shell, in both the X11 and the Wayland session,
+It takes effect from the next login. It works in both the X11 and the Wayland session,
 and the same way for Wine windows and for Linux apps' windows (the ones with an XP frame).
 
 ### Controls

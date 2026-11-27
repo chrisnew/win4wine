@@ -42,11 +42,10 @@ class Session:
     def __init__(self, config):
         self.wine = str(Path(config['wine']).resolve(strict=True))
         self.prefix = Path(config['prefix']).resolve(strict=True)
-        # The shell: XP's explorer from the user's media, or (opt-in, experimental)
-        # ReactOS's explorer in a prefix made for it.
+        # The shell: XP's explorer from the user's media.
         self.shell = SHELLS.get(config.get('shell', 'xp'))
         if not self.shell:
-            raise SystemExit('Unsupported shell')
+            raise SystemExit('Unsupported shell: LunaticOS runs only the XP shell')
         if not (self.prefix / self.shell['marker']).is_file():
             raise SystemExit(f'Expected a dedicated prefix with {self.shell["marker"]}')
         self.proxy = ROOT / '.local/bridge/proxy.exe'
@@ -73,7 +72,7 @@ class Session:
         self.env = environment(dict(os.environ, WINEDEBUG=config.get('debug', '+timestamp,fixme-all')),
                                config, self.shell)
         # Under the compositor, layered windows' translucent pixels are blended
-        # by it; Wine leaves them as they are (Windows 7's Start button, patch 0123).
+        # by it; Wine leaves them as they are (patch 0123).
         if self.compositor:
             self.env['WIN4WINE_COMPOSITED'] = '1'
         # Opt-in: the proxy snaps windows to half of the screen (Win+arrows, dragging to an edge).

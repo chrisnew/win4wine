@@ -99,8 +99,6 @@ from upstream again. `wine/patch-edit.py --help` has the details.
 | `tests/network_places.py` | My Network Places: names, URLs, mDNS, SSDP and UPnP descriptions (hostile ones too), the shortcuts per device, and which files are touched; no Wine, no network |
 | `tests/linuxcols.py` | The plain C part of XP Explorer's Linux columns: the permissions as `ls -l` writes them, user and group names, the paths left alone (host gcc; no Wine, no X) |
 | `tests/recovery_integration.py CONFIG.json` | Switching over when the shell crashes |
-| `tests/reactos_session.py CONFIG.json` | The ReactOS shell session: taskbar and desktop, folders opened with `explorer.exe` (0090), log off (0024) |
-| `tests/reactos_greeter.py ASSETS [OUTDIR]` | The ReactOS login screen's layout (English and Japanese). ASSETS is what `extract/reactos.py` extracted |
 | `tests/greeter_layout.py ASSETS`, `tests/cursor_theme.py ASSETS` | The Welcome screen's layout (96, 120 and 144 DPI), the cursors (32 and 64) |
 | `tests/patch_state.py`, `tests/font_*.py`, `tests/workarea.py`, `tests/dpi_settings.py` | Unit tests |
 | `tests/xp_language.py [ja=ASSETS] [en=ASSETS]` | The registry settings that differ between Japanese and English XP, and detecting the language of extracted files |

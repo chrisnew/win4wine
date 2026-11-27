@@ -115,11 +115,10 @@ How the parts fit together is in [docs/architecture.md](docs/architecture.md), a
 
 ## Also in the code, from upstream
 
-LunaticOS is a fork of [win4wine](https://github.com/mikuta0407/win4wine), which supports more than XP. These parts are still
-in the code but are not what LunaticOS aims at, so they are not tested here:
+LunaticOS is a fork of [win4wine](https://github.com/mikuta0407/win4wine), which also runs the ReactOS and Windows 7 shells.
+LunaticOS has removed those and keeps to XP. These parts from upstream are still there but are not what LunaticOS aims at,
+so they are tested less here:
 
-- [ReactOS](https://reactos.org/)'s shell instead of XP's, with no ISO needed (`--shell reactos`; [docs/reactos.md](docs/reactos.md)).
-- Windows 7's shell, from a Windows 7 SP1 x64 ISO (`--shell win7`, experimental; [docs/windows7.md](docs/windows7.md)).
 - A Wayland session on a patched labwc (`--wayland`, even more experimental; [docs/wayland.md](docs/wayland.md)).
 - Japanese XP, with Japanese input through fcitx5 and Mozc.
 
@@ -163,5 +162,4 @@ Interest, Inc. No Microsoft files are included; you supply your own XP installat
 
 [LGPL-2.1-or-later](LICENSE), the same as Wine. It covers only the code and patches in this repository,
 except `wayland/patches/labwc/` (GPL-2.0-only, as labwc) and `wayland/patches/wlroots/` (MIT, as wlroots).
-The Windows XP and Windows 7 files, and the XP and Windows 7 screens in the screenshots, are copyrighted by Microsoft.
-The ReactOS files that the ReactOS shell uses are under ReactOS's licenses (GPL-2.0-or-later; most of its DLLs LGPL-2.1-or-later).
+The Windows XP files, and the XP screens in the screenshots, are copyrighted by Microsoft.

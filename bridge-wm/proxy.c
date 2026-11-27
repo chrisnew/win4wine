@@ -19,8 +19,6 @@
 struct client { unsigned long xid; HWND hwnd; int seen; int hidden; int active; int moving; int x, y, width, height;
     RECT workarea;
     HICON icon, small_icon; int icon_checked, icon_present; FILETIME icon_time; DWORD icon_size;
-    ATOM app_id;
-    ATOM relaunch[3]; /* RelaunchCommand, RelaunchIconResource, RelaunchDisplayNameResource */
 };
 static struct client clients[MAX_CLIENTS];
 /* WM_TIMER of a frame whose caption is painted again after an activation change. */
@@ -326,13 +324,6 @@ static void key_input(INPUT *input, WORD vk, BOOL up)
     if (vk == VK_LWIN) input->ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
 }
 
-static BOOL windows7_shell(void)
-{
-    WCHAR value[8];
-    DWORD len = GetEnvironmentVariableW(L"WIN4WINE_SHELL", value, ARRAYSIZE(value));
-    return len && len < ARRAYSIZE(value) && !lstrcmpiW(value, L"win7");
-}
-
 static void shell_key_events(BOOL start)
 {
     static unsigned seen;
@@ -351,14 +342,7 @@ static void shell_key_events(BOOL start)
         return;
     }
     seen = number;
-    /* Windows 7's Start menu closes again when the Escape key's release
-     * reaches it; the Windows key alone opens it as Ctrl+Esc does. */
-    if (!strcmp(kind, "ctrl-escape") && windows7_shell())
-    {
-        key_input(&inputs[count++], VK_LWIN, FALSE);
-        key_input(&inputs[count++], VK_LWIN, TRUE);
-    }
-    else if (!strcmp(kind, "ctrl-escape"))
+    if (!strcmp(kind, "ctrl-escape"))
     {
         key_input(&inputs[count++], VK_CONTROL, FALSE);
         key_input(&inputs[count++], VK_ESCAPE, FALSE);
@@ -659,105 +643,6 @@ static void frame_geometry(void)
     }
 }
 
-/* Windows 7's taskbar (WIN4WINE_SHELL=win7) groups windows by their application
- * (AppUserModelID); all frames are this process's windows. Give each the ID of its
- * Linux application (WM_CLASS, classes.tsv from the WM), or one of its own. The
- * value is the window property that SHGetPropertyStoreForWindow writes for
- * PKEY_AppUserModel_ID on Windows 7 (its format string and id) holding a global
- * atom of the ID, as a probe with Windows 7's shell32 shows (EnumPropsEx). */
-static const WCHAR app_id_property[] = L"{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3} 5";
-/* PKEY_AppUserModel_RelaunchCommand (2), RelaunchIconResource (3) and
- * RelaunchDisplayNameResource (4), kept the same way (the probe again): the
- * jump list's title and icon, and the command of a pinned button. */
-static const WCHAR *const relaunch_properties[3] = {
-    L"{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3} 2",
-    L"{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3} 3",
-    L"{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3} 4",
-};
-
-/* The Linux application of class NAME from the Start menu's shortcuts
- * (session/linux_apps.py writes relaunch.tsv: key, name, command, icon). */
-static void client_relaunch(struct client *c, const WCHAR *name)
-{
-    WCHAR key[101], *fields[4], line[2048], *p;
-    char raw[4096];
-    FILE *file;
-    unsigned i;
-
-    lstrcpynW(key, name, ARRAYSIZE(key));
-    CharLowerW(key);
-    if (!(file = _wfopen(L"C:\\xp\\linux-apps\\relaunch.tsv", L"rb"))) return;
-    while (fgets(raw, sizeof(raw), file))
-    {
-        raw[strcspn(raw, "\r\n")] = 0;
-        if (!MultiByteToWideChar(CP_UTF8, 0, raw, -1, line, ARRAYSIZE(line))) continue;
-        for (i = 0, p = line; i < 4; i++)
-        {
-            fields[i] = p;
-            if (i < 3)
-            {
-                if (!(p = wcschr(p, '\t'))) break;
-                *p++ = 0;
-            }
-        }
-        if (i < 4 || wcscmp(fields[0], key)) continue;
-        /* command, icon, name: an atom holds at most 255 characters */
-        for (i = 0; i < 3; i++)
-        {
-            const WCHAR *value = fields[i == 2 ? 1 : i + 2];
-            ATOM atom = *value && wcslen(value) <= 255 ? GlobalAddAtomW(value) : 0;
-            if (!atom && i != 1) break;  /* no command or name: none of them */
-            if (atom) SetPropW(c->hwnd, relaunch_properties[i], (HANDLE)(ULONG_PTR)atom);
-            c->relaunch[i] = atom;
-        }
-        if (i < 3)
-            for (i = 0; i < 3; i++)
-                if (c->relaunch[i])
-                {
-                    RemovePropW(c->hwnd, relaunch_properties[i]);
-                    GlobalDeleteAtom(c->relaunch[i]);
-                    c->relaunch[i] = 0;
-                }
-        break;
-    }
-    fclose(file);
-}
-
-
-static void client_app_id(struct client *c)
-{
-    WCHAR path[MAX_PATH + 32], id[160], name[101];
-    char line[256];
-    FILE *file;
-    ATOM atom;
-
-    if (!windows7_shell()) return;
-    swprintf(id, ARRAYSIZE(id), L"Win4Wine.Linux.Window.%lx", c->xid);
-    swprintf(path, MAX_PATH + 32, L"%ls\\classes.tsv", directory);
-    if ((file = _wfopen(path, L"rb")))
-    {
-        while (fgets(line, sizeof(line), file))
-        {
-            unsigned long xid;
-            int offset = 0;
-            if (sscanf(line, "%lx\t%n", &xid, &offset) != 1 || !offset || xid != c->xid) continue;
-            line[strcspn(line, "\r\n")] = 0;
-            if (line[offset] && MultiByteToWideChar(CP_UTF8, 0, line + offset, -1, name, ARRAYSIZE(name)))
-            {
-                swprintf(id, ARRAYSIZE(id), L"Win4Wine.Linux.%ls", name);
-                if (!c->relaunch[0]) client_relaunch(c, name);
-            }
-            break;
-        }
-        fclose(file);
-    }
-    if (!(atom = GlobalAddAtomW(id))) return;
-    if (atom == c->app_id) { GlobalDeleteAtom(atom); return; }
-    SetPropW(c->hwnd, app_id_property, (HANDLE)(ULONG_PTR)atom);
-    if (c->app_id) GlobalDeleteAtom(c->app_id);
-    c->app_id = atom;
-}
-
 /* The owners of owned Linux windows (dialogs), from owners.tsv: XID TAB OWNER. */
 static struct { unsigned long xid, owner; } owners[MAX_CLIENTS];
 static unsigned owner_count;
@@ -832,9 +717,6 @@ static void snapshot(void)
                     c->hwnd = CreateWindowExW(WS_EX_APPWINDOW, L"Win4WineProxy", title, WS_OVERLAPPEDWINDOW,
                         -32000, -32000, 1, 1, NULL, NULL, GetModuleHandleW(NULL), (void *)(uintptr_t)xid);
                 if (!c->hwnd) { c->xid = 0; continue; }
-                client_app_id(c);
-                /* before the taskbar sees the window: Windows 7's keeps the icon of an
-                 * application's first window for its button */
                 client_icon(c);
                 place_new_frame(c);
                 ShowWindow(c->hwnd, SW_SHOWNOACTIVATE);
@@ -866,8 +748,6 @@ static void snapshot(void)
             DestroyWindow(clients[i].hwnd);
             if (clients[i].icon) DestroyIcon(clients[i].icon);
             if (clients[i].small_icon) DestroyIcon(clients[i].small_icon);
-            if (clients[i].app_id) GlobalDeleteAtom(clients[i].app_id);
-            for (unsigned j = 0; j < 3; j++) if (clients[i].relaunch[j]) GlobalDeleteAtom(clients[i].relaunch[j]);
             memset(&clients[i], 0, sizeof(clients[i]));
         }
     /* The frames first: the WM shows a new client's frame once frames.tsv
@@ -901,15 +781,11 @@ static HWND previous_tray;
 static DWORD previous_pid;
 static BOOL attempted;
 
-/* shell_layout runs on a 200 ms timer only while a visible taskbar awaits it.
- * Windows 7's taskbar lays itself out, and its Start button is not a child of
- * the taskbar, so it never had the controls waited for: the timer ran for the
- * whole session, waking the proxy and wineserver five times a second. */
+/* shell_layout runs on a 200 ms timer only while a visible taskbar awaits it. */
 static BOOL shell_layout_pending(void)
 {
     HWND tray = FindWindowW(L"Shell_TrayWnd", NULL);
     DWORD pid = 0;
-    if (windows7_shell()) return FALSE;
     if (!tray || !IsWindowVisible(tray)) return FALSE;
     GetWindowThreadProcessId(tray, &pid);
     return !attempted || tray != previous_tray || pid != previous_pid;
@@ -983,109 +859,8 @@ static struct
     char state;
     HWND window, items[SWITCH_MAX];
     HFONT font;
-    BOOL reactos, win7;
 } switcher;
 
-/* Windows 7's Alt+Tab window without desktop composition (WIN4WINE_SWITCHER=win7),
- * as measured on a Windows 7 SP1 reference machine (Basic theme, 1024x768):
- * the visual style's AltTab class draws it. The window is the background part
- * (3), 360 px wide (seven 48 px cells and 12 px margins) and 45 + 56 px per row
- * high, centred in the work area; the cells start 45 px from the top, rows are
- * 56 px apart, a short first row is centred, and the selected cell has the
- * selection part (2) behind its 32 px icon (8 px in). The title is centred above
- * in part 3's font and text colour. The desktop is an item too, last in the
- * first row (after at most six windows), with imageres.dll's icon 110 and
- * shell32's name for the desktop; choosing it minimises the windows. */
-#define W7_CELL 48
-#define W7_ROW 56
-#define W7_MARGIN 12
-#define W7_TOP 45
-#define W7_TITLE_TOP 14
-#define W7_PART_BACKGROUND 3
-#define W7_PART_SELECTED 2
-#define W7_DESKTOP_INDEX 6
-#define SWITCH_DESKTOP ((HWND)(INT_PTR)-2)
-static struct
-{
-    HTHEME theme;
-    HICON desktop_icon;
-    WCHAR desktop_name[64];
-    BOOL loaded;
-} w7;
-
-static void w7_resources(void)
-{
-    /* Windows 7's own 64-bit DLLs, read for their resources only (the proxy is
-     * a 32-bit program; their MUI files hold the strings). A plain data file:
-     * Wine maps its builtin DLL of the same name for LOAD_LIBRARY_AS_IMAGE_RESOURCE. */
-    HMODULE module;
-    if (w7.loaded) return;
-    w7.loaded = TRUE;
-    if ((module = LoadLibraryExW(L"C:\\windows\\sysnative\\imageres.dll", NULL, LOAD_LIBRARY_AS_DATAFILE)))
-        w7.desktop_icon = LoadImageW(module, MAKEINTRESOURCEW(110), IMAGE_ICON, 32, 32, 0);
-    if ((module = LoadLibraryExW(L"C:\\windows\\sysnative\\shell32.dll", NULL, LOAD_LIBRARY_AS_DATAFILE)))
-        LoadStringW(module, 4162, w7.desktop_name, ARRAYSIZE(w7.desktop_name));
-    if (!w7.desktop_name[0]) wcscpy(w7.desktop_name, L"Desktop");
-}
-
-/* ReactOS's Alt+Tab window (win32ss/user/user32/controls/appswitch.c), for the
- * ReactOS shell (WIN4WINE_SWITCHER=reactos): 48 px cells in a bordered dialog
- * frame with an 8 px margin, the selected icon in a 2 px highlight frame, and
- * the title centred in DEFAULT_GUI_FONT on a pushed button face. */
-#define ROS_MARGIN 8
-#define ROS_ITEM 40
-#define ROS_SPACE 48
-#define ROS_STYLE (WS_POPUP | WS_BORDER)
-#define ROS_EXSTYLE (WS_EX_TOPMOST | WS_EX_DLGMODALFRAME | WS_EX_TOOLWINDOW)
-
-static HICON switch_icon(HWND hwnd);
-
-static int ros_text_height(void)
-{
-    TEXTMETRICW tm;
-    HDC dc = GetDC(NULL);
-    GetTextMetricsW(dc, &tm);
-    ReleaseDC(NULL, dc);
-    return tm.tmHeight + 8;
-}
-
-static void ros_switch_paint(HDC dc, const RECT *rect)
-{
-    int shown = switcher.count < SWITCH_COLUMNS ? switcher.count : SWITCH_COLUMNS, i;
-    int rows = switcher.count > SWITCH_COLUMNS ? (switcher.count + SWITCH_COLUMNS - 1) / SWITCH_COLUMNS : 1;
-    RECT text;
-    WCHAR title[512] = L"";
-    HGDIOBJ old_font;
-
-    FillRect(dc, rect, GetSysColorBrush(COLOR_3DFACE));
-    for (i = 0; i < switcher.count; ++i)
-    {
-        int x = ROS_MARGIN + ROS_SPACE * (i % SWITCH_COLUMNS) + 4, y = ROS_MARGIN + ROS_SPACE * (i / SWITCH_COLUMNS) + 4;
-        if (switcher.count < SWITCH_COLUMNS) x += (SWITCH_COLUMNS - shown) * ROS_SPACE / 2;
-        if (i == switcher.selected)
-        {
-            HPEN pen = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_HIGHLIGHT));
-            HGDIOBJ old_pen = SelectObject(dc, pen), old_brush = SelectObject(dc, GetStockObject(NULL_BRUSH));
-            Rectangle(dc, x, y, x + ROS_ITEM, y + ROS_ITEM);
-            Rectangle(dc, x + 1, y + 1, x + ROS_ITEM - 1, y + ROS_ITEM - 1);
-            SelectObject(dc, old_pen);
-            SelectObject(dc, old_brush);
-            DeleteObject(pen);
-        }
-        DrawIconEx(dc, x + 4, y + 4, switch_icon(switcher.items[i]), 32, 32, 0, NULL, DI_NORMAL);
-    }
-    SetRect(&text, ROS_MARGIN, ROS_MARGIN + rows * ROS_SPACE, rect->right - ROS_MARGIN, rect->bottom - ROS_MARGIN);
-    DrawFrameControl(dc, &text, DFC_BUTTON, DFCS_BUTTONPUSH | DFCS_PUSHED);
-    if (switcher.selected < switcher.count)
-        GetWindowTextW(switcher.items[switcher.selected], title, ARRAYSIZE(title));
-    old_font = SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
-    SetTextColor(dc, GetSysColor(COLOR_BTNTEXT));
-    SetBkMode(dc, TRANSPARENT);
-    DrawTextW(dc, title, -1, &text, DT_CENTER | DT_VCENTER | DT_END_ELLIPSIS | DT_SINGLELINE | DT_NOPREFIX);
-    SelectObject(dc, old_font);
-}
-
-/* The desktop and the taskbar, which own dialogs but are never in the list. */
 static BOOL switch_shell_window(HWND hwnd)
 {
     WCHAR name[64];
@@ -1173,18 +948,8 @@ static void switch_collect(void)
 {
     HWND foreground = GetForegroundWindow();
     int i;
-    RECT area;
     switcher.count = 0;
     switcher.limit = SWITCH_COLUMNS * SWITCH_ROWS;
-    if (switcher.win7)
-    {
-        /* As many rows as the work area holds, and a cell for the desktop. */
-        int rows;
-        SystemParametersInfoW(SPI_GETWORKAREA, 0, &area, 0);
-        rows = (area.bottom - area.top - W7_TOP) / W7_ROW;
-        rows = rows < 1 ? 1 : rows > SWITCH_MAX / SWITCH_COLUMNS ? SWITCH_MAX / SWITCH_COLUMNS : rows;
-        switcher.limit = rows * SWITCH_COLUMNS - 1;
-    }
     EnumWindows(switch_candidate, 0);
     /* Start from the active window, which is not always the topmost one: its
      * own entry, or that of an owner when it is a dialog without one. */
@@ -1195,13 +960,6 @@ static void switch_collect(void)
         memmove(switcher.items + 1, switcher.items, i * sizeof(HWND));
         switcher.items[0] = foreground;
         break;
-    }
-    if (switcher.win7)
-    {
-        i = switcher.count < W7_DESKTOP_INDEX ? switcher.count : W7_DESKTOP_INDEX;
-        memmove(switcher.items + i + 1, switcher.items + i, (switcher.count - i) * sizeof(HWND));
-        switcher.items[i] = SWITCH_DESKTOP;
-        switcher.count++;
     }
 }
 
@@ -1219,7 +977,6 @@ static HICON switch_icon(HWND hwnd)
 {
     HICON icon = NULL;
     unsigned depth;
-    if (hwnd == SWITCH_DESKTOP) return w7.desktop_icon ? w7.desktop_icon : default_icon;
     /* A dialog without an icon of its own shows its owner's. */
     for (depth = 0; !icon && hwnd && depth < MAX_CLIENTS; ++depth, hwnd = GetWindow(hwnd, GW_OWNER))
         icon = window_icon(hwnd);
@@ -1229,48 +986,6 @@ static HICON switch_icon(HWND hwnd)
 static int switch_rows(void)
 {
     return switcher.count > SWITCH_COLUMNS ? (switcher.count + SWITCH_COLUMNS - 1) / SWITCH_COLUMNS : 1;
-}
-
-static void w7_switch_paint(HDC dc, const RECT *rect)
-{
-    int shown = switcher.count < SWITCH_COLUMNS ? switcher.count : SWITCH_COLUMNS, i;
-    int left = W7_MARGIN + (SWITCH_COLUMNS - shown) * W7_CELL / 2;
-    WCHAR title[512] = L"";
-    RECT text;
-    LOGFONTW lf;
-    COLORREF color = 0;
-    HFONT font = NULL;
-    HGDIOBJ old_font = NULL;
-
-    if (!w7.theme) w7.theme = OpenThemeData(switcher.window, L"AltTab");
-    if (w7.theme) DrawThemeBackground(w7.theme, dc, W7_PART_BACKGROUND, 0, rect, NULL);
-    else FillRect(dc, rect, GetSysColorBrush(COLOR_3DFACE));
-    for (i = 0; i < switcher.count; ++i)
-    {
-        int x = left + i % SWITCH_COLUMNS * W7_CELL, y = W7_TOP + i / SWITCH_COLUMNS * W7_ROW;
-        if (i == switcher.selected)
-        {
-            RECT cell = {x, y, x + W7_CELL, y + W7_CELL};
-            if (w7.theme) DrawThemeBackground(w7.theme, dc, W7_PART_SELECTED, 0, &cell, NULL);
-            else FrameRect(dc, &cell, GetSysColorBrush(COLOR_HIGHLIGHT));
-        }
-        DrawIconEx(dc, x + 8, y + 8, switch_icon(switcher.items[i]), 32, 32, 0, NULL, DI_NORMAL);
-    }
-    if (switcher.selected < switcher.count)
-    {
-        if (switcher.items[switcher.selected] == SWITCH_DESKTOP) lstrcpynW(title, w7.desktop_name, ARRAYSIZE(title));
-        else GetWindowTextW(switcher.items[switcher.selected], title, ARRAYSIZE(title));
-    }
-    if (w7.theme && SUCCEEDED(GetThemeFont(w7.theme, dc, W7_PART_BACKGROUND, 0, TMT_FONT, &lf)))
-        font = CreateFontIndirectW(&lf);
-    if (w7.theme) GetThemeColor(w7.theme, W7_PART_BACKGROUND, 0, TMT_TEXTCOLOR, &color);
-    old_font = SelectObject(dc, font ? font : GetStockObject(DEFAULT_GUI_FONT));
-    SetTextColor(dc, color);
-    SetBkMode(dc, TRANSPARENT);
-    SetRect(&text, W7_MARGIN, W7_TITLE_TOP, rect->right - W7_MARGIN, W7_TOP);
-    DrawTextW(dc, title, -1, &text, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
-    SelectObject(dc, old_font);
-    if (font) DeleteObject(font);
 }
 
 static void switch_paint(HWND hwnd)
@@ -1284,18 +999,6 @@ static void switch_paint(HWND hwnd)
     HGDIOBJ old_font;
 
     GetClientRect(hwnd, &rect);
-    if (switcher.reactos)
-    {
-        ros_switch_paint(dc, &rect);
-        EndPaint(hwnd, &ps);
-        return;
-    }
-    if (switcher.win7)
-    {
-        w7_switch_paint(dc, &rect);
-        EndPaint(hwnd, &ps);
-        return;
-    }
     FillRect(dc, &rect, GetSysColorBrush(COLOR_3DFACE));
     DrawEdge(dc, &rect, EDGE_RAISED, BF_RECT);
     for (i = 0; i < switcher.count; ++i)
@@ -1343,32 +1046,6 @@ static void switch_show(void)
         metrics.lfCaptionFont.lfWeight = FW_BOLD;
         switcher.font = CreateFontIndirectW(&metrics.lfCaptionFont);
     }
-    if (switcher.win7)
-    {
-        width = 2 * W7_MARGIN + SWITCH_COLUMNS * W7_CELL;
-        height = W7_TOP + W7_ROW * switch_rows();
-        w7_resources();
-    }
-    else if (switcher.reactos)
-    {
-        /* Centred on the screen, as ReactOS does. */
-        int rows = switch_rows();
-        RECT frame;
-        SetRect(&frame, 0, 0, SWITCH_COLUMNS * ROS_SPACE + 2 * ROS_MARGIN,
-                rows * ROS_SPACE + 2 * ROS_MARGIN + ros_text_height());
-        OffsetRect(&frame, (GetSystemMetrics(SM_CXSCREEN) - frame.right) / 2,
-                   (GetSystemMetrics(SM_CYSCREEN) - frame.bottom) / 2);
-        AdjustWindowRectEx(&frame, ROS_STYLE, FALSE, ROS_EXSTYLE);
-        if (!switcher.window)
-            switcher.window = CreateWindowExW(ROS_EXSTYLE, L"Win4WineSwitch", L"", ROS_STYLE,
-                                              0, 0, 0, 0, NULL, NULL, GetModuleHandleW(NULL), NULL);
-        if (!switcher.window) return;
-        SetWindowPos(switcher.window, HWND_TOPMOST, frame.left, frame.top, frame.right - frame.left,
-                     frame.bottom - frame.top, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-        InvalidateRect(switcher.window, NULL, FALSE);
-        UpdateWindow(switcher.window);
-        return;
-    }
     if (!switcher.window)
         switcher.window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, L"Win4WineSwitch", L"", WS_POPUP,
                                           0, 0, width, height, NULL, NULL, GetModuleHandleW(NULL), NULL);
@@ -1388,14 +1065,6 @@ static void switch_commit(void)
     unsigned i;
     if (switcher.window) ShowWindow(switcher.window, SW_HIDE);
     if (!target) return;
-    if (target == SWITCH_DESKTOP)
-    {
-        int j;
-        for (j = 0; j < switcher.count; ++j)
-            if (switcher.items[j] != SWITCH_DESKTOP && !IsIconic(switcher.items[j]))
-                ShowWindowAsync(switcher.items[j], SW_MINIMIZE);
-        return;
-    }
     if (!IsIconic(target) && (popup = switch_popup(target))) target = popup;
     /* The WM activates the chosen window as for a click; Wine gives a
      * managed window X focus only through the WM. Linux windows are named by
@@ -2212,12 +1881,6 @@ int wmain(int argc, WCHAR **argv)
     UINT_PTR layout_timer = 0;
     if (argc != 2 || wcslen(argv[1]) >= MAX_PATH) return 2;
     wcscpy(directory, argv[1]);
-    {
-        WCHAR style[16];
-        DWORD len = GetEnvironmentVariableW(L"WIN4WINE_SWITCHER", style, ARRAYSIZE(style));
-        switcher.reactos = len && len < ARRAYSIZE(style) && !wcscmp(style, L"reactos");
-        switcher.win7 = len && len < ARRAYSIZE(style) && !wcscmp(style, L"win7");
-    }
     shell_message = RegisterWindowMessageW(L"SHELLHOOK");
     default_icon = LoadIconW(NULL, IDI_APPLICATION);
     cls.hIcon = default_icon;

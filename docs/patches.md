@@ -27,6 +27,19 @@ Changes for the XP shell only take effect in processes that have the environment
   is gathered in one place, `win4wine_shell()` in 0019's header.
   0122 then skips 0079's and 0080's replacements meant for XP.
 
+## Patches for the removed shells
+
+LunaticOS removed upstream's ReactOS and Windows 7 shells, but their patches are still in the series:
+
+- 0093, 0090 and 0143 (ReactOS) and 0120–0137 (Windows 7) only act with `WIN4WINE_SHELL=reactos` or `win7`, or with
+  `WIN4WINE_FOLDER_SHELL`, and nothing sets those any more. They are dormant.
+- 0094–0119 apply without them (APIs, Wine fixes and version 4 visual styles that the Windows 7 shell needed). They are harmless for
+  XP but no longer needed.
+- XP's own patches build on some of them: 0139, 0141 and 0142 reuse code from 0130, 0132 and 0133.
+
+They go when the series is next rebuilt; that needs the XP patches that build on them rewritten, a full Wine build and a new Wine on
+the EeePC.
+
 ## The list
 
 Patches whose "opt-in" column says "yes" only take effect with the environment variables above.

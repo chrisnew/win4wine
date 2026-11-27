@@ -154,15 +154,6 @@ def check_wine(base, wine, system, marker):
         links = sorted(str(p.relative_to(programs)) for p in programs.rglob('*.lnk'))
         assert len(links) == 7 and 'アクセサリ/エディター (Linux).lnk' in links, links
         assert (prefix / linux_apps.STATE / 'icons/editor.desktop.ico').is_file()
-        # The applications of Linux windows for the proxy (Windows 7's jump lists and pinning)
-        rows = {line.split('\t')[0]: line.split('\t')[1:] for line in
-                (prefix / linux_apps.STATE / 'relaunch.tsv').read_text(encoding='utf-8').splitlines()}
-        launch = 'C:\\xp\\linux-apps\\linux-launch.exe'
-        assert rows['editorwindow'] == ['エディター', f'{launch} true',
-                                        'C:\\xp\\linux-apps\\icons\\editor.desktop.ico,0'], rows
-        assert rows['editor'] == rows['editorwindow'], rows
-        assert rows['browser'] == ['Browser', f'{launch} true --name=Browser', ''], rows
-        assert 'hidden' not in rows and 'missing' not in rows, rows
         assert menu.sync() == (0, 0)
         # A shortcut opened through the Windows shell runs its Linux command.
         subprocess.run([str(wine), 'start', 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\'

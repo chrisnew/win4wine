@@ -41,20 +41,12 @@ own management processes and the recovery path would depend on them ("Override �
 - The prefix is 64-bit (WoW64). XP's DLLs go in `syswow64`, and the XP shell's registrations are written on the 32-bit side only
   ("64bit（WoW64）対応", 64-bit support).
 
-## Other shells (ReactOS, Windows 7)
+## Only XP
 
-Other Windows-like shells can run on the same Wine, bridge and supervisor as the XP shell. Each shell gets its own prefix, and
-that shell's DLLs are used only in that shell's processes (the same override isolation as XP).
-
-- **ReactOS** ([reactos.md](reactos.md)): free software, so it is downloaded from the official release. Registrations are written
-  by the ReactOS DLLs' own `DllRegisterServer`.
-- **Windows 7** ([windows7.md](windows7.md), experimental): the 64-bit shell is used (the prefix is WoW64, so it can stay 64-bit).
-  There are too many registrations to check and write by hand one by one as for XP (DirectUI, the property system, known folders
-  and more), so what **the component manifests of the files used** (WinSxS) register is installed. The registry of an installed
-  Windows is not copied. Wine behaviour just for Windows 7 only takes effect with `WIN4WINE_SHELL=win7` and does not affect the
-  XP and ReactOS shells. The exception: so that apps' file dialogs take Windows 7's form, the DLLs the dialog loads (shell32 and
-  9 others) are used by apps too. Wine's own programs keep Wine's DLLs, and apps that do not work well can be switched back to
-  Wine's DLLs ("Which programs use Windows 7's DLLs" in [windows7.md](windows7.md)).
+Upstream also runs ReactOS's and Windows 7's shells on the same Wine, bridge and supervisor, each in its own prefix. LunaticOS
+aims at XP on old netbooks, so it removed them (their scripts, greeters, prefixes and the proxy's Alt+Tab looks for them).
+Their Wine patches stay in the series for now: they only act with `WIN4WINE_SHELL=reactos` or `win7`, which nothing sets, and XP's
+own patches (0139, 0141, 0142) build on the Windows 7 ones. They go when the patch series is next rebuilt.
 
 ## Integrating Linux apps (the bridge)
 

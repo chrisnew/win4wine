@@ -28,7 +28,7 @@ scripts/setup.sh --media /path/to/WindowsXPSP3.iso --greeter
 
 | Option | Meaning |
 |---|---|
-| `--media PATH` | the XP ISO or Windows directory (required); with `--shell win7`, a Windows 7 SP1 x64 ISO |
+| `--media PATH` | the XP ISO or Windows directory (required) |
 | `--greeter` | make the login screen XP's Welcome screen (LightDM becomes the display manager) |
 | `--no-greeter` | keep the current login screen (default); only XP's cursors are installed |
 | `--theme luna\|classic` | `luna` (default: XP's "Windows XP" theme, the XP-style Start menu, the Bliss wallpaper) or `classic` (XP's "Windows Classic" theme, the classic Start menu, no wallpaper) |
@@ -37,9 +37,6 @@ scripts/setup.sh --media /path/to/WindowsXPSP3.iso --greeter
 | `--wine-install DIR` | use a Wine built on another Debian 13 machine (a copy of its `.local/wine-install`) instead of building it here |
 | `--jobs N` | parallel jobs for the Wine build (default: the number of CPUs) |
 | `--no-shadowfb` | on a virtual machine, leave the way X draws as it is (step 8 of "2. What the script does") |
-| `--shell reactos` | set up ReactOS's shell instead of XP's (no `--media`; see "The ReactOS shell" below) |
-| `--shell win7` | set up Windows 7's shell (experimental); `--media` is a Windows 7 ISO (see "The Windows 7 shell" below) |
-| `--lang ja\|en` | the ReactOS shell's language (default: `ja` if the current locale is Japanese, else `en`) |
 
 If it fails, just run it again: finished steps are skipped. Everything it builds stays in `.local/` of this checkout.
 
@@ -89,40 +86,6 @@ scripts/setup.sh --media /path/to/English-XP.iso --greeter
 
 Once it works, you can delete the `-ja` folders.
 
-## The ReactOS shell
-
-Without an XP ISO, set up ReactOS's shell (classic look):
-
-```sh
-scripts/setup.sh --shell reactos --lang en
-```
-
-- It downloads the ReactOS 0.4.16 release (about 200 MB) from GitHub, checks its SHA-256 and extracts only the shell's files into
-  `.local/assets-reactos`; the zip stays in `.local/dl`.
-- The prefix is `.local/prefix-reactos`, the settings `~/.config/win4wine/reactos-session.json` and the session
-  "**ReactOS Shell (Wine, X11)**". The XP shell's settings and session are left alone, so both can be set up (Wine and the bridge are shared).
-- With `--greeter`, the login screen becomes ReactOS's logon screen.
-- `--theme` is `classic` (the default, a Windows 2000-like classic look) or one of ReactOS's themes, `lautus`, `lunar` or
-  `mizu`; run setup.sh again with `--theme` to change it later.
-- With `--wayland`, the Wayland session "ReactOS Shell (Wine, Wayland)" is installed too (even more experimental than X11).
-- Details: [docs/reactos.md](docs/reactos.md).
-
-## The Windows 7 shell (experimental)
-
-With a Windows 7 SP1 x64 ISO, Windows 7's shell (the Windows 7 Basic look) can be set up:
-
-```sh
-scripts/setup.sh --shell win7 --media /path/to/Windows7SP1x64.iso
-```
-
-- Only the shell's files and the MUI files of the ISO's language are extracted from its `sources/install.wim` into
-  `.local/assets-win7` (the Professional edition's image, else the last one). The ISO decides the language.
-- The prefix is `.local/prefix-win7`, the settings `~/.config/win4wine/win7-session.json` and the session
-  "**Windows 7 Shell (Wine, X11)**". It can be set up beside the XP and ReactOS shells (they share Wine and the bridge).
-- Windows 7's Aero cursors are installed; with `--greeter` the login screen is Windows 7's logon screen too.
-- `--theme` and `--wayland` are not available for it yet; `--dpi` is.
-- Tested with Japanese Windows 7 Professional SP1. English was tried with that media's strings (MUI) replaced by those of the English language pack (KB2483139); English installation media itself has not been tried yet. The language follows the media, and English Windows 7 is set up with the English locale (`en_US.UTF-8`). Details: [docs/windows7.md](docs/windows7.md).
-
 ## 3. Log in
 
 Restart the display manager (or reboot).
@@ -138,7 +101,7 @@ Restart the display manager (or reboot).
 | start a Linux application | Start → All Programs (names end in "(Linux)") |
 | install a Windows application | `wine setup.exe` in a terminal; the session's `PATH` starts with this Wine |
 | mount a disc image | double-click the `.iso` file: it becomes a CD drive in My Computer; its **Eject** takes it away |
-| start a Windows application from outside the session (ssh, another desktop) | `win4wine-wine setup.exe` (`~/.local/bin`): it runs with the session's prefix, Wine and settings, and looks as in the session. With more than one shell set up, choose with `--shell xp`, `reactos` or `win7`. Plain `wine` uses `~/.wine` and Wine's own look |
+| start a Windows application from outside the session (ssh, another desktop) | `win4wine-wine setup.exe` (`~/.local/bin`): it runs with the session's prefix, Wine and settings, and looks as in the session. Plain `wine` uses `~/.wine` and Wine's own look |
 | open the Start menu | the Windows key, Ctrl+Esc |
 | Run / Explorer | Win+R / Win+E |
 | log off or shut down | Start → Log Off / Turn Off Computer |
@@ -153,7 +116,7 @@ Restart the display manager (or reboot).
 | `linux_font` | `MS UI Gothic` (`Tahoma` for English XP) | font of Linux applications; `null` leaves it alone |
 | `linux_menu` | `true` | list Linux applications in the Start menu |
 | `network_places` | `true` | show the local network's web pages, printers, SSH servers and computers in My Network Places (XP shell; mDNS needs `avahi-daemon`). `false` turns it off; `{"show": ["web", "printer"], "limit": 10}` shows only some kinds (`web`, `printer`, `ssh`, `computer`) or fewer entries (30 by default), `"grace"` is the seconds a device that left stays (60) |
-| `welcome_screen` | `true` | show XP's screens after login and while logging off (Windows 7's "Welcome", "Logging off" and so on for the Windows 7 shell) |
+| `welcome_screen` | `true` | show XP's screens after login and while logging off |
 | `screen_saver` | `true` | start the screen saver chosen in XP's Display Properties after its wait time (XP shell, X11) |
 | `lock_screen` | `true` | lock the screen on Win+L, `LockWorkStation` and "On resume, password protect", behind XP's Welcome screen (XP shell, X11; needs `/etc/pam.d/win4wine-lock`, which `greeter/install.sh` and so `setup.sh --greeter` install) |
 | `lock_on_suspend` | `true` | with the lock screen: lock before the machine sleeps and when logind asks (`loginctl lock-session`) |
@@ -161,15 +124,13 @@ Restart the display manager (or reboot).
 | `cursor_theme` | `win4wine-xp` | cursor theme; `null` for none |
 | `shutdown_command`, `reboot_command` | `systemctl poweroff` / `reboot` | commands run by Turn Off Computer |
 | `outputs` | (none) | the Wayland session's settings per output, e.g. `{"HDMI-A-1": {"scale": 1.5}, "DP-1": {"scale": 1, "position": "2560,0"}}` (`mode` too; `wlr-randr` lists the names) |
-| `shell` | `xp` | `reactos` for ReactOS's shell (setup.sh writes it into `reactos-session.json`), `win7` for Windows 7's (`win7-session.json`) |
 | `primary` | the leftmost output | the output the Wayland session makes Win32's primary monitor; XP's desktop and taskbar are on it |
 | `composite` | `true` | the X server keeps the contents of Wine's windows (Composite's automatic redirection): moving or closing a window no longer shows the Wine windows below black until they repaint. `false` turns it off |
 | `window_snap` | `false` | `true` lets windows snap to half of the screen (like Windows 7's Aero Snap; XP has no such thing): Win+Left/Right for the left or right half, Win+Up to maximize, Win+Down to restore or minimize; dragging a title bar to the left or right edge of the screen snaps it to that half, to the top edge maximizes it; dragging a maximized window's title bar restores it. Takes effect at the next login |
 
 ## Changing the look and the text size
 
-Display Properties (right-click the desktop → Properties) do not open in the XP shell or the ReactOS shell (their parts are
-not installed: XP shows an error, ReactOS nothing). The theme (the look), the DPI (the size of text and screen elements) and the font smoothing (ClearType) are changed with `setup.sh`, while the
+The theme (the look), the DPI (the size of text and screen elements) and the font smoothing (ClearType) are changed with `setup.sh`, while the
 session's Wine is not running: log off first.
 
 1. Start → Log Off, back to the login screen.
@@ -181,7 +142,6 @@ session's Wine is not running: log off first.
    scripts/setup.sh --media /path/to/WindowsXPSP3.iso --theme classic   # XP's "Windows Classic"; --theme luna goes back
    scripts/setup.sh --media /path/to/WindowsXPSP3.iso --dpi 120          # text size; 96 is normal (XP's "Normal size")
    scripts/setup.sh --media /path/to/WindowsXPSP3.iso --font-smoothing cleartype   # ClearType; --font-smoothing standard goes back
-   scripts/setup.sh --shell reactos --theme lautus                      # the ReactOS shell: classic, lautus, lunar or mizu
    ```
 
 4. Log out of the console with `exit`, press Ctrl+Alt+F7 for the login screen and log in again.
@@ -212,9 +172,6 @@ crisp on every output; set the DPI to the scale of the output you mostly use (14
 greeter/install.sh --remove                     # stop using the Welcome screen (back to LightDM's previous greeter)
 sudo rm /usr/share/xsessions/xp-shell.desktop /usr/local/bin/xp-shell-session   # unregister the session
 sudo rm /usr/share/wayland-sessions/xp-shell-wayland.desktop /usr/local/bin/xp-shell-wayland-session   # and the Wayland one
-sudo rm /usr/share/xsessions/reactos-shell.desktop /usr/local/bin/reactos-shell-session   # and the ReactOS shell's
-sudo rm /usr/share/wayland-sessions/reactos-shell-wayland.desktop /usr/local/bin/reactos-shell-wayland-session
-sudo rm /usr/share/xsessions/windows7-shell.desktop /usr/local/bin/windows7-shell-session   # and the Windows 7 shell's
 python3 session/linux_apps.py .local/prefix --wine .local/wine-install/bin/wine --remove   # remove the Start menu entries it made
 sudo rm -f /etc/X11/xorg.conf.d/20-win4wine-shadowfb.conf   # remove the virtual machine's X setting (from the next start of X)
 ```

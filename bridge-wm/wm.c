@@ -152,7 +152,7 @@ static int client_count, client_capacity;
 static xcb_window_t active;
 static int area[4];
 static int area_known;
-static char *previous_snapshot, *previous_geometry, *previous_classes, *previous_owners;
+static char *previous_snapshot, *previous_geometry, *previous_owners;
 
 /* self.frames: frame (proxy) window -> native client, in insertion order */
 static struct { xcb_window_t frame, native; } *frames;
@@ -160,8 +160,6 @@ static int frame_count, frame_capacity;
 
 static xcb_window_t *unmanaged;
 static int unmanaged_count, unmanaged_capacity;
-static xcb_window_t *overlays; /* override-redirect Windows 7 shell windows kept above the taskbar and Start menu */
-static int overlay_count, overlay_capacity;
 /* The lock screen's override-redirect window (greeter/xp-lock.py), 0 without one */
 static xcb_window_t lock_window;
 static xcb_window_t lock_top; /* the window keep_lock put on top: it, or a screen saver */
@@ -769,8 +767,7 @@ static void refresh(struct client *c, xcb_atom_t atom)
     }
     if (!atom || atom == XCB_ATOM_WM_CLASS)
     {
-        /* The application's class: Windows 7's taskbar groups a Linux
-         * application's windows by it (classes.tsv, proxy). */
+        /* The application's class: a screen saver is known by it. */
         char *cls = NULL;
         r = get_property(c->id, XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, 1 << 16);
         if (r && r->type == XCB_ATOM_STRING && r->format == 8)
@@ -1043,16 +1040,8 @@ static void keep_unmanaged_above(const xcb_window_t *before, int before_count, c
         }
     if (lowest < 0) return;
     for (int i = lowest + 1; i < before_count; i++)
-        if (in_list(unmanaged, unmanaged_count, before[i]) && !in_list(overlays, overlay_count, before[i]))
+        if (in_list(unmanaged, unmanaged_count, before[i]))
             configure_stack(before[i], XCB_STACK_MODE_ABOVE);
-}
-
-/* Windows 7's Start button over the taskbar and the user picture over the
- * Start menu are unmanaged (override-redirect) windows of their own;
- * raising the taskbar or the menu must not cover them. */
-static void raise_overlays(void)
-{
-    for (int i = 0; i < overlay_count; i++) configure_stack(overlays[i], XCB_STACK_MODE_ABOVE);
 }
 
 /* Whether client C is a screen saver's window: its program is a .scr. */
@@ -1210,7 +1199,6 @@ static void focus(xcb_window_t w)
         configure_stack(w, XCB_STACK_MODE_ABOVE);
         keep_unmanaged_above(before, before_count, &w, 1);
         free(before);
-        raise_overlays();
         keep_lock();
         if (has_atom(w, A.WM_PROTOCOLS, A.WM_TAKE_FOCUS)) take_focus_message(w, XCB_CURRENT_TIME);
         xcb_set_input_focus(conn, REVERT_TO_POINTER_ROOT, w, XCB_CURRENT_TIME);
@@ -1427,7 +1415,6 @@ static void restack(void)
             if (!in_list(raised, raised_count, clients[i]->id)) raised[raised_count++] = clients[i]->id;
         }
     keep_unmanaged_above(before, before_count, raised, raised_count);
-    raise_overlays();
     keep_lock();
     free(before);
     free(raised);
@@ -2330,7 +2317,7 @@ static void update_icons(struct client *c)
 
 static void snapshot(void)
 {
-    struct text lines = {0}, classes = {0}, owners = {0};
+    struct text lines = {0}, owners = {0};
     xcb_window_t focused = input_focus(), focused_id;
     /* An XP menu can take focus without changing the EWMH active client.
      * Do not keep stealing Win32 foreground from that menu back to a proxy. */
@@ -2338,7 +2325,6 @@ static void snapshot(void)
         focused = parent_of(focused);
     focused_id = focused > XCB_INPUT_FOCUS_POINTER_ROOT ? focused : 0;
     text_add(&lines, "", 0);
-    text_add(&classes, "", 0);
     text_add(&owners, "", 0);
     for (int i = 0; i < client_count; i++)
     {
@@ -2353,12 +2339,6 @@ static void snapshot(void)
             c->icon_dirty = 0;
         }
         text_printf(&lines, "%x\t%d\t%d\t%s\n", c->id, c->hidden, c->id == active && c->id == focused_id, c->title);
-        text_printf(&classes, "%x\t%s\n", c->id, c->wm_class);
-    }
-    if (!same_text(classes.data, previous_classes))
-    {
-        write_ipc("classes.tmp", "classes.tsv", classes.data, classes.length);
-        replace_text(&previous_classes, classes.data);
     }
     /* Before windows.tsv, which the proxy reads it with. */
     if (!same_text(owners.data, previous_owners))
@@ -2372,7 +2352,6 @@ static void snapshot(void)
         replace_text(&previous_snapshot, lines.data);
     }
     free(lines.data);
-    free(classes.data);
     free(owners.data);
 }
 
@@ -2852,31 +2831,6 @@ static void handle_event(xcb_generic_event_t *ev)
             free(r);
         }
         keep_lock();
-        if (e->override_redirect && !in_list(overlays, overlay_count, e->window))
-        {
-            xcb_get_property_reply_t *r =
-                get_property(e->window, A._WIN4WINE_CLASS, XCB_GET_PROPERTY_TYPE_ANY, 1 << 16);
-            char cls[64] = "";
-            if (r && r->type != XCB_ATOM_NONE && r->format == 8)
-            {
-                int length = xcb_get_property_value_length(r), n = 0;
-                const char *value = xcb_get_property_value(r);
-                while (length && !value[length - 1]) length--;
-                int start = 0;
-                while (start < length && !value[start]) start++;
-                for (int i = start; i < length && n < (int)sizeof(cls) - 1; i++)
-                    cls[n++] = value[i] >= 'A' && value[i] <= 'Z' ? value[i] + 32 : value[i];
-                cls[n] = 0;
-                if (length - start >= (int)sizeof(cls)) cls[0] = 0;
-            }
-            free(r);
-            if (!strcmp(cls, "win4winestartbutton") || !strcmp(cls, "desktop user picture"))
-            {
-                GROW(overlays, overlay_count, overlay_capacity);
-                overlays[overlay_count++] = e->window;
-                restack();
-            }
-        }
         c = find_client(e->window);
         if (c && (c->kind == KIND_POPUP || (c->kind == KIND_NORMAL && active == e->window)))
         {
@@ -2925,7 +2879,6 @@ static void handle_event(xcb_generic_event_t *ev)
     case XCB_DESTROY_NOTIFY:
     {
         xcb_destroy_notify_event_t *e = (void *)ev;
-        list_remove(overlays, &overlay_count, e->window);
         if (lock_window && e->window == lock_window) lock_gone();
         unmanage(e->window);
         break;

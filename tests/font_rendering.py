@@ -92,7 +92,7 @@ class FontRendering(unittest.TestCase):
     def test_font_smoothing_xp_only(self):
         with tempfile.TemporaryDirectory() as temporary:
             prefix = Path(temporary)
-            (prefix / 'reactos-shell.json').write_text('{}')
+            (prefix / 'other-shell.json').write_text('{}')
             with patch.dict('os.environ', {'WINEPREFIX': str(prefix)}), \
                  patch.object(sys, 'argv', ['display.py', '--font-smoothing', 'cleartype']), \
                  self.assertRaises(SystemExit):

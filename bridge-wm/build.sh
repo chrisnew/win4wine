@@ -50,9 +50,6 @@ compile "$root/.local/bridge/inspect.exe" "$root/bridge-wm/inspect.c" -luser32 -
 compile "$root/.local/bridge/menu-settings.exe" "$root/prefix/menu-settings.c" -lshell32
 compile "$root/.local/bridge/theme-settings.exe" "$root/prefix/theme-settings.c" -luxtheme
 compile "$root/.local/bridge/wallpaper-convert.exe" -municode "$root/prefix/wallpaper-convert.c" -lole32 -luuid -lwindowscodecs
-# Windows 7's shell prefix (prefix/win7.py).
-compile "$root/.local/bridge/theme-fonts.exe" "$root/prefix/theme-fonts.c" -luxtheme
-compile "$root/.local/bridge/user-profile.exe" -municode "$root/prefix/user-profile.c" -lole32 -lshell32 -luuid
 # Linux applications in the XP Start menu (session/linux_apps.py).
 # Its manifest asks for common controls 6: themed buttons in its message boxes.
 i686-w64-mingw32-windres -I "$root/session" "$root/session/linux-launch.rc" -O coff -o "$root/.local/bridge/linux-launch.res"

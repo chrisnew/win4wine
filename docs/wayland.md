@@ -1,7 +1,6 @@
 # The Wayland session
 
-This describes the second session on the login screen, "XP Shell (Wine, Wayland)" ("ReactOS Shell (Wine, Wayland)" for the ReactOS
-shell, "Windows 7 Shell (Wine, Wayland)" for the Windows 7 shell). Instead of the X11 window manager (bridge-wm), a patched labwc (a
+This describes the second session on the login screen, "XP Shell (Wine, Wayland)". Instead of the X11 window manager (bridge-wm), a patched labwc (a
 wlroots compositor) takes the same role. The X11 session stays as it is and behaves the same.
 
 **This is even more experimental than the X11 session.** It is new, it has been checked less than the X11 session, and it has the limits
@@ -20,7 +19,7 @@ XP has no per-monitor DPI, so the XP shell has a single DPI. Match it to the sca
 ## Usage
 
 - `scripts/setup.sh --media ISO --wayland` builds labwc and wlroots (`wayland/build.sh`, `.local/labwc-install`) and registers the session
-  (`session/install.sh --wayland`). Together with `--shell reactos` or `--shell win7`, it registers that shell's Wayland session.
+  (`session/install.sh --wayland`).
   Together with `--greeter`, the logon screen's default session becomes the Wayland one too.
 - The outputs' scale and position are set by `"outputs"` in `session.json`, and Win32's primary monitor by `"primary"` (an output name).
   Example: `"outputs": {"HDMI-A-1": {"scale": 1.5}, "DP-1": {"scale": 1, "position": "2560,0"}}, "primary": "HDMI-A-1"`.
@@ -38,7 +37,7 @@ XP has no per-monitor DPI, so the XP shell has a single DPI. Match it to the sca
 | `wayland/patches/labwc/0001` | `xwayland-scale.c` (running Xwayland in output pixels) and `win4wine.c` (bridge-wm's role) |
 | `wayland/labwc/` | labwc's configuration (Alt+F4 as the only key, an empty menu, frames in colours close to XP's Luna) |
 | `wayland/session.sh` | Chooses the IPC location (`WIN4WINE_IPC`), starts labwc and runs the supervisor inside it. When the supervisor exits, the session ends |
-| `session/supervisor.py` | Inside labwc it does not start bridge-wm; it sets up the outputs with `wlr-randr` and writes the primary monitor's name to `primary` in the IPC directory. Wine is given `WIN4WINE_COMPOSITED` ("The Windows 7 shell" below) |
+| `session/supervisor.py` | Inside labwc it does not start bridge-wm; it sets up the outputs with `wlr-randr` and writes the primary monitor's name to `primary` in the IPC directory. Wine is given `WIN4WINE_COMPOSITED` (Wine's 0123 leaves translucent windows to the compositor) |
 | Wine 0033, 0088 | Under Xwayland the screen cannot be read from the root window, so XP's shadows are drawn as translucent black windows (0033), and the grey log off screen is built from each window's contents (0088) |
 
 ## Running Xwayland in output pixels (`xwayland-scale.c`)
@@ -71,7 +70,7 @@ Only active when `WIN4WINE_IPC` is set.
   When a Wine window has the keyboard, the X focus is also given to it directly (Wine ignores WM_TAKE_FOCUS to windows that are not in the
   foreground). If wlroots taking the X focus away over its own X connection arrives late and leaves no window with the X focus, it is given
   again. While a Wine window has the keyboard, an unmanaged (override-redirect) window shown by the same Wine process does not take the
-  keyboard; Wine moves the X focus within it itself (ReactOS's Start menu works through the keys of its owner, the taskbar).
+  keyboard; Wine moves the X focus within it itself.
   When a Linux window is active, its frame is written into `_NET_ACTIVE_WINDOW` so the XP frame gets the active colour. The X focus is not
   moved (if it were, fcitx5 would mistake the frame for the input target through XIM).
 - Xwayland is not shown a relative pointer. Xwayland sends buttons from that device, and its position does not move with absolute motion
@@ -101,22 +100,14 @@ Only active when `WIN4WINE_IPC` is set.
   foreground, notifying the shell's thread. That notification, arriving while the shell showed a jump list or the Start menu, re-activated
   the taskbar and made what had just been shown inactive (the jump list stayed black, XP's Start menu closed at once). With Wine's 0089 the
   notification is ignored if, after it was sent, that thread brought one of its own windows to the foreground.
-- A Linux window's app (Wayland's app_id, X11's `WM_CLASS`) is written into `classes.tsv`, as by the X11 WM. Windows 7's taskbar uses it
-  to group an app's windows into one button and to title the jump list with the app's name (they used to be separate buttons per window).
+- A Linux window's app (Wayland's app_id, X11's `WM_CLASS`) is written into `classes.tsv`. Upstream's Windows 7 taskbar grouped
+  windows by it; LunaticOS no longer reads it (the X11 WM no longer writes it), and it goes with the next change to the labwc patch.
 - Shapes are remembered only for shown windows (shape changes of hidden or destroyed windows are not tracked; they are read again when
   shown).
 - A newly shown X window is revealed once the client has drawn it (at the next commit after mapping, or after 100 ms). The first contents
   Xwayland sends on mapping are a pure black background, so Windows 7's folder windows and Start menu showed black for one or two frames
   when opening. Frame-done is still sent while waiting, so Xwayland can send the next contents. Sometimes the next commit comes before
   Wine has drawn, and the Start menu still occasionally shows black for one frame.
-
-## The Windows 7 shell
-
-- Windows 7's Start button and the user picture in its Start menu are translucent windows. The X11 session has no compositing, so Wine
-  blends them with the taskbar's or Start menu's image itself (Wine's 0123). In the Wayland session the compositor blends them with the
-  real image beneath, so the supervisor gives Wine `WIN4WINE_COMPOSITED` and Wine passes them on unblended.
-  The Start button's edge differs from the reference machine (Windows 7) in only 4 pixels (by at most 2 levels); in the X11 session, 199.
-- Taskbar settings (small icons, combining buttons) take effect at once, and the work area and maximized windows follow.
 
 ## What was checked
 
@@ -134,7 +125,7 @@ and scale 1.5 at 144 DPI).
   `"primary"`.
 - Ending the session: logging off XP ends labwc and returns to the login screen.
 - X11 session: switched back to the X11 session on the same VM and checked it works as before.
-- Windows 7 shell (2026-10-17): in a nested labwc (one output, scales 1 and 1.5), compared screenshots with the X11 session doing the same:
+- Windows 7 shell (2026-10-17, upstream; the shell is no longer in LunaticOS): in a nested labwc (one output, scales 1 and 1.5), compared screenshots with the X11 session doing the same:
   desktop, Start menu, Notepad (normal and maximized), Mousepad (Wayland) with Windows 7 frames and maximized, Alt+Tab, the desktop's and
   taskbar's context menus, jump lists, Run, Taskbar Properties, the folder window from Win+E, taskbar settings (small icons, combining). The
   only differences are the clock, the cursor, Mousepad's text (GTK draws differently on Wayland and X11), and where the X11 session differs
@@ -152,8 +143,8 @@ and scale 1.5 at 144 DPI).
 
 - The grey log off/shut down screen: Wayland apps' windows are not X windows, so they do not appear on it (the Wine windows or desktop
   beneath them do).
-- Outputs other than the primary: XP's and ReactOS's desktop window extends over them, but the wallpaper is drawn only on the primary monitor
-  and the others show the background colour (the Windows 7 shell draws the wallpaper per output, as on real hardware).
+- Outputs other than the primary: XP's desktop window extends over them, but the wallpaper is drawn only on the primary monitor
+  and the others show the background colour.
 - In X space the primary monitor comes first, so while dragging a Wine window to an output left of the primary monitor, the part that
   spills onto the neighbouring output is drawn at the original output's scale (smaller). Once moved, it is drawn at that output's scale.
 - On outputs with a non-integer scale, X windows are drawn at the right pixels, but the pointer's position relative to a window can be off by

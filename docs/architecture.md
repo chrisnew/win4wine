@@ -36,12 +36,8 @@ Preparation builds the following:
   xp-explorer.exe process**. Other Wine apps keep Wine's DLLs.
 - Most Wine patches only take effect when the environment variable `WIN4WINE_EXTERNAL_SHELL` is set (the opt-in; [patches.md](patches.md)).
 - The prefix is 64-bit (WoW64) and XP's DLLs go in `syswow64`. The XP shell's COM registrations are written on the 32-bit side only.
-- The ReactOS shell (`C:\ros\ros-explorer.exe`) and the Windows 7 shell (`C:\w7\w7-explorer.exe`, 64-bit) run the same way, each in
-  its own prefix ([reactos.md](reactos.md), [windows7.md](windows7.md)). `shell` in session.json chooses one, and the supervisor uses
-  that prefix's `stage` (`prefix/reactos.py`, `prefix/win7.py`). For the Windows 7 shell it also sets `WIN4WINE_SHELL=win7`, and the
-  proxy gives Linux windows an AppUserModelID per `WM_CLASS` (Windows 7's taskbar groups buttons by it). For apps in the Start menu it
-  also sets the jump list's title and icon and the command of a pinned button (`relaunch.tsv` from `linux_apps.py`).
-  In the Wayland session labwc writes `classes.tsv` (each window's app_id or `WM_CLASS`) instead of the WM.
+- Upstream also ran ReactOS's and Windows 7's shells this way, each in its own prefix. LunaticOS removed them; their Wine patches
+  are still in the series but only act with `WIN4WINE_SHELL=reactos` or `win7`, which nothing sets ([patches.md](patches.md)).
 
 ## The WM (`bridge-wm/wm.c`, `bridge-wm/wm.py`)
 
@@ -162,8 +158,6 @@ same directory and then renamed, so readers never see a half-written file. Each 
   As on XP, windows related by ownership share one entry, the first of them that shows: an application with a modal dialog is
   listed and choosing it activates the dialog, and a dialog whose owners are hidden (a file's properties, Run) is listed although it
   has no taskbar button. Tool windows and dialogs beside their visible owner have no entry of their own.
-  The window's look depends on the shell (`WIN4WINE_SWITCHER`): XP (the default), ReactOS or Windows 7. The Windows 7 look is drawn with
-  the parts of the `AltTab` class of the theme (aero.msstyles), and its items include "Desktop" (choosing it minimizes all windows).
 - **The Windows key and Ctrl+Esc**: when a Wine window has focus they go straight to Wine (patch 0029 opens the Start menu, and Wine
   handles hotkeys such as Win+R). When a Linux window has focus, the WM takes the keys until the Windows key is released, writes them
   into `shellkeys.tsv`, and the proxy feeds them to Wine with `SendInput`.

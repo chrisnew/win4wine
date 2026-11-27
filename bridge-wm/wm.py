@@ -97,9 +97,7 @@ class Manager:
         # which made resizing a native client several times slower in a VM.
         # Their frames are redirected only while they move (frame_moves).
         self.redirect = redirect and self.d.has_extension('Composite')
-        self.previous_classes = None
         self.previous_owners = None
-        self.overlays = {}  # override-redirect Windows 7 shell windows kept above the taskbar and Start menu
         self.lock_window = None  # the lock screen's override-redirect window (greeter/xp-lock.py)
         self.lock_top = 0  # the window keep_lock put on top: it, or a screen saver
         # Mapped override-redirect top-level windows: Wine's menus (the Start
@@ -295,8 +293,7 @@ class Manager:
             name = bytes(title).decode('utf-8', 'replace') if len(title) else (w.get_wm_name() or '')
             c['title'] = name.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')[:500]
         if atom in (None, Xatom.WM_CLASS):
-            # The application's class: Windows 7's taskbar groups a Linux
-            # application's windows by it (classes.tsv, proxy).
+            # The application's class: a screen saver is known by it.
             try:
                 names = w.get_wm_class()
             except error.XError:
@@ -489,21 +486,11 @@ class Manager:
         if not positions:
             return
         for window_id in before[min(positions)+1:]:
-            if window_id in self.unmanaged and window_id not in self.overlays:
+            if window_id in self.unmanaged:
                 try:
                     self.d.create_resource_object('window', window_id).configure(stack_mode=X.Above)
                 except error.XError:
                     self.unmanaged.discard(window_id)
-
-    def raise_overlays(self):
-        # Windows 7's Start button over the taskbar and the user picture over the
-        # Start menu are unmanaged (override-redirect) windows of their own;
-        # raising the taskbar or the menu must not cover them.
-        for w in list(self.overlays.values()):
-            try:
-                w.configure(stack_mode=X.Above)
-            except error.XError:
-                self.overlays.pop(w.id, None)
 
     @staticmethod
     def is_screen_saver(c):
@@ -548,7 +535,6 @@ class Manager:
             before = self.stacking()
             w.configure(stack_mode=X.Above)
             self.keep_unmanaged_above(before, {w.id})
-            self.raise_overlays()
             self.keep_lock()
             if self.atom('WM_TAKE_FOCUS') in self.prop(w, 'WM_PROTOCOLS'):
                 self.message(w, 'WM_PROTOCOLS', [self.atom('WM_TAKE_FOCUS'), X.CurrentTime, 0, 0, 0])
@@ -720,7 +706,6 @@ class Manager:
                 c['w'].configure(stack_mode=X.Above)
                 raised.add(c['w'].id)
         self.keep_unmanaged_above(before, raised)
-        self.raise_overlays()
         self.keep_lock()
         ids = [i for i, c in self.clients.items() if c['kind'] != 'proxy']
         self.setprop(self.root, '_NET_CLIENT_LIST', Xatom.WINDOW, ids)
@@ -1062,7 +1047,6 @@ class Manager:
 
     def snapshot(self):
         lines = []
-        classes = []
         owners = []
         focused = self.d.get_input_focus().focus
         # An XP menu can take focus without changing the EWMH active client.
@@ -1100,13 +1084,6 @@ class Manager:
                     self.previous_icons[i] = data
                 c['icon_dirty'] = False
             lines.append(f'{i:x}\t{int(c["hidden"])}\t{int(i == self.active and i == focused_id)}\t{c["title"]}\n')
-            classes.append(f'{i:x}\t{c.get("class", "")}\n')
-        text = ''.join(classes)
-        if text != self.previous_classes:
-            temp = self.ipc / 'classes.tmp'
-            temp.write_text(text, encoding='utf-8')
-            temp.replace(self.ipc / 'classes.tsv')
-            self.previous_classes = text
         # Before windows.tsv, which the proxy reads it with.
         text = ''.join(owners)
         if text != self.previous_owners:
@@ -1187,14 +1164,6 @@ class Manager:
                 except error.XError:
                     pass
             self.keep_lock()
-            if e.override and e.window.id not in self.overlays:
-                try:
-                    cls = bytes(self.prop(e.window, '_WIN4WINE_CLASS')).strip(b'\0').lower()
-                except error.XError:
-                    cls = b''
-                if cls in (b'win4winestartbutton', b'desktop user picture'):
-                    self.overlays[e.window.id] = e.window
-                    self.restack()
             c = self.clients.get(e.window.id)
             if c and (c['kind'] == 'popup' or c['kind'] == 'normal' and self.active == e.window.id):
                 # Wine defers WM_TAKE_FOCUS while waiting for the initial map acknowledgement.
@@ -1224,7 +1193,6 @@ class Manager:
             if c and c['kind'] == 'dock':
                 self.workarea()
         elif e.type == X.DestroyNotify:
-            self.overlays.pop(e.window.id, None)
             if self.lock_window and e.window.id == self.lock_window.id:
                 self.lock_gone()
             self.unmanage(e.window.id)
