@@ -7,10 +7,11 @@ flyouts (xptray.exe), Network Connections, the folder task pane (DirectUser),
 XP's Display Properties, image thumbnails and the picture viewer, XP's sound
 scheme and Explorer defaults, Internet Explorer 6, Windows Media Player 9, and
 the Start menu's full left column (Internet, E-mail and the most used
-programs); Linux permissions, owner, group and path as columns and in the task
-pane's Details section of folder windows (linuxcols.dll); and XP's Regional and Language Options, whose input
-languages the session's keyboard layout follows (session/keyboard.py). This
-applies them to a prefix made by prefix/create.py, with
+programs); XP's proxies for the shell's COM interfaces, which Taskbar
+Properties' Customize Notifications needs; Linux permissions, owner, group and
+path as columns and in the task pane's Details section of folder windows
+(linuxcols.dll); and XP's Regional and Language Options, whose input languages
+the session's keyboard layout follows (session/keyboard.py). This applies them to a prefix made by prefix/create.py, with
 xp-explorer/scripts/prefix.py's own code, and again when they change.
 
   extras.py PREFIX --wine WINE      apply (scripts/setup.sh runs it)
@@ -32,7 +33,7 @@ import xp_schemes
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / '.local/bridge'
 # Bumped when apply() changes; setup.sh applies it again on existing prefixes.
-VERSION = '8'
+VERSION = '9'
 MARKER = '.xp-extras'
 # What goes from .local/bridge to C:\xp\bin.
 HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'linuxcols.dll')
@@ -48,6 +49,15 @@ LINUX_DETAILS = 'prop:Name;Type;' + ''.join(f'{LINUX_PROPERTIES} {n};' for n in 
 # in rundll32 and in XP Explorer, whose Control Panel lists it.
 INTL = ('intl.cpl', 'input.dll', 'syssetup.dll', 'sfcfiles.dll')
 INTL_NATIVE = ('intl.cpl', 'input', 'syssetup', 'sfcfiles')
+# XP's actxprxy.dll (assets/com): the proxies with which a COM call crosses
+# apartments, native in XP Explorer only. It covers every interface of Wine's
+# actxprxy and has the same class ID. Wine's lacks ITrayNotify and
+# INotificationCB, which Customize Notifications and the notification area use
+# to talk to each other.
+COM = ('actxprxy.dll',)
+COM_PROXY = '{B8DA6310-E19B-11D0-933C-00A0C90DCAA9}'
+TRAY_INTERFACES = (('{FB852B2C-6BAD-4605-9551-F15F87830935}', 'ITrayNotify'),
+                   ('{D782CCBA-AFB0-43F1-94DB-FDA3779EACCB}', 'INotificationCB'))
 LAYOUTS_KEY = r'System\CurrentControlSet\Control\Keyboard Layouts'
 
 
@@ -78,6 +88,13 @@ def registry(xpx):
         r.add(r'HKCU\Software\Wine\AppDefaults\rundll32.exe\DllOverrides', dll, 'native,builtin')
     for dll in INTL_NATIVE:
         r.add(r'HKCU\Software\Wine\AppDefaults\xp-explorer.exe\DllOverrides', dll, 'native')
+    # Everywhere else Wine's own proxies, though XP's file is in syswow64. An
+    # extraction without it leaves XP Explorer with Wine's too.
+    r.add(r'HKCU\Software\Wine\DllOverrides', 'actxprxy', 'builtin')
+    r.add(r'HKCU\Software\Wine\AppDefaults\xp-explorer.exe\DllOverrides', 'actxprxy', 'native,builtin')
+    for iid, name in TRAY_INTERFACES:
+        r.add('HKCR\\Interface\\' + iid, None, name)
+        r.add('HKCR\\Interface\\' + iid + '\\ProxyStubClsid32', None, COM_PROXY)
     # startmenu.exe drives XP's own Start panel settings and pins.
     for dll in ('shell32', 'shlwapi', 'comctl32', 'linkinfo', 'shdocvw', 'browseui'):
         r.add(r'HKCU\Software\Wine\AppDefaults\startmenu.exe\DllOverrides', dll, 'native')
@@ -200,6 +217,9 @@ def copy_files(assets, prefix):
     for name in ('Resources/Themes', 'resources/themes'):
         if (assets / 'themes').is_dir() and (windows / name).is_dir():
             shutil.copytree(assets / 'themes', windows / name, dirs_exist_ok=True)
+    for name in COM:
+        if (assets / 'com' / name).is_file():
+            shutil.copyfile(assets / 'com' / name, native / name)
     if (assets / 'intl/input.dll').is_file():
         for name in INTL:
             shutil.copyfile(assets / 'intl' / name, native / name)
@@ -229,7 +249,8 @@ def themes(assets, prefix, wine):
 
 def stage(prefix, xpx=None):
     """XP's files back in syswow64 after Wine updates the prefix: XP
-    Explorer's, and the Regional and Language Options over Wine's intl.cpl."""
+    Explorer's, the COM proxies over Wine's, and the Regional and Language
+    Options over Wine's intl.cpl."""
     (xpx or xp_explorer()).stage(prefix)
     # The helpers as bridge-wm/build.sh last built them.
     for helper in HELPERS:
@@ -240,7 +261,7 @@ def stage(prefix, xpx=None):
             shutil.copyfile(source, temporary)
             temporary.replace(target)
     system = prefix / 'drive_c/windows/syswow64'
-    for name in INTL:
+    for name in INTL + COM:
         source, target = prefix / 'drive_c/xp/native' / name, system / name
         if source.is_file() and (not target.is_file() or target.read_bytes() != source.read_bytes()):
             temporary = target.with_name(f'.{name}.xp')

@@ -52,6 +52,9 @@ FILES = {
     **dict.fromkeys(('intl.cpl', 'input.dll', 'syssetup.dll', 'sfcfiles.dll', 'intl.inf', 'hivesys.inf'), 'intl'),
     # XP's registry defaults (sounds, Explorer settings), read by prefix/extras.py.
     **dict.fromkeys(('hivedef.inf', 'hivesft.inf'), 'inf'),
+    # XP's proxies for the shell's COM interfaces. Taskbar Properties' Customize
+    # Notifications reaches the notification area through two that Wine's lacks.
+    'actxprxy.dll': 'com',
     # Image thumbnails and previews in folder windows (and Windows Picture and Fax Viewer).
     'shimgvw.dll': 'shell',
     # XP's Windows Classic theme for Display Properties (CLASSIC.THE_ on the CD).
@@ -86,7 +89,7 @@ LANGUAGE_FILES = {
 RENAMED = {'classic.the': 'Windows Classic.theme'}
 # Groups a later version added; setup.sh adds them to an earlier extraction (--only).
 ADDED_GROUPS = ('cpl', 'tray', 'ie', 'wmp', 'inf', 'shell', 'media', 'duser', 'intl', 'themes',
-                'screensavers')
+                'screensavers', 'com')
 
 
 def setup_sources(paths):
@@ -141,7 +144,8 @@ def missing_groups(output):
     checks = {'cpl': 'cpl/desk.cpl', 'tray': 'tray/xpsp2res.dll', 'ie': 'ie/iexplore.exe',
               'wmp': 'wmp/wmplayer.exe', 'inf': 'inf/hivedef.inf', 'shell': 'shell/shimgvw.dll',
               'media': 'media', 'duser': 'system32/duser.dll', 'intl': 'intl/input.dll',
-              'themes': 'themes/Windows Classic.theme', 'screensavers': 'screensavers/ssstars.scr'}
+              'themes': 'themes/Windows Classic.theme', 'screensavers': 'screensavers/ssstars.scr',
+              'com': 'com/actxprxy.dll'}
     return [group for group in ADDED_GROUPS if not has(checks[group])]
 
 
