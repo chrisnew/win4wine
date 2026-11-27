@@ -1,0 +1,36 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] mountmgr: ask for UDisks2's own property changes only
+
+Purpose: other programs' D-Bus signals no longer cost CPU time while UDisks2
+runs (it is what mounts disc images for the XP shell, session/iso_mount.py).
+Windows behavior: not applicable.
+Wine before: the match rule for PropertiesChanged had no sender, so every
+property change of any service on the system bus reached mountmgr.sys, and
+for each one it fetched UDisks2's whole object tree (GetManagedObjects) to
+look for the changed path. Without UDisks2 mountmgr drops the rule, so it
+only shows where UDisks2 is installed.
+Change: the rule asks for the signals of org.freedesktop.UDisks2 about block
+devices, which are the only ones the filter acts on.
+Evidence: on the EeePC (Atom N550) one ssh login made systemd send about 26
+such signals; over 10 logins udisksd used 3.2 s of CPU time, dbus-daemon
+1.3 s and winedevice.exe 0.57 s.
+Scope: all programs; only the signals mountmgr receives change.
+---
+ dlls/mountmgr.sys/dbus.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/dlls/mountmgr.sys/dbus.c b/dlls/mountmgr.sys/dbus.c
+index 99f37a3..09501fc 100644
+--- a/dlls/mountmgr.sys/dbus.c
++++ b/dlls/mountmgr.sys/dbus.c
+@@ -544,7 +544,9 @@ void run_dbus_loop(void)
+                                                    "interface='org.freedesktop.DBus.ObjectManager',"
+                                                    "path='/org/freedesktop/UDisks2'";
+     static const char udisks2_match_properties[] = "type='signal',"
+-                                                   "interface='org.freedesktop.DBus.Properties'";
++                                                   "interface='org.freedesktop.DBus.Properties',"
++                                                   "sender='org.freedesktop.UDisks2',"
++                                                   "path_namespace='/org/freedesktop/UDisks2/block_devices'";
+ 
+ 
+     DBusError error;
