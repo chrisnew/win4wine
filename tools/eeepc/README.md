@@ -78,6 +78,7 @@ What is left: `set_context_attribute` and `replay_batch` 2.3% each, and `read_hp
 | `mapcap.py` | Capture a window's own image as fast as possible from the moment a window of class CLASS maps |
 | `monitor.py` | Log the taskbar's X window state, the screen size and the session status while something happens |
 | `stackwatch.py` | Watch the X stacking order |
+| `focuswatch.py [SECONDS]` | Who gets the keyboard: the X focus, `_NET_ACTIVE_WINDOW`, and the activation requests and map, unmap and destroy events on the root, with times (copy it over; also on the bench) |
 | `timeline.py IPC COMMAND...` | Timeline of a Linux window getting its XP frame |
 
 ## Measuring CPU

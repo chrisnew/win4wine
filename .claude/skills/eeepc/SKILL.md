@@ -19,6 +19,8 @@ Git; write the host from `CLAUDE.local.md` there if it is missing). The machine,
 E=tools/eeepc/eee.sh
 $E shot /path/in/scratchpad/now.png            # its screen, then Read the PNG; a crop: ... now.png 300x40+724+560
 $E sample 30                                   # CPU and wakeups per process over 30 s (sample.py --help)
+# Who got the keyboard (after Alt+F4, Alt+Tab, a closed window): copy tools/eeepc/focuswatch.py over, run it
+# in the background with `$E x`, press the keys, then read its output
 $E drive chord Super_L+r sleep 2 type 'notepad' key Return wait Notepad
 $E x 'tail -50 ~/.local/state/win4wine/xp-shell.log'
 $E insession probe.sh                          # a script from here, run inside the logind session
