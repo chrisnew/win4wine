@@ -79,6 +79,16 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
 
 ## Entries
 
+### 2026-11-27: the proxy hands the keyboard on when a Linux window closes
+
+- **What** (in the session, only an empty Notepad open), in `~/win4wine`: `git fetch fork && git checkout -B master
+  fork/master` (bbe7d32 to 783ead3), `bridge-wm/build.sh`, then `pkill -x proxy.exe`; the supervisor restarted the shell
+  (back after 9 s).
+- **Why:** after closing an xterm with Alt+F4, no window had the keyboard (repo 783ead3).
+- **Result:** Notepad and an xterm, Alt+F4 on the xterm: Notepad has the X focus and `_NET_ACTIVE_WINDOW`, and a second
+  Alt+F4 closes it (driven with XTest). Nothing outside the checkout changed.
+- **Undo:** `git checkout -B master bbe7d32`, `bridge-wm/build.sh`, `pkill -x proxy.exe`.
+
 ### 2026-11-27: LunaticOS on master, without the ReactOS and Windows 7 shells; old builds and backups removed
 
 - **What** (XP logged off), in `~/win4wine`: `git remote set-url fork https://github.com/chrisnew/LunaticOS.git` (the
