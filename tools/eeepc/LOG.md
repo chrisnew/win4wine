@@ -87,8 +87,10 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   `xp-explorer/scripts/pins.py .local/prefix --wine W` (415 s), then `wineserver -k` and `-w`.
 - **Why:** Linux permissions, owner, group and path in XP's folder windows ([plan](../../plans/linux-columns.md)).
 - **Result:** `extras.py --check` passes (VERSION 8). `tests/linuxcols.py` passes, and `tests/stat-lx-probe.c`, 32-bit and
-  64-bit, has no failed checks and agrees with `stat`. The handler's cost is in the [README](README.md#linux-columns). The
-  folder windows themselves were not looked at yet: that needs a login.
+  64-bit, has no failed checks and agrees with `stat`. After logging in, the columns and the sidebar's Details section work in
+  XP's folder windows; opening and sorting `Z:\usr\bin` and the idle use were measured (the [README](README.md#linux-columns)).
+  A long file name without a `/` was cut off in the Details section (fixed in the repo, not installed here yet). Left in the
+  prefix's view settings: the four columns on `Z:\usr\bin` and `Z:\run\user\1000`.
 - **Undo:** logged off, `mv .local/wine-install .local/wine-install-0160 && mv .local/wine-install-old .local/wine-install`,
   copy the backup's `*.reg`, `.xp-extras` back into `.local/prefix` and `system.ini` into `drive_c/windows`,
   `git checkout -B eeepc f503652` and `bridge-wm/build.sh`.

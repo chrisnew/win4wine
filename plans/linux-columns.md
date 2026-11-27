@@ -1,8 +1,9 @@
 # Plan: Linux columns in XP's folder windows
 
-Status: phases 1 and 2, and the Details section of the task pane (asked for during the work), built and tested on the
-development machine (2026-11-27, session in Docker with Xvfb at 1024x600). **Not yet on the EeePC**: the deployment, the
-check there and the measurements (phase 2, steps 4 and 5) are open. How it works now:
+Status (2026-11-27): phases 1 and 2, and the Details section of the task pane (asked for during the work), are **deployed and
+checked on the EeePC** ([log](../tools/eeepc/LOG.md), [numbers](../tools/eeepc/README.md#linux-columns)); before that they
+were tested on the development machine (session in Docker with Xvfb at 1024x600). Open: phase 3, and installing the better
+wrapping of long names in the Details section on the EeePC. How it works now:
 [docs/architecture.md](../docs/architecture.md#linux-columns-in-xps-folder-windows-xp-explorerhelperslinuxcolsc).
 
 ## As built: where it differs from the plan

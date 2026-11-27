@@ -171,3 +171,17 @@ entries of `Z:\usr\bin`, with the file system's caches warm (not measured cold).
 | one column over all entries (as a sort asks) | 102-106 ms | 0.08 ms |
 | Wine listing the folder (`FindFirstFile`), first and second time | 903 and 52 ms | |
 
+**In the folder window**, the same day, maximized, Details view: `Z:\usr\bin` opened from `Z:\usr` by a double click, three
+runs each, the list captured frame by frame (`capture.py`, 7 frames a second, so ±0.15 s; the capturing loads Xorg too). CPU
+time is over the 8.8 s of a run.
+
+| | without the columns | with the four |
+|---|---|---|
+| rows drawn after | 2.0, 2.1, 2.0 s | 2.1, 2.2, 2.4 s |
+| xp-explorer | 1.9-2.0 s | 1.9-2.1 s |
+| wineserver | 0.63-0.83 s | 0.74-0.95 s |
+
+The Linux values were there in the same frame as the rows. Sorting by Linux Permissions was drawn 0.66 s after the click (one
+run). Idle for 30 s with the four columns on screen: xp-explorer 2.3% of one logical CPU, wineserver 0.8%; with a folder window
+without them (`Z:\usr`): 3.3% and 1.8%. `Z:\run\user\1000`, with its sockets, showed them and nothing hung.
+
