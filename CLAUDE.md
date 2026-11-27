@@ -57,7 +57,7 @@ and a mention in the matching skill, not in the scratchpad.
 
 ## Git
 
-- Work on branch `eeepc`, one commit per fix, and push it to `origin` (the fork, `chrisnew/win4wine`). `upstream` is only a
+- Work on branch `eeepc`, one commit per fix, and push it to `origin` (the fork, `chrisnew/LunaticOS`). `upstream` is only a
   remote to read from; never push or open PRs there.
 - Commit messages in English: `area: what changes now` as the subject (`wm:`, `proxy:`, `xptray:`, `supervisor:` …, or
   `Wine NNNN: …` for a new or changed patch), then a body that explains the cause, the fix and, where there is one, the measurement.

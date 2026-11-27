@@ -35,7 +35,7 @@ What it can do, in pictures: [docs/showcase.md](docs/showcase.md).
 2. On a freshly installed Debian 13, run as the user who will log in:
 
    ```sh
-   git clone https://github.com/chrisnew/win4wine.git ~/lunaticos
+   git clone https://github.com/chrisnew/LunaticOS.git ~/lunaticos
    cd ~/lunaticos
    scripts/setup.sh --media /path/to/WindowsXPSP3.iso --greeter
    ```

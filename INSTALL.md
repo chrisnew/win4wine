@@ -21,7 +21,7 @@
 Run it as the user who will use the XP shell (not as root). It uses sudo for packages and system files.
 
 ```sh
-git clone https://github.com/chrisnew/win4wine.git ~/lunaticos
+git clone https://github.com/chrisnew/LunaticOS.git ~/lunaticos
 cd ~/lunaticos
 scripts/setup.sh --media /path/to/WindowsXPSP3.iso --greeter
 ```
