@@ -667,6 +667,49 @@ static unsigned long owner_of(unsigned long xid)
     return 0;
 }
 
+/* The window XP activates when the active one goes: the topmost visible,
+ * enabled window that can be activated, other than the frames that close;
+ * without one, the desktop (Progman), never the taskbar. */
+struct next_active { HWND found; };
+
+static BOOL closing_frame(HWND hwnd)
+{
+    unsigned i;
+    for (i = 0; i < MAX_CLIENTS; ++i)
+        if (clients[i].xid && !clients[i].seen && clients[i].hwnd == hwnd) return TRUE;
+    return FALSE;
+}
+
+static BOOL CALLBACK next_active_candidate(HWND hwnd, LPARAM param)
+{
+    struct next_active *next = (struct next_active *)param;
+    LONG style = GetWindowLongW(hwnd, GWL_STYLE), ex = GetWindowLongW(hwnd, GWL_EXSTYLE);
+    WCHAR cls[32];
+    if (!(style & WS_VISIBLE) || (style & (WS_DISABLED | WS_MINIMIZE)) || (ex & (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)))
+        return TRUE;
+    if (closing_frame(hwnd)) return TRUE;
+    if (GetClassNameW(hwnd, cls, ARRAYSIZE(cls)) &&
+        (!wcscmp(cls, L"Shell_TrayWnd") || !wcscmp(cls, L"Progman") || !wcscmp(cls, L"Win4WineSwitch")))
+        return TRUE;
+    next->found = hwnd;
+    return FALSE;
+}
+
+/* A Linux window that had the keyboard was closed: its frame is still the
+ * foreground window. Destroying it would have Wine activate the window
+ * below the frame in Win32's order, often the desktop, while the WM gives
+ * the X focus to the next window: the desktop's activation came last and
+ * no window had the keyboard. Hand the foreground over first, as XP does. */
+static void pass_foreground(void)
+{
+    struct next_active next = {0};
+    HWND foreground = GetForegroundWindow();
+    if (!foreground || !closing_frame(foreground)) return;
+    EnumWindows(next_active_candidate, (LPARAM)&next);
+    if (!next.found) next.found = FindWindowW(L"Progman", NULL);
+    if (next.found) SetForegroundWindow(next.found);
+}
+
 static void snapshot(void)
 {
     WCHAR path[MAX_PATH + 32];
@@ -742,6 +785,7 @@ static void snapshot(void)
         }
     }
     fclose(file);
+    pass_foreground();
     for (i = 0; i < MAX_CLIENTS; ++i)
         if (clients[i].xid && !clients[i].seen)
         {
