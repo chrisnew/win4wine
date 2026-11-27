@@ -1,0 +1,47 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] server: release the cursor clip when the foreground thread ends
+
+Purpose: the desktop keeps taking clicks after a program that held the mouse
+has ended.
+Windows behavior: a program that ends does not leave the cursor clipped (not
+measured here on a real XP; the probe runs there).
+Wine before: thread_input_destroy() only forgot the foreground input. Unlike
+set_foreground_input() it did not reset the clip rectangle, so nobody was told
+to release it: GetClipCursor() kept the dead program's rectangle until the
+foreground changed again, and winex11's clipping window, which belongs to the
+desktop process, stayed mapped. It is an invisible InputOnly window above the
+desktop; once the X server has dropped the dead process's pointer grab, every
+click on it is lost. In the XP session no desktop icon took a click until a
+Wine window became the foreground.
+Change: when the foreground input is destroyed, reset the clip as
+set_foreground_input() does; the desktop thread then unmaps the window.
+Evidence: tests/clip-exit.c, with a child that is killed and one that exits:
+before, its 200x200 rectangle stayed and so did the mapped clipping window
+(32-bit); after, the whole screen again (32-bit and 64-bit) and no window. On
+the EeePC a 1024x600 clipping window of explorer.exe /desktop was found above
+XP's desktop.
+Scope: all programs; only when the foreground thread's input goes away.
+---
+ server/queue.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/server/queue.c b/server/queue.c
+index 3e8ab2e..bf41921 100644
+--- a/server/queue.c
++++ b/server/queue.c
+@@ -1374,7 +1374,14 @@ static void thread_input_destroy( struct object *obj )
+     empty_msg_list( &input->msg_list );
+     if ((desktop = input->desktop))
+     {
+-        if (desktop->foreground_input == input) desktop->foreground_input = NULL;
++        if (desktop->foreground_input == input)
++        {
++            /* The foreground thread ended without handing the foreground on, so
++             * nobody else releases its cursor clip: do it as set_foreground_input
++             * does, which also tells the desktop thread to undo the driver's grab. */
++            desktop->foreground_input = NULL;
++            set_clip_rectangle( desktop, NULL, SET_CURSOR_NOCLIP, 1 );
++        }
+         release_object( desktop );
+     }
+     if (input->shared) free_shared_object( input->shared );

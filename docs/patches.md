@@ -1,6 +1,6 @@
 # Wine patches
 
-`wine/patches/` holds 165 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
+`wine/patches/` holds 166 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
 `wine/build.sh` applies them, and the actual applying is done by `wine/patch-state.py` (on a partly patched source it applies only
 what is missing).
 
@@ -14,7 +14,7 @@ Changes for the XP shell only take effect in processes that have the environment
 
 - The check is gathered in one place, `win4wine_external_shell()` in `include/wine/win4wine.h`, added by 0019.
   ntdll reads the same variable with Rtl functions, and wow64.dll (0023) with ntdll functions.
-- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155–0157, 0160–0165), 0025 and 0026,
+- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155–0157, 0160–0166), 0025 and 0026,
   which do not change the look or behaviour of ordinary apps, most of the APIs and Wine fixes for the Windows 7 shell (0094–0112), and the
   theme fixes that only apply to version 4 styles (0113–0119).
 - 0024 only takes effect with `WIN4WINE_SESSION_REQUEST`, and 0159's `LockWorkStation` only with `WIN4WINE_LOCK_REQUEST`.
@@ -262,7 +262,7 @@ Matched pixel by pixel against a real Windows 7 SP1 (the reference VM).
 | 0136 | riched20: text in Windows 7's search boxes (Start menu, folder windows; windowless RichEdit). Use the default format the host announces later (Meiryo 9 pt) (whole external shell), measure and draw paragraphs without complex scripts (Arabic and so on) with GDI, and create the font with DEFAULT_CHARSET (Latin in that font, Japanese through font linking; the same glyphs and positions as on real hardware). Japanese showed as boxes or overlapping | partly (`WIN4WINE_SHELL=win7`) |
 | 0137 | comdlg32: give the Windows 7 shell session's item dialogs (IFileDialog) Windows 7's form. The top row (back/forward, the breadcrumb address bar, refresh, search) is drawn by a new part (navbar7.c) with theme parts and explorerframe.dll's images and strings. 640x478, the message font, no details or preview pane, a size grip, "Folder:" and "Select Folder" when choosing a folder. Search filters by name within the folder (Windows 7 searches the index) | yes (`WIN4WINE_SHELL=win7`) |
 
-### Details of the XP shell (0138–0165)
+### Details of the XP shell (0138–0166)
 
 Changes for the XP shell (and upstream's ReactOS shell) that use mechanisms added for the Windows 7 shell (0117's themed menus, 0119's TS_MIN, 0126's
 comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading, 0133's message box layout).
@@ -299,6 +299,7 @@ comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading
 | 0163 | mountmgr: `DBT_DEVICEARRIVAL` when a volume gets a mount point, `DBT_DEVICEREMOVECOMPLETE` when it loses it or its letter goes (before, every change UDisks2 reported was an arrival, nine for one mounted image, and unmounting one made XP Explorer say "D:\ refers to a location that is unavailable"; a volume unmounted and then removed stayed in My Computer with a question mark. A drive letter that comes (its first mount) or goes is announced without `DBTF_MEDIA`, or XP Explorer keeps a removed drive and does not add it again. It belongs with 0001–0011 and has not been renumbered yet) | no |
 | 0164 | mountmgr: `IOCTL_DISK_EJECT_MEDIA` and `IOCTL_STORAGE_EJECT_MEDIA` unmount a CD or DVD drive that is a loop device (a mounted disc image) and delete the loop device, with `udisksctl`; a volume that cannot be unmounted gives `STATUS_DEVICE_BUSY`. XP's Eject sends the first to the volume; before, it was unsupported and Eject did nothing. Real drives and other devices are answered as before. It belongs with 0001–0011 and has not been renumbered yet | no |
 | 0165 | gdi32: Uniscribe's font cache list stays whole when two threads make the cache of one font at once (before, Wine took the other thread's cache off the list and freed its own, which stayed on it; a later lookup crashed holding the list's lock, and every thread drawing text then waited for ever. An Eject with two folder windows open froze My Computer. It belongs with 0001–0011 and has not been renumbered yet) | no |
+| 0166 | server: the cursor clip is released when the foreground thread ends (before, a program that was ended or exited while it held the mouse left its clip rectangle behind, and winex11's invisible clipping window stayed mapped over the desktop: no desktop icon took a click until another Wine window became the foreground. It belongs with 0001–0011 and has not been renumbered yet) | no |
 
 ## Order
 

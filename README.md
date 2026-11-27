@@ -103,7 +103,7 @@ Details, all options and how to change the theme or the text size later:
 ```text
 LightDM ─ XP Welcome greeter (greeter/)
    └─ XP Shell session (session/supervisor.py)
-        ├─ Wine 11.0 + 165 patches (wine/patches/)
+        ├─ Wine 11.0 + 166 patches (wine/patches/)
         │    └─ XP's explorer.exe, shell32.dll, … (extracted from your ISO)
         ├─ bridge-wm: an X11 WM + Win32 proxy windows (bridge-wm/)
         └─ tray bridge (bridge-wm/tray.py)
