@@ -368,8 +368,11 @@ UDisks2); Wine does not read the file.
   the volume, with no lock or dismount before it, and patch 0164 makes `mountmgr` unmount the image and delete its loop device
   (`udisksctl`, which needs no password for a device the user set up). The drive goes with the device (0163 tells Explorer).
   Only loop devices that are CD or DVD drives are touched. Real drives and USB sticks keep Wine's behaviour.
-- **Arrivals**: Explorer opens a window of a disc that arrives, so `mountmgr` announces a volume once, when it can be read
-  (0163). A disc's `autorun.inf` is **not** run: XP's Explorer looks for the file and does not read it (as far as traced, with
+  While a folder window shows the drive (the wineserver holds the folder open) or a program has a file or its working
+  directory on it, the unmount fails and the disc stays. XP shows **no message** then; close the window and eject again.
+- **Arrivals**: `mountmgr` announces a drive once, when it can be read, as a new drive (0163): Explorer adds it to My
+  Computer and opens nothing, so the one window is the launcher's. An image mounted from Linux appears without a window.
+  A disc's `autorun.inf` is **not** run: XP's Explorer looks for the file and does not read it (as far as traced, with
   no Shell Hardware Detection service here).
 - **Images stay mounted across a log off**, like a disc left in a drive. A restart of the machine clears them.
 

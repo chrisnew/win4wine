@@ -4,7 +4,9 @@ Subject: [PATCH] mountmgr: announce a volume when it is mounted, and its removal
 Purpose: XP Explorer opens a mounted disc once, when it can be read, and My
 Computer loses the drive when the disc image is ejected.
 Windows behavior: WM_DEVICECHANGE says DBT_DEVICEARRIVAL when a volume
-becomes available and DBT_DEVICEREMOVECOMPLETE when it is gone.
+becomes available and DBT_DEVICEREMOVECOMPLETE when it is gone. DBTF_MEDIA
+says that the change is to the media in a drive; without it the drive itself
+comes or goes.
 Wine before: every change UDisks2 reported broadcast DBT_DEVICEARRIVAL, also
 for a volume without a mount point: mounting one disc image broadcast it
 nine times, five of them before the volume could be read, and unmounting it
@@ -13,46 +15,97 @@ location that is unavailable". DBT_DEVICEREMOVECOMPLETE was only broadcast
 for a volume that still was mounted when it was removed; after an unmount and
 then a removal nothing was said, and My Computer kept a drive with a question
 mark.
+Every notification had DBTF_MEDIA, also that of a drive letter which came or
+went. XP Explorer kept a removed drive in My Computer, even after a refresh,
+and did not add one it had taken as removed.
 Change: an arrival when a volume gets a mount point (or another one), a
 removal when it loses it, and a removal whenever a dynamic drive's letter
-goes.
-Evidence: on the EeePC with +mountmgr traces and XP Explorer, before and
-after.
+goes. The first arrival of a drive letter and its removal are sent without
+DBTF_MEDIA; the arrivals and removals of what is in the drive in between with
+it.
+Evidence: on the EeePC with +mountmgr traces and XP Explorer. Broadcasts
+from a test program, without DBTF_MEDIA, took a stale drive out of My Computer
+and put a missing one back.
 Scope: all programs; dynamic volumes only (those UDisks, UDisks2 and the
 like report).
 ---
- dlls/mountmgr.sys/device.c | 17 +++++++++++++----
- 1 file changed, 13 insertions(+), 4 deletions(-)
+ dlls/mountmgr.sys/device.c | 38 +++++++++++++++++++++++++++++++-------
+ 1 file changed, 31 insertions(+), 7 deletions(-)
 
 diff --git a/dlls/mountmgr.sys/device.c b/dlls/mountmgr.sys/device.c
-index 733d48a..7fb6b7f 100644
+index 733d48a..938c895 100644
 --- a/dlls/mountmgr.sys/device.c
 +++ b/dlls/mountmgr.sys/device.c
-@@ -1254,7 +1254,7 @@ NTSTATUS add_dos_device( int letter, const char *udi, const char *device,
+@@ -93,6 +93,7 @@ struct dos_drive
+     struct volume        *volume;      /* volume for this drive */
+     int                   drive;       /* drive letter (0 = A: etc.) */
+     struct mount_point   *mount;       /* DosDevices mount point */
++    BOOL                  announced;   /* WM_DEVICECHANGE has told of its arrival */
+ };
+ 
+ static struct list drives_list = LIST_INIT(drives_list);
+@@ -120,7 +121,7 @@ static const GUID *get_default_uuid( int letter )
+ }
+ 
+ /* send notification about a change to a given drive */
+-static void send_notify( int drive, int code )
++static void send_notify( int drive, int code, int flags )
+ {
+     DEV_BROADCAST_VOLUME info;
+ 
+@@ -128,7 +129,7 @@ static void send_notify( int drive, int code )
+     info.dbcv_devicetype = DBT_DEVTYP_VOLUME;
+     info.dbcv_reserved   = 0;
+     info.dbcv_unitmask   = 1 << drive;
+-    info.dbcv_flags      = DBTF_MEDIA;
++    info.dbcv_flags      = flags;
+     BroadcastSystemMessageW( BSF_FORCEIFHUNG|BSF_QUERY, NULL,
+                              WM_DEVICECHANGE, code, (LPARAM)&info );
+ }
+@@ -790,6 +791,7 @@ static NTSTATUS create_dos_device( struct volume *volume, const char *udi, int l
+     if (!(drive = malloc( sizeof(*drive) ))) return STATUS_NO_MEMORY;
+     drive->drive = letter;
+     drive->mount = NULL;
++    drive->announced = FALSE;
+ 
+     if (volume)
+     {
+@@ -1254,7 +1256,7 @@ NTSTATUS add_dos_device( int letter, const char *udi, const char *device,
      NTSTATUS status = STATUS_SUCCESS;
      struct dos_drive *drive, *next;
      struct volume *volume;
 -    int notify = -1;
-+    int notify = -1, event = 0;
++    int notify = -1, event = 0, flags = 0;
      char dosdev[] = "a::";
  
      EnterCriticalSection( &device_section );
-@@ -1305,6 +1305,14 @@ found:
+@@ -1305,6 +1307,25 @@ found:
          struct set_dosdev_symlink_params params = { dosdev, mount_point };
          MOUNTMGR_CALL( set_dosdev_symlink, &params );
      }
-+    /* A volume arrives when it can be read: once, when it gets a mount point. It is gone when it loses it. */
++    /* A volume arrives when it can be read: once, when it gets a mount point,
++     * and it is gone when it loses it. The first time, the drive itself arrives;
++     * afterwards the change is to what is in it (DBTF_MEDIA). */
 +    if (udi)
 +    {
 +        const char *old = volume->device->unix_mount;
 +
-+        if (mount_point && (!old || strcmp( mount_point, old ))) event = DBT_DEVICEARRIVAL;
-+        else if (!mount_point && old) event = DBT_DEVICEREMOVECOMPLETE;
++        if (mount_point && (!old || strcmp( mount_point, old )))
++        {
++            event = DBT_DEVICEARRIVAL;
++            flags = drive->announced ? DBTF_MEDIA : 0;
++            drive->announced = TRUE;
++        }
++        else if (!mount_point && old)
++        {
++            event = DBT_DEVICEREMOVECOMPLETE;
++            flags = DBTF_MEDIA;
++        }
 +    }
      set_volume_info( volume, drive, device, mount_point, type, guid, label, NULL );
  
      TRACE( "added device %c: udi %s for %s on %s type %u\n",
-@@ -1327,13 +1335,13 @@ found:
+@@ -1327,13 +1348,13 @@ found:
          RegCloseKey( hkey );
      }
  
@@ -64,11 +117,11 @@ index 733d48a..7fb6b7f 100644
      if (volume) release_volume( volume );
      LeaveCriticalSection( &device_section );
 -    if (notify != -1) send_notify( notify, DBT_DEVICEARRIVAL );
-+    if (notify != -1) send_notify( notify, event );
++    if (notify != -1) send_notify( notify, event, flags );
      return status;
  }
  
-@@ -1371,7 +1379,8 @@ NTSTATUS remove_dos_device( int letter, const char *udi )
+@@ -1371,14 +1392,17 @@ NTSTATUS remove_dos_device( int letter, const char *udi )
              RegCloseKey( hkey );
          }
  
@@ -78,3 +131,13 @@ index 733d48a..7fb6b7f 100644
  
          delete_dos_device( drive );
          status = STATUS_SUCCESS;
+         break;
+     }
+     LeaveCriticalSection( &device_section );
+-    if (notify != -1) send_notify( notify, DBT_DEVICEREMOVECOMPLETE );
++    /* Without DBTF_MEDIA: the drive is gone, not only what was in it. XP's
++     * Explorer keeps the drive otherwise. */
++    if (notify != -1) send_notify( notify, DBT_DEVICEREMOVECOMPLETE, 0 );
+     return status;
+ }
+ 

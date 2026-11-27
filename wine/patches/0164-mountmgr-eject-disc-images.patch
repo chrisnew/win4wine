@@ -22,10 +22,10 @@ Scope: all programs; only loop devices that are CD or DVD drives.
  1 file changed, 49 insertions(+)
 
 diff --git a/dlls/mountmgr.sys/device.c b/dlls/mountmgr.sys/device.c
-index 7fb6b7f..06508a8 100644
+index 938c895..25d36f7 100644
 --- a/dlls/mountmgr.sys/device.c
 +++ b/dlls/mountmgr.sys/device.c
-@@ -1790,6 +1790,46 @@ done:
+@@ -1805,6 +1805,46 @@ done:
      return status;
  }
  
@@ -72,7 +72,7 @@ index 7fb6b7f..06508a8 100644
  /* handler for ioctls on the harddisk device */
  static NTSTATUS WINAPI harddisk_ioctl( DEVICE_OBJECT *device, IRP *irp )
  {
-@@ -1802,6 +1842,15 @@ static NTSTATUS WINAPI harddisk_ioctl( DEVICE_OBJECT *device, IRP *irp )
+@@ -1817,6 +1857,15 @@ static NTSTATUS WINAPI harddisk_ioctl( DEVICE_OBJECT *device, IRP *irp )
             irpsp->Parameters.DeviceIoControl.InputBufferLength,
             irpsp->Parameters.DeviceIoControl.OutputBufferLength );
  
