@@ -39,11 +39,11 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | X driver | `xserver-xorg-video-intel 2:2.99.917+git20210115-1+w4w1`, built by [xorg-intel/build.sh](xorg-intel/build.sh) with `sna-gen3-dri3.patch`; **held** with `apt-mark hold` | DRI3 on the GMA 3150, so OpenGL runs on the GPU instead of llvmpipe | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/20-intel.conf`: `Driver "intel"`, `Option "DRI" "3"` | The patched driver gives gen3 DRI3 only when asked | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/10-nodpms.conf`: blanking, standby, suspend and off times 0; `DPMS` false on LVDS1 | The screen never blanks (see "Not yet explained") | ? |
-| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0160, with the changes to 0066 and 0079 (repo 49f4a46) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner | 2026-11-27 |
+| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0161 (repo 152c0d4) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner; 0161 keeps copy and paste working after a folder window is closed | 2026-11-27 |
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
 | PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
-| Prefix | `prefix/extras.py` VERSION 12: "Open in Linux Terminal" (`C:\xp\bin\linux-launch.exe` and the context menu handler in `linuxcols.dll`). Since VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. Set by hand ahead of VERSION 13: IE's `NoUpdateCheck`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
+| Prefix | `prefix/extras.py` VERSION 13 (IE's `NoUpdateCheck`). Since VERSION 12: "Open in Linux Terminal" (`C:\xp\bin\linux-launch.exe` and the context menu handler in `linuxcols.dll`). Since VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
 | Prefix | Office's `MDM` and `MOSEARCH` services `Start=3` (manual) instead of automatic | MOSEARCH failed at every login (missing `TQUERY.DLL`); neither is needed by the session | 2026-11-26 |
 | Boot | `GRUB_CMDLINE_LINUX_DEFAULT="zswap.enabled=1 zswap.compressor=zstd"` | Compressed swap cache, for 2 GB of RAM. **zstd is not actually used**, see "Open" | ? |
 | Disk | `/` mounted `noatime,nodiratime`; 9.5 GB swap partition `/dev/sda2` | ? (the disk is a spinning HDD, Toshiba MK2552GSX) | ? |
@@ -77,6 +77,22 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-27: Wine 0161 (copy and paste of files) installed
+
+- **What:** the XP session was ended over ssh (`pkill -x wm`; HexChat closed with it), then `git fetch fork && git checkout -B
+  eeepc fork/eeepc` (dba2ad6 to 152c0d4); on the development machine `wine/container-build.sh --deploy 192.168.1.9`, which
+  went straight into `.local/wine-install` (the Wine up to 0160 is now `.local/wine-install-old`). Then, with the registry
+  files and `system.ini` copied to `.local/backup-before-wine0161/`, `bridge-wm/build.sh` and the prefix additions as
+  `scripts/setup.sh` runs them after a Wine build (`prefix/extras.py`, `session/linux_apps.py`,
+  `xp-explorer/scripts/pins.py` in `xvfb-run`, then `wineserver -k` and `-w`).
+- **Why:** Copy did nothing in Explorer and Paste stayed grey once a folder window had been closed.
+- **Result:** additions 420 s, `extras.py --check` passes (VERSION 13). `tests/ole-clipboard-thread.c`, 32-bit and 64-bit,
+  passes on the machine. Reproduced here before (the Windows clipboard's sequence number still 1 after copies in the shell
+  process); in a session after the install not yet checked.
+- **Undo:** logged off, `mv .local/wine-install .local/wine-install-0161 && mv .local/wine-install-old .local/wine-install`,
+  `git checkout -B eeepc dba2ad6`, and apply the prefix additions again as above (or copy the backed up `*.reg` back with no
+  wineserver running).
 
 ### 2026-11-27: Internet Explorer opens web pages
 
