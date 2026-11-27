@@ -73,6 +73,11 @@ for wlroots, apply `wayland/patches/wlroots` to `SOURCE/subprojects/wlroots`).
 The list, order, format and the opt-in check are in [patches.md](patches.md). Never ship a change made directly in
 `.local/wine-upstream`: always turn it into a patch.
 
+To change Wine, edit the patched source and let `wine/patch-edit.py` make the patch: `mark`, edit `.local/wine-upstream`,
+`make dlls/NAME/all` (compiles and links in the Debian 13 container, in seconds), then `fold NNNN` into an existing patch or
+`new NNNN-dll-what.patch`, and `sync`. After `sync`, `wine/container-build.sh` compiles only what changed instead of starting
+from upstream again. `wine/patch-edit.py --help` has the details.
+
 ## Tests
 
 | Test | What it covers |
