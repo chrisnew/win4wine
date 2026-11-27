@@ -1,7 +1,8 @@
 # Plan: "Open in Linux Terminal" on folders
 
 Status (2026-11-27): phases 1 and 2 built and checked in the session in Docker (Xvfb, 1024x600); deployed to the EeePC the same
-day, not yet checked in a session there (phase 1 step 5). Phase 3 is not started. Found there, and different from what is written below:
+day, where it works. Still open from phase 1 step 5: the time from the click to the prompt there. Phase 3 is not started.
+Found in Docker, and different from what is written below:
 
 - **Environment:** only `WINEDEBUG` and `FONTCONFIG_FILE` are dropped. Without `WIN4WINE_EXTERNAL_SHELL` and `WINEDLLOVERRIDES`,
   `wine notepad` gets a broken frame, and Linux programs do not read them.

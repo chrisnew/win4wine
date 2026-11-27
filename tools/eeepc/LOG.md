@@ -96,8 +96,8 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   three `ContextMenuHandlers` keys; `user.reg` and `userdef.reg` have the same keys and values as before. The display
   adapter reads "Wine Adapter" after the run under Xvfb. One other change: IE6's registration took back
   `HKCR\htmlfile\shell\Print\command`, which was Office XP's
-  `"C:\Program Files (x86)\Microsoft Office\Office10\msohtmed.exe" /p %1`; not put back. **Not yet checked in a session
-  on the machine**, and the time from the click to the prompt is not measured.
+  `"C:\Program Files (x86)\Microsoft Office\Office10\msohtmed.exe" /p %1`; not put back. After logging in, it works on
+  the machine; the time from the click to the prompt is not measured.
 - **Undo:** with `WINEPREFIX` set to the prefix, `wine reg delete 'HKCR\<class>\shellex\ContextMenuHandlers\LinuxTerminal' /f`
   for `Directory`, `Drive` and `Directory\Background` (until `extras.py` is applied again). Or copy the backed up `*.reg` and
   `.xp-extras` back with no wineserver running, and check out 6d7dcb8 and build again.
