@@ -153,3 +153,9 @@ the screen and the taskbar. Frame rates were not measured.
 
 Mouse movement ended each one. 3D Pipes did not end on three XTEST jumps 0.3 s apart, but did on real movement; the others
 measured after it ended within 0.4 s of continuous XTEST movement.
+
+**With a lock screen waiting** (fc82c2e, `xp-lock.py --standby`, the same day): 0.57 and 0.57 s with the request file, 0.61 s
+with `loginctl lock-session`, and it feels immediate at the machine. The waiting process takes 54-56 MB, no CPU and no wakeups
+(the idle session after the relogin: 4.8%, 159, mostly xp-explorer at 2.8%). A profile of the start before, off screen: Python
+0.18 s, `import welcome` (cairo, Pango) 0.49, other imports and the X connections 0.5, the first drawing of the screen 0.78, a
+second one 0.13, the first with the password box 0.44, the upload 0.06.

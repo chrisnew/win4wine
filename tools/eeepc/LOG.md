@@ -77,6 +77,16 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
 
 ## Entries
 
+### 2026-11-27: lock screen started ahead deployed
+
+- **What:** `git fetch fork && git checkout -B eeepc fork/eeepc` (5e20db8 to fc82c2e), then log off and in. Nothing outside
+  the checkout changed.
+- **Why:** locking took 2.2 s.
+- **Result:** 0.57-0.61 s, immediate at the machine; the waiting lock screen takes 54-56 MB and no wakeups, and a new one
+  waits after each unlock (numbers in the [README](README.md#screen-savers-and-the-lock-screen)). `tests/screen_guard.py`
+  passes.
+- **Undo:** `git checkout -B eeepc 5e20db8`, then log off and in.
+
 ### 2026-11-27: redshift-gtk installed
 
 - **What:** `apt install redshift-gtk` (00:17; with `redshift`, `geoclue-2.0`, `avahi-daemon` and their libraries).
@@ -84,7 +94,7 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   here). `~/.config/autostart/redshift-gtk.desktop` has `Hidden=true` and `X-GNOME-Autostart-enabled=false`.
 - **Why:** to see whether redshift-gtk works as installed.
 - **Result:** it does. Checked later the same day: `avahi-daemon` is running; a `redshift -v` started at 00:24 was still running
-  after that session had been logged off (its parent gone).
+  after that session had been logged off (its parent gone); it was then ended by hand.
 - **Undo:** `sudo apt remove redshift-gtk redshift geoclue-2.0 avahi-daemon && sudo apt autoremove`, and delete the two files.
 
 ### 2026-11-27: screen savers and the lock screen deployed

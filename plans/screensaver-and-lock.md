@@ -322,12 +322,8 @@ print(f'lock screen after {time.monotonic() - start:.2f} s')
 
 ## Left to do after the deployment
 
-- **Lock screen started ahead of time** (`greeter/xp-lock.py --standby`): written, **not yet on the EeePC**. Locking took 2.2 s
-  there, over the 1 s limit of step 10: starting Python and its imports 0.7 s, the first drawing 0.8 s. The waiting one has done
-  those and holds no X connection; opening the display, drawing with the program count and the upload are left, about 0.4 s by
-  the same profile. In the container: 51 MB resident, no context switches while it waits, shown 0.09 s after "start" (0.2 s when
-  started on demand). To check on the EeePC: the time to lock, the memory, and the first lock after hours idle (swapped pages
-  come from the hard disk). It needs only the checkout and a relogin.
+- Done 2026-11-27: the lock screen is started ahead of time (`greeter/xp-lock.py --standby`), on the EeePC locking takes
+  0.6 s instead of 2.2 s. Not checked: the first lock after hours idle (swapped pages come from the hard disk).
 - The Windows XP logo screen saver shows only black ([BUGS.md](../BUGS.md)).
 - Decide whether a full-screen game should hold the screen saver off. On the EeePC the saver and then the lock screen came over
   VS Code left alone, and XP would start it too. A full-screen game or video was not tried (see also phase 4).
