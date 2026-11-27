@@ -43,7 +43,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
 | PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
-| Prefix | `prefix/extras.py` VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
+| Prefix | `prefix/extras.py` VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
 | Prefix | Office's `MDM` and `MOSEARCH` services `Start=3` (manual) instead of automatic | MOSEARCH failed at every login (missing `TQUERY.DLL`); neither is needed by the session | 2026-11-26 |
 | Boot | `GRUB_CMDLINE_LINUX_DEFAULT="zswap.enabled=1 zswap.compressor=zstd"` | Compressed swap cache, for 2 GB of RAM. **zstd is not actually used**, see "Open" | ? |
 | Disk | `/` mounted `noatime,nodiratime`; 9.5 GB swap partition `/dev/sda2` | ? (the disk is a spinning HDD, Toshiba MK2552GSX) | ? |
@@ -76,6 +76,28 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-27: XP's actxprxy.dll in the prefix, for Customize Notifications
+
+- **What** (logged off, repo 8858f43), in `~/win4wine`: `git fetch fork && git checkout -B eeepc fork/eeepc` (a11d911 to
+  8858f43); registry files and `.xp-extras` copied to `.local/backup-before-extras9/`; then the new extraction group and
+  the prefix additions, the latter as `scripts/setup.sh` runs them:
+
+  ```sh
+  TMPDIR=$PWD/.local/tmp python3 extract/extract.py --only=com \
+      ~/Images/en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso .local/assets
+  xvfb-run -a -s '-screen 0 1280x800x24' sh -c 'p=$PWD/.local/prefix w=$PWD/.local/wine-install/bin/wine
+      python3 prefix/extras.py $p --wine $w && python3 session/linux_apps.py $p --wine $w &&
+      python3 xp-explorer/scripts/pins.py $p --wine $w' > .local/extras9.log 2>&1
+  ```
+
+- **Why:** Taskbar Properties » Customize showed an empty list: Wine's `actxprxy` lacks the proxies for the notification
+  area's COM interfaces.
+- **Result:** extraction 35 s, additions 262 s, exit status 0. XP's DLL is in `drive_c/xp/native` and `syswow64`, the two
+  interfaces are registered, and in `user.reg` the only values that differ from the backup are the two `actxprxy` DLL
+  overrides. The dialog itself is not yet checked on the machine.
+- **Undo:** `wine reg delete 'HKCU\Software\Wine\AppDefaults\xp-explorer.exe\DllOverrides' /v actxprxy /f` with
+  `WINEPREFIX` set to the prefix; Explorer then loads Wine's DLL again (until `extras.py` is applied again).
 
 ### 2026-11-27: Wine without the grey square on the tray's chevron button installed
 
