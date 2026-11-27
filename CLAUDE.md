@@ -57,8 +57,8 @@ and a mention in the matching skill, not in the scratchpad.
 
 ## Git
 
-- Work on branch `eeepc`, one commit per fix, and push it to `origin` (the fork, `chrisnew/LunaticOS`). `upstream` is only a
-  remote to read from; never push or open PRs there.
+- Work on branch `master`, the main branch (until 2026-11-27 it was `eeepc`), one commit per fix, and push it to `origin`
+  (the fork, `chrisnew/LunaticOS`). `upstream` is only a remote to read from; never push or open PRs there.
 - Commit messages in English: `area: what changes now` as the subject (`wm:`, `proxy:`, `xptray:`, `supervisor:` …, or
   `Wine NNNN: …` for a new or changed patch), then a body that explains the cause, the fix and, where there is one, the measurement.
 - When a bug in [BUGS.md](BUGS.md) is fixed, update its status in the same commit.
@@ -72,14 +72,14 @@ and a mention in the matching skill, not in the scratchpad.
     is edited, compiled and turned into a patch with `wine/patch-edit.py` (skill `wine-patch`).
   - The whole XP session runs on Xvfb at 1024x600 with `tools/bench/bench.sh` (skill `bench`): try a change there, and take
     its screenshots, before it goes to the EeePC. Speed is measured only on the EeePC.
-- The EeePC runs the real session, from a checkout of branch `eeepc`. How to reach it is in `CLAUDE.local.md`.
+- The EeePC runs the real session, from a checkout of branch `master`. How to reach it is in `CLAUDE.local.md`.
   **It is the user's live machine: ask before changing anything on it**, and before killing processes there.
 - Every change made on the EeePC outside the checkout (packages, the kernel, `/etc`, services, the prefix, a new Wine install)
   gets an entry in [tools/eeepc/LOG.md](tools/eeepc/LOG.md) in the same session: what, why, result, undo. Its head says how.
 - On the EeePC: logs are in `~/.local/state/win4wine/`, the IPC directory is `/run/user/1000/win4wine-1000-*`, and
   `tools/eeepc/eee.sh` drives it, takes screenshots (with the taskbar and menus, which `xwd -root` misses) and samples CPU
   from here (skill `eeepc`).
-- Deploying a commit: push to `origin`, then on the EeePC `git fetch fork && git checkout -B eeepc fork/eeepc`.
+- Deploying a commit: push to `origin`, then on the EeePC `git fetch fork && git checkout -B master fork/master`.
   - Changes to the session (the WM, supervisor.py) only take effect after logging out and in, because the session ends
     when the WM exits. The session runs the C WM (`bridge-wm/wm.c`, built by `bridge-wm/build.sh` as `.local/bridge/wm`);
     a WM change goes into both `wm.c` and `wm.py`, checked with `tests/wm_parity.py`.

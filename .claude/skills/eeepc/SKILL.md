@@ -35,7 +35,7 @@ $E insession probe.sh                          # a script from here, run inside 
 ## Deploying
 
 1. Commit and push to `origin` (the fork).
-2. On the EeePC, with the user's go-ahead: `cd ~/win4wine && git fetch fork && git checkout -B eeepc fork/eeepc`.
+2. On the EeePC, with the user's go-ahead: `cd ~/win4wine && git fetch fork && git checkout -B master fork/master`.
 3. What else it needs:
 
    | Changed | Then |
