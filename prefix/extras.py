@@ -10,7 +10,8 @@ the Start menu's full left column (Internet, E-mail and the most used
 programs); XP's proxies for the shell's COM interfaces, which Taskbar
 Properties' Customize Notifications needs; Linux permissions, owner, group and
 path as columns and in the task pane's Details section of folder windows
-(linuxcols.dll); and XP's Regional and Language Options, whose input languages
+(linuxcols.dll); "Open in Linux Terminal" on folders and drives
+(linux-launch.exe); and XP's Regional and Language Options, whose input languages
 the session's keyboard layout follows (session/keyboard.py). This applies them to a prefix made by prefix/create.py, with
 xp-explorer/scripts/prefix.py's own code, and again when they change.
 
@@ -33,10 +34,11 @@ import xp_schemes
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / '.local/bridge'
 # Bumped when apply() changes; setup.sh applies it again on existing prefixes.
-VERSION = '10'
+VERSION = '11'
 MARKER = '.xp-extras'
 # What goes from .local/bridge to C:\xp\bin.
-HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'linuxcols.dll')
+HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'linux-launch.exe',
+           'linuxcols.dll')
 # linuxcols.dll's column handler (xp-explorer/helpers/linuxcols.c), and the
 # property set of its columns.
 LINUX_COLUMNS = '{48E91554-B8E3-45CE-A5C9-E7E65E654FF0}'
@@ -135,6 +137,14 @@ def registry(xpx):
     # type's own list comes first.
     for key in ('*', 'Directory'):
         r.add('HKCR\\' + key, 'Details', LINUX_DETAILS)
+    # "Open in Linux Terminal" on folders and drives (session/linux-launch.c).
+    # "none" is XP's own default verb of these classes: without it the only
+    # verb listed would be what a double click does.
+    for key in ('Directory', 'Drive'):
+        shell = 'HKCR\\' + key + '\\shell'
+        r.add(shell, None, 'none')
+        r.add(shell + '\\linuxterminal', None, 'Open in Linux &Terminal')
+        r.add(shell + '\\linuxterminal\\command', None, r'"C:\xp\bin\linux-launch.exe" --terminal "%1"')
     return r
 
 

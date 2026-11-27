@@ -27,7 +27,7 @@ Preparation builds the following:
 | `wine/build.sh` | Fetches Wine 11.0, applies `wine/patches/` and builds it ([patches.md](patches.md)). |
 | `prefix/create.py`, `prefix/stage.py` | Create the Wine prefix for XP and install XP's DLLs, the COM registrations and the registry settings (registry profiles). Settings follow XP's language (Japanese: the MS UI Gothic font profile and MS Gothic for the console; English: classic Tahoma, Microsoft Sans Serif for MS Shell Dlg, Terminal for the console). The language is recorded as `language` in `xp-shell.json`. |
 | `bridge-wm/build.sh` | Builds proxy.exe and the other Win32 helper programs (`.local/bridge`). |
-| `prefix/extras.py` | Installs into the XP session's prefix the additions taken from the XP Explorer of [AshesTom's fork](https://github.com/AshesTom/win4wine) (XP icons in the notification area, Display Properties, sounds, Internet Explorer 6, Windows Media Player 9 and more), XP's `actxprxy.dll` in XP Explorer (the COM proxies that Taskbar Properties' Customize Notifications needs) and this fork's [Linux columns](#linux-columns-in-xps-folder-windows-xp-explorerhelperslinuxcolsc), with the code in `xp-explorer/scripts/`. The colour schemes of Display Properties (New Schemes), which XP creates at the first logon, are built by `prefix/xp_schemes.py` from the ISO's HIVEDEF.INF and themeui.dll. When they change, bump `VERSION` and setup.sh installs them again. |
+| `prefix/extras.py` | Installs into the XP session's prefix the additions taken from the XP Explorer of [AshesTom's fork](https://github.com/AshesTom/win4wine) (XP icons in the notification area, Display Properties, sounds, Internet Explorer 6, Windows Media Player 9 and more), XP's `actxprxy.dll` in XP Explorer (the COM proxies that Taskbar Properties' Customize Notifications needs) and this fork's [Linux columns](#linux-columns-in-xps-folder-windows-xp-explorerhelperslinuxcolsc) and [Open in Linux Terminal](#open-in-linux-terminal-sessionlinux-launchc), with the code in `xp-explorer/scripts/`. The colour schemes of Display Properties (New Schemes), which XP creates at the first logon, are built by `prefix/xp_schemes.py` from the ISO's HIVEDEF.INF and themeui.dll. When they change, bump `VERSION` and setup.sh installs them again. |
 
 ## How the XP shell runs
 
@@ -313,6 +313,25 @@ task pane. Wine's own shell32 does not use column handlers, so only XP's Explore
   `-` and `.`, and in long runs, where the narrow pane can wrap it.
 - **To see XP's calls**: `HKCU\Software\win4wine\LinuxColumns`, DWORD `Debug` = 1, and `"debug": "warn+seh"` in
   `session.json` (Wine prints `OutputDebugString` on the `seh` channel).
+
+## Open in Linux Terminal (`session/linux-launch.c`)
+
+Folders and drives that exist on the Linux file system offer **Open in Linux Terminal** (access key T): a Linux terminal
+(`x-terminal-emulator`, else `xterm`) in that folder, with an XP frame and a taskbar button from the WM.
+
+- **The verb** is a static one under `HKCR\Directory\shell\linuxterminal` and `HKCR\Drive\...`, written by
+  `prefix/extras.py`: `"C:\xp\bin\linux-launch.exe" --terminal "%1"`. Both keys' default verb is set to `none`, as XP's setup
+  does, so that a double click still opens the folder.
+- **The folder reaches the terminal as its working directory only.** Wine changes to `CreateProcess`'s current directory before
+  it runs the Unix program, so no folder name is ever part of a command line or read by a shell.
+- **No terminal in another directory.** The launcher shows a message box instead for: a path without a drive letter
+  (`\\server\share`); a path that is not a directory; a name that ends with a dot (or the path with a space), which Wine would
+  strip from the working directory; and a folder that may not be entered, where Wine would silently keep its own directory.
+  The last is found by looking a name up in the folder (`FindFirstFile`): opening the folder succeeds for one that may be
+  listed but not entered.
+- **The environment** is the session's, without `WINEDEBUG` and `FONTCONFIG_FILE`. `WINEPREFIX`, the `PATH` with the session's
+  Wine, `WIN4WINE_*` and `WINEDLLOVERRIDES` stay, so `wine notepad` typed there opens Notepad in the session with its XP frame
+  (without them its frame is broken). Linux programs do not read them.
 
 ## The login screen (`greeter/`)
 
