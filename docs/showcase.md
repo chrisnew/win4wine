@@ -9,6 +9,15 @@ Each picture says where it was taken: **EeePC** (the real machine, 1024x600) or 
 and few Linux apps). The pictures are in [images/showcase/](images/showcase/). The XP screens in them are copyrighted by
 Microsoft.
 
+## The desktop on the EeePC
+
+The whole desktop on the machine it is made for: an xterm with screenfetch on Debian 13, Excel 2002 from Office XP, XP's folder
+window on `/usr/bin` with the Linux details, and Wine's About box, side by side on XP's taskbar. It is the README's main picture.
+
+<img src="images/showcase/desktop-eeepc.png" alt="LunaticOS on the EeePC 1015PEM: screenfetch on Debian 13 in an xterm with an XP frame, Excel 2002, an XP folder window on /usr/bin with Linux permissions, and Wine's About box" width="800" />
+
+*EeePC, 2026-11-27 (repo dc08256).*
+
 ## Open in Linux Terminal
 
 The context menu of a folder's background opens a Linux terminal in that folder. The terminal gets an XP frame and a taskbar

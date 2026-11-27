@@ -3,7 +3,7 @@
   <strong>A Windows XP desktop for old netbooks, built on Debian.</strong>
 </p>
 <p align="center">
-  <img src="docs/images/screenshot-en.png" alt="LunaticOS: XP's taskbar, Start menu and folder windows, with Linux and Windows applications in XP frames" width="800" />
+  <img src="docs/images/showcase/desktop-eeepc.png" alt="LunaticOS on the EeePC 1015PEM: screenfetch on Debian 13 in an xterm with an XP frame, Excel 2002, an XP folder window on /usr/bin with Linux permissions, and Wine's About box, on XP's taskbar and desktop" width="800" />
 </p>
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-LGPL--2.1--or--later-blue?style=flat" alt="License: LGPL-2.1-or-later"></a>
