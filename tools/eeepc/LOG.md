@@ -48,6 +48,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | Boot | `GRUB_CMDLINE_LINUX_DEFAULT="zswap.enabled=1 zswap.compressor=zstd"` | Compressed swap cache, for 2 GB of RAM. **zstd is not actually used**, see "Open" | ? |
 | Disk | `/` mounted `noatime,nodiratime`; 9.5 GB swap partition `/dev/sda2` | ? (the disk is a spinning HDD, Toshiba MK2552GSX) | ? |
 | Power | `tlp` installed, configuration untouched | | 2026-11-23 |
+| Colour temperature | `redshift-gtk` (brings `redshift`, `geoclue-2.0` and `avahi-daemon`, which is enabled); `~/.config/redshift.conf` with `location-provider=manual`; autostart switched off in `~/.config/autostart/redshift-gtk.desktop` | Trying whether it works as installed | 2026-11-27 |
 | Remote access | `openssh-server` | Driving and measuring the machine from the development machine | 2026-11-23 |
 | Profiling | `linux-perf` 7.3.4 (trixie-backports, matches the kernel) and `strace` | Profiling Wine programs on the machine itself; `perf_event_paranoid` stays 3, so perf runs with sudo | 2026-11-26 |
 | Build tools | build-essential, MinGW, Xvfb, python3-xlib and the rest of win4wine's build dependencies | Building Wine and the bridge on the machine (Wine is now built in a container on the development machine) | 2026-11-23 |
@@ -75,6 +76,16 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-27: redshift-gtk installed
+
+- **What:** `apt install redshift-gtk` (00:17; with `redshift`, `geoclue-2.0`, `avahi-daemon` and their libraries).
+  `~/.config/redshift.conf` has `[redshift] location-provider=manual` and a `[manual]` section with the location (not copied
+  here). `~/.config/autostart/redshift-gtk.desktop` has `Hidden=true` and `X-GNOME-Autostart-enabled=false`.
+- **Why:** to see whether redshift-gtk works as installed.
+- **Result:** it does. Checked later the same day: `avahi-daemon` is running; a `redshift -v` started at 00:24 was still running
+  after that session had been logged off (its parent gone).
+- **Undo:** `sudo apt remove redshift-gtk redshift geoclue-2.0 avahi-daemon && sudo apt autoremove`, and delete the two files.
 
 ### 2026-11-27: screen savers and the lock screen deployed
 
