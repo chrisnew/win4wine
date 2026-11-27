@@ -5,6 +5,7 @@ and logind-watch. No X and no Wine.
 
     tests/screen_guard.py
 """
+import os
 from pathlib import Path
 import select
 import sys
@@ -88,8 +89,10 @@ class Guard(unittest.TestCase):
         """What supervisor.Session.wait does, until CONDITION holds."""
         end = time.monotonic() + timeout
         while not condition():
-            self.assertLess(time.monotonic(), end, 'timed out; ' + repr(
-                {p.name: p.read_text() for p in (self.root / 'fake').iterdir()}))
+            if time.monotonic() > end:
+                # Read only now: the stand-ins delete their .ctl files meanwhile.
+                found = {name: self.read(name) for name in os.listdir(self.root / 'fake')}
+                self.fail(f'timed out; {found!r}')
             select.select(self.guard.fds(), [], [], 0.02)
             self.guard.handle()
 
