@@ -52,6 +52,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | Remote access | `openssh-server` | Driving and measuring the machine from the development machine | 2026-11-23 |
 | Profiling | `linux-perf` 7.3.4 (trixie-backports, matches the kernel) and `strace` | Profiling Wine programs on the machine itself; `perf_event_paranoid` stays 3, so perf runs with sudo | 2026-11-26 |
 | Build tools | build-essential, MinGW, Xvfb, python3-xlib and the rest of win4wine's build dependencies | Building Wine and the bridge on the machine (Wine is now built in a container on the development machine) | 2026-11-23 |
+| Network | `avahi-daemon` (first installed with `redshift-gtk`), marked as manually installed | mDNS for My Network Places (`session/network_places.py`) | 2026-11-27 |
 
 ## Open
 
@@ -76,6 +77,31 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-27: My Network Places lists the local network
+
+- **What** (logged off, repo 6d7dcb8), in `~/win4wine`: `git fetch fork && git checkout -B eeepc fork/eeepc` (8858f43 to
+  6d7dcb8) and `bridge-wm/build.sh`; `sudo apt-mark manual avahi-daemon`; registry files, `.xp-extras`, `.xp-defaults` and
+  the user's `Network Shortcuts` folder copied to `.local/backup-before-extras10/`; then the prefix additions as
+  `scripts/setup.sh` runs them, and `wineserver -k` and `-w`:
+
+  ```sh
+  xvfb-run -a -s '-screen 0 1280x800x24' sh -c 'p=$PWD/.local/prefix w=$PWD/.local/wine-install/bin/wine
+      python3 prefix/extras.py $p --wine $w && python3 session/linux_apps.py $p --wine $w &&
+      python3 xp-explorer/scripts/pins.py $p --wine $w' > .local/extras10.log 2>&1
+  ```
+
+- **Why:** My Network Places showed nothing of the network, and one item without a name. The new
+  `session/network_places.py` needs `avahi-daemon`, which had come only with `redshift-gtk`
+  ([plan](../../plans/network-places.md)).
+- **Result:** additions 270 s, exit status 0. The blank item's key is gone from `system.reg`; `user.reg` and `userdef.reg`
+  have the same keys and values as before. The display adapter that Wine had noted under Xvfb was "Intel" again after the
+  login. In the session at home the helper wrote two shortcuts (the router's web page over UPnP, one computer over mDNS);
+  its cost is in the [README](README.md#my-network-places).
+- **Undo:** `sudo apt-mark auto avahi-daemon`; `"network_places": false` in `session.json` stops the helper and removes its
+  shortcuts. The blank item comes back by adding the key
+  `HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\NetworkNeighborhood\NameSpace\{3c5c43a3-9ce9-4a9b-9699-2ac0cf6cc4bf}`
+  (`/reg:32`).
 
 ### 2026-11-27: XP's actxprxy.dll in the prefix, for Customize Notifications
 

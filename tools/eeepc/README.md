@@ -160,6 +160,15 @@ with `loginctl lock-session`, and it feels immediate at the machine. The waiting
 0.18 s, `import welcome` (cairo, Pango) 0.49, other imports and the X connections 0.5, the first drawing of the screen 0.78, a
 second one 0.13, the first with the password box 0.44, the upload 0.06.
 
+## My Network Places
+
+Measured 2026-11-27 (repo 6d7dcb8) in the session on the home network, where `session/network_places.py` showed two devices.
+
+- **Idle**, 120 s from about 20 s after the login: no CPU time (in ticks of 10 ms) and 8 context switches. 42 MB resident.
+  Up to then it had used 1.87 s of CPU, its start included.
+- **Writing shortcuts**, one `linux-links.exe` run with the session up: 1.29, 1.07 and 1.30 s for one shortcut, 1.51 s for
+  ten (one run). So the 3 s for which changes are collected are worth keeping.
+
 ## Linux columns
 
 Measured 2026-11-27 (repo d2619cd) with no session running: a 32-bit program calling `linuxcols.dll` for each of the 1248

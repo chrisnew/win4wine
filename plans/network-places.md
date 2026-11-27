@@ -1,8 +1,9 @@
 # Plan: network scans in My Network Places
 
-Status (2026-11-27): **built and tested on the development machine** (XP session in Docker with Xvfb at 1024x600, with other
-containers announcing over mDNS and UPnP). **Not yet on the EeePC** ([deploying](#deploying-on-the-eeepc)). Windows shares
-are not done. How it works now:
+Status (2026-11-27): built, tested on the development machine (XP session in Docker with Xvfb at 1024x600, with other
+containers announcing over mDNS and UPnP) and **deployed on the EeePC** ([log](../tools/eeepc/LOG.md),
+[numbers](../tools/eeepc/README.md#my-network-places)), where it lists the router and a computer of the home network. Not
+yet checked there: the folder window and what a double click opens. Windows shares are not done. How it works now:
 [docs/architecture.md](../docs/architecture.md#my-network-places-sessionnetwork_placespy).
 
 Goal: XP's own My Network Places shows what is on the local network: computers, web interfaces, printers and other devices,
@@ -21,8 +22,9 @@ On the development machine, with a fresh prefix:
 - A web shortcut through `C:\xp\bin\iexplore.exe` delivers the URL unchanged, `%PATH%` and `$HOME` included.
 - A shortcut to `\\HOST` does nothing when double clicked, so bare computers get XP's "is not accessible" message from
   `linux-launch.exe --unreachable`.
-- Writing four shortcuts took 0.09 s on the development machine. **Not measured on the Atom.**
-- The helper used no CPU time and had no context switch in 120 s of idling (41 MB resident). **Not measured on the Atom.**
+- Writing four shortcuts took 0.09 s on the development machine; on the Atom one run takes 1.1 to 1.5 s.
+- The helper used no CPU time and had no context switch in 120 s of idling (41 MB resident); on the EeePC no CPU time and 8
+  context switches (42 MB).
 
 ## Grouping and columns
 
@@ -48,16 +50,6 @@ except bare computers. Real grouping by type needs a namespace extension of our 
 - Only private and link-local IPv4 addresses are listed.
 - A printer without a web page also shows "not accessible".
 - XP's UPnP folder was not tried.
-
-## Deploying on the EeePC
-
-Logged off, and each step with its entry in [tools/eeepc/LOG.md](../tools/eeepc/LOG.md):
-
-1. `git fetch fork && git checkout -B eeepc fork/eeepc`, then `bridge-wm/build.sh`.
-2. `sudo apt-mark manual avahi-daemon`: it came only with `redshift-gtk`.
-3. Apply the prefix additions again (`prefix/extras.py`, then `session/linux_apps.py` and `xp-explorer/scripts/pins.py`, as
-   `setup.sh` does under `xvfb-run`). This removes the blank item.
-4. Log in, then measure the helper when idle and one `linux-links.exe` run.
 
 "My Web Sites on MSN" is the user's own file in `Network Shortcuts`; it can be deleted like any shortcut.
 

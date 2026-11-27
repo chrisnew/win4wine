@@ -22,7 +22,7 @@ Linux apps pushing notifications need to be handled somehow.
 
 Maybe it’s possible to not just show Windows shares, but also do a network scan using avahi to show uPnP devices of any kind.
 
-Written, not yet on the EeePC; Windows shares are still missing: [plans/network-places.md](plans/network-places.md).
+Done and on the EeePC, except Windows shares: [plans/network-places.md](plans/network-places.md).
 
 ## Make Internet Explorer working again
 
