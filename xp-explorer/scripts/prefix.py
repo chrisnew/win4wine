@@ -336,8 +336,11 @@ def stage(prefix):
 
 
 # Bumped when xp_defaults() changes; xp.sh runs it again on existing prefixes.
-DEFAULTS_VERSION = '11'
+DEFAULTS_VERSION = '12'
 EXPLORER = r'SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer'
+# HIVESFT.INF's item of My Network Places whose class nothing here registers: it
+# showed without a name, with a generic icon.
+BLANK_NETWORK_ITEM = EXPLORER + r'\NetworkNeighborhood\NameSpace\{3c5c43a3-9ce9-4a9b-9699-2ac0cf6cc4bf}'
 # Wine's Unix root folder ("/"), a desktop item of Wine's shell namespace
 UNIX_ROOT = '{9D20AAE8-0625-44B0-9CA7-71889C2254D9}'
 IMAGES = ('.bmp', '.dib', '.gif', '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.tif', '.tiff', '.ico', '.emf', '.wmf')
@@ -412,7 +415,10 @@ def xp_defaults(assets, prefix, wine, folders=True):
         # applies visual styles and color schemes (themeui's ApplyPressed).
         texts.append(xpreg.hive_entries(hivesft, 'HKLM', (EXPLORER, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions',
                                                           r'SOFTWARE\Microsoft\Windows\CurrentVersion\Controls Folder\Desk'),
-                                        (EXPLORER + r'\Shell Folders', EXPLORER + r'\User Shell Folders')))
+                                        (EXPLORER + r'\Shell Folders', EXPLORER + r'\User Shell Folders',
+                                         BLANK_NETWORK_ITEM)))
+    # Prefixes made before it was left out have it.
+    texts.append(f'Windows Registry Editor Version 5.00\r\n\r\n[-HKEY_LOCAL_MACHINE\\{BLANK_NETWORK_ITEM}]\r\n')
     # Prefixes made before these shell classes were included need them too.
     # In particular, XP's Start menu Run item is registered as a shell class;
     # without it, clicking Run... tries to create a shortcut instead.
