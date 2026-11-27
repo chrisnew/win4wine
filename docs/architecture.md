@@ -364,6 +364,8 @@ UDisks2); Wine does not read the file.
   after installing `udisks2`, log off and on. The launcher asks `mountmgr` for up to 5 s which letter has the device
   (`IOCTL_MOUNTMGR_QUERY_UNIX_DRIVE`) and opens it; without one it opens the mount point through `Z:`. It starts
   `xp-explorer.exe` with the path for that: opening a folder as a document goes over DDE, which fails from another program.
+  For a disc mounted just now it waits 2 s first: a window asked for before Explorer has taken the new drive in is titled
+  `D:\`, without the label, and its address bar stays empty (on the EeePC after 0.3 and 0.8 s, not after 1.5 s).
 - **Eject** is XP's own, on the drive's menu and in My Computer's task pane. XP's shell32 sends `IOCTL_DISK_EJECT_MEDIA` to
   the volume, with no lock or dismount before it, and patch 0164 makes `mountmgr` unmount the image and delete its loop device
   (`udisksctl`, which needs no password for a device the user set up). The drive goes with the device (0163 tells Explorer).

@@ -78,7 +78,7 @@ class Mount(unittest.TestCase):
         (directory / 'backing_file').write_text(f'{backing}\n')
 
     def test_mount(self):
-        self.assertEqual(self.result(), ['ok', '/dev/loop3', '/media/me/OFFICE 10', ''])
+        self.assertEqual(self.result(), ['ok', '/dev/loop3', '/media/me/OFFICE 10', 'new', ''])
         self.assertEqual(self.calls(), ['loop-setup', 'mount'])
         first = (self.root / 'calls').read_text().splitlines()[0]
         self.assertEqual(first, f'loop-setup --no-user-interaction -r --no-partition-scan -f {self.image} '
@@ -89,13 +89,13 @@ class Mount(unittest.TestCase):
         link.symlink_to(self.image)
         self.loop(3, self.image)
         (self.root / 'mounts').write_text('/dev/loop3 /media/me/DISC iso9660 ro 0 0\n')
-        self.assertEqual(self.result(link), ['ok', '/dev/loop3', '/media/me/DISC', ''])
+        self.assertEqual(self.result(link), ['ok', '/dev/loop3', '/media/me/DISC', 'old', ''])
         self.assertEqual(self.calls(), [])
 
     def test_attached_but_not_mounted(self):
         self.loop(10, '/somewhere/else.iso')
         self.loop(3, self.image)
-        self.assertEqual(self.result()[:2], ['ok', '/dev/loop3'])
+        self.assertEqual(self.result(), ['ok', '/dev/loop3', '/media/me/OFFICE 10', 'new', ''])
         self.assertEqual(self.calls(), ['mount'])
 
     def test_not_a_disc(self):

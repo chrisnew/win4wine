@@ -11,6 +11,7 @@ piece, either
   ok            or    error
   /dev/loopN          what went wrong
   MOUNTPOINT
+  new or old          mounted now, or already before
 
 The image is attached to a loop device read-only and mounted by udisksd, so Wine's
 mountmgr.sys, which follows UDisks2, makes it a CD drive. An image that already is
@@ -91,7 +92,7 @@ def mount_device(device):
 
 
 def mount(image):
-    """(device, mount point) of IMAGE, mounted now or already."""
+    """(device, mount point, 'new' or 'old') of IMAGE, mounted now or already."""
     image = os.path.realpath(image)
     try:
         if not stat.S_ISREG(os.stat(image).st_mode):
@@ -103,7 +104,7 @@ def mount(image):
     if device:
         found = mounted(device)
         if found:
-            return device, found[0]
+            return device, found[0], 'old'
     else:
         # No partitions: a hybrid image (a Linux live CD) would become several drives.
         output = udisksctl('loop-setup', '-r', '--no-partition-scan', '-f', image)
@@ -126,7 +127,7 @@ def mount(image):
             except Refused as error:
                 print(f'{device} stays: {error}', file=sys.stderr)
         raise
-    return device, found[0]
+    return device, found[0], 'new'
 
 
 def locked_mount(image):
@@ -139,7 +140,7 @@ def locked_mount(image):
 
 def main(image, result):
     try:
-        text = 'ok\n{}\n{}\n'.format(*locked_mount(image))
+        text = 'ok\n{}\n{}\n{}\n'.format(*locked_mount(image))
     except Refused as error:
         text = f'error\n{error}\n'
     except Exception as error:  # The caller waits for a result whatever happens.

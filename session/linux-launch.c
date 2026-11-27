@@ -179,6 +179,12 @@ static int terminal(WCHAR *path)
     return start(line, folder);
 }
 
+/* How long XP's Explorer gets, after a new drive has its letter, to take it in
+ * before a window of it is asked for. A window asked for too early shows "D:\"
+ * without the disc's label and an empty address bar, and keeps them. On the
+ * EeePC 0.3 s and 0.8 s were too short and 1.5 s enough. */
+#define SETTLE_MS 2000
+
 /* Wine's Unix code page, in which its Unix file names are. */
 #define CP_UNIXCP 65010
 
@@ -301,7 +307,7 @@ static void open_folder(const WCHAR *path)
     ShellExecuteW(NULL, NULL, L"C:\\xp\\xp-explorer.exe", argument, NULL, SW_SHOWNORMAL);
 }
 
-static void open_disc(const char *device, const char *mount_point)
+static void open_disc(const char *device, const char *mount_point, BOOL new)
 {
     typedef WCHAR *(CDECL *dos_file_name)(const char *);
     WCHAR root[] = L"D:\\", *folder;
@@ -309,6 +315,7 @@ static void open_disc(const char *device, const char *mount_point)
 
     if ((root[0] = drive_of(device, mount_point)))
     {
+        if (new) Sleep(SETTLE_MS);
         open_folder(root);
         return;
     }
@@ -328,6 +335,7 @@ static int mount_iso(WCHAR *path)
     WCHAR full[MAX_PATH], script[MAX_PATH], temp[MAX_PATH], answer[MAX_PATH], message[2048], reason[1024], *name;
     char *image, *helper = NULL, *reply = NULL, *device, *mount_point, *end;
     DWORD size, attributes;
+    BOOL new = FALSE;
     int started = 1;
 
     path = unquoted(path);
@@ -374,8 +382,12 @@ static int mount_iso(WCHAR *path)
     {
         *end = 0;
         mount_point = end + 1;
-        if ((end = strchr(mount_point, '\n'))) *end = 0;
-        open_disc(device, mount_point);
+        if ((end = strchr(mount_point, '\n')))
+        {
+            *end = 0;
+            new = !strncmp(end + 1, "new", 3);
+        }
+        open_disc(device, mount_point, new);
         return 0;
     }
     end = !strncmp(result, "error\n", 6) ? result + 6 : result;
