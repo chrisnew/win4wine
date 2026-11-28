@@ -306,9 +306,14 @@ class Mock:
             table = {'org.freedesktop.UDisks2.Block': self.block(disk, stick, size, ''),
                      'org.freedesktop.UDisks2.PartitionTable': {
                          'Type': 'dos', 'Partitions': [BLOCKS + n for n in names]}}
+            folder = None
             if options.get('iso9660'):
+                # A hybrid image: a file system on the whole disk, beside its partitions.
                 table['org.freedesktop.UDisks2.Block'].update(IdUsage='filesystem', IdType='iso9660', IdLabel=label)
-            stick['blocks'][BLOCKS + disk] = None
+                table['org.freedesktop.UDisks2.Filesystem'] = {'MountPoints': [], 'Size': size}
+                folder = options.get('dir') or f'/tmp/udisks-mock/{name}'
+                os.makedirs(folder, exist_ok=True)
+            stick['blocks'][BLOCKS + disk] = folder
             self.add(BLOCKS + disk, table)
         for number, node in enumerate(names, 1):
             path = BLOCKS + node
