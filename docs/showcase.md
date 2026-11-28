@@ -56,6 +56,18 @@ XP's folder windows show a Linux file's permissions, owner, group and path (the 
 
 *Bench, 2026-11-27 (repo f21ec45).*
 
+## Recycle Bin
+
+Deleted files go to XP's Recycle Bin, from drive C: and from the home folder (drive H:), and can be restored or emptied for
+good. The desktop icon shows whether it is empty, and its menu has Empty Recycle Bin
+([plans/recycle-bin.md](../plans/recycle-bin.md)).
+
+<img src="images/showcase/recycle-bin.png" alt="The Recycle Bin window in Details view, listing two deleted files with their original location and the date" width="800" />
+
+<img src="images/showcase/recycle-bin-full.png" alt="The desktop's Recycle Bin icon, full" width="104" /> <img src="images/showcase/recycle-bin-empty.png" alt="The desktop's Recycle Bin icon, empty" width="104" /> <img src="images/showcase/recycle-bin-menu.png" alt="The Recycle Bin's context menu with Empty Recycle Bin" width="164" />
+
+*Bench, 2026-11-28.*
+
 ## Not pictured yet
 
 These are built and on the EeePC, and still need their picture, best taken there: My Network Places with the home network's

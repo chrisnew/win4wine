@@ -117,7 +117,7 @@
 0117-win32u-themed-menus.patch
 0118-uxtheme-drawthemetextex-callback.patch
 0119-uxtheme-min-part-size.patch
-0120-server-external-win7-stored-dacl.patch
+0120-server-external-stored-dacl.patch
 0121-ntdll-external-win7-readonly-folders.patch
 0122-uxtheme-external-win7-taskbar.patch
 0123-dlls-external-win7-start-button.patch

@@ -373,6 +373,22 @@ UDisks2); Wine does not read the file.
   no Shell Hardware Detection service here).
 - **Images stay mounted across a log off**, like a disc left in a drive. A restart of the machine clears them.
 
+## The Recycle Bin
+
+XP's own shell32 does all of it: a deleted file moves to `RECYCLER\<user SID>` on its drive under a new name (`D`, the drive's
+letter, a number), and the index `INFO2` there keeps where it came from and when. XP trusts a bin only if the folder still has
+the owner and access list it was made with. Wine on its own makes an access list up from the Unix mode, so Wine 0120 keeps the
+one XP set in the extended attribute `user.wine.dacl`.
+
+The prefix's registry profile (`prefix/registry.py`) adds what XP's setup registers for the bin and Wine's prefix lacks: the
+bin's own context menu and property sheet handlers (Empty Recycle Bin, its settings) and the `empty` and `full` icons that
+the shell switches the desktop icon between.
+
+- Drive H: is the home folder, which Wine reports as a fixed drive, so files deleted there (My Documents) go to `~/RECYCLER`,
+  visible from Linux. That keeps such a delete on one file system.
+- A copy of the prefix or the home folder without extended attributes (`cp` without `--xattrs`) loses the access list. XP then
+  asks once to empty that bin, and Yes makes it again.
+
 ## The login screen (`greeter/`)
 
 - `greeter/xp-greeter.py` is a LightDM greeter. It reads images and strings as PE resources from the user's XP logonui.exe, msgina.dll,

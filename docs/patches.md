@@ -22,16 +22,17 @@ Changes for the XP shell only take effect in processes that have the environment
 - `WIN4WINE_SHELL=reactos` (upstream's ReactOS shell session; nothing sets it here) makes 0067 leave out the parts meant for XP.
 - What is marked "XP session" only takes effect with `WIN4WINE_EXTERNAL_SHELL` set and `WIN4WINE_SHELL` unset (the XP shell session, the
   only one LunaticOS has).
-- Most of upstream's Windows 7 shell session and look (0120–0137) only takes effect with `WIN4WINE_EXTERNAL_SHELL` set and `WIN4WINE_SHELL=win7`
-  (how far is given in the table's opt-in column; 0120 decides from the environment the wineserver was started with). The shell type check
-  is gathered in one place, `win4wine_shell()` in 0019's header.
+- 0120 takes effect with `WIN4WINE_EXTERNAL_SHELL` set and `WIN4WINE_SHELL` unset or `win7` (the XP and Windows 7 sessions). It is in the
+  wineserver, so it decides from the environment the wineserver was started with.
+- Most of upstream's Windows 7 shell session and look (0121–0137) only takes effect with `WIN4WINE_EXTERNAL_SHELL` set and `WIN4WINE_SHELL=win7`
+  (how far is given in the table's opt-in column). The shell type check is gathered in one place, `win4wine_shell()` in 0019's header.
   0122 then skips 0079's and 0080's replacements meant for XP.
 
 ## Patches for the removed shells
 
 LunaticOS removed upstream's ReactOS and Windows 7 shells, but their patches are still in the series:
 
-- 0093, 0090 and 0143 (ReactOS) and 0120–0137 (Windows 7) only act with `WIN4WINE_SHELL=reactos` or `win7`, or with
+- 0093, 0090 and 0143 (ReactOS) and 0121–0137 (Windows 7) only act with `WIN4WINE_SHELL=reactos` or `win7`, or with
   `WIN4WINE_FOLDER_SHELL`, and nothing sets those any more. They are dormant.
 - 0094–0119 apply without them (APIs, Wine fixes and version 4 visual styles that the Windows 7 shell needed). They are harmless for
   XP but no longer needed.
@@ -232,11 +233,18 @@ Reads msstyles format 4 and draws the parts of version 4 styles. Behaviour does 
 | 0118 | uxtheme: DrawThemeTextEx's DTT_CALLBACK (draw with the caller's function) and DTT_COMPOSITED (draw opaquely on a surface with alpha). "Search programs and files" in Windows 7's Start menu search box did not show | no |
 | 0119 | uxtheme: Windows 7's minimum part size (TS_MIN = the sum of the content margins). The folder window's address bar and search box were too tall at 47 px | only with v4 styles (Windows 7) |
 
-### The Windows 7 shell session (0120–0128; upstream's, dormant here)
+### The Recycle Bin (0120)
+
+Upstream's patch for the Windows 7 shell, widened here to the XP session.
 
 | No. | Contents | Opt-in |
 |---|---|---|
-| 0120 | server: keep DACLs set on files and folders in the extended attribute `user.wine.dacl` and return them when the security is read (owner and group still come from the Unix owner). Windows 7's shell32 compares the Recycle Bin folder's DACL with the one it set, and says "The Recycle Bin is corrupted" if they differ | yes (`WIN4WINE_SHELL=win7`) |
+| 0120 | server: keep DACLs set on files and folders in the extended attribute `user.wine.dacl` and return them when the security is read (owner and group still come from the Unix owner). XP's shell32 compares the DACL of `RECYCLER\<SID>` with the one it set, and says "The Recycle Bin on C:\ is corrupted" if they differ; deleted files then did not show in the bin. Windows 7's does the same with `$Recycle.Bin` | yes (XP and Windows 7 sessions) |
+
+### The Windows 7 shell session (0121–0128; upstream's, dormant here)
+
+| No. | Contents | Opt-in |
+|---|---|---|
 | 0121 | ntdll: keep a directory's read-only attribute in the extended attribute `user.DOSATTRIB` without changing the Unix mode (the same form as Samba). Windows 7 makes Links, Favorites and Desktop read-only (the known folder's Attributes, set with KF_FLAG_INIT in the first session), and the shell reads desktop.ini only in read-only or system folders. Wine dropped this attribute, even the system attribute the prefix set was lost, and Favorites' "Recent Places" showed as "RecentPlaces" | yes (`WIN4WINE_SHELL=win7`) |
 | 0122 | uxtheme: Windows 7's taskbar draws its notification area and clock itself. With `WIN4WINE_SHELL=win7`, 0079 (drawing only the notification area's background in DrawThemeParentBackground) and 0080 (replacing the clock) are skipped (Windows 7's notification area background is translucent; it turned black and the time showed twice). BeginBufferedPaint's BP_PAINTPARAMS (BPPF_ERASE, prcExclude, AlphaBlend with pBlendFunction), BufferedPaintClear and BufferedPaintSetAlpha as documented | partly (`WIN4WINE_SHELL=win7`) |
 | 0123 | win32u, winex11, comctl32: draw Windows 7's Start button (a layered window owned by the taskbar) and the user picture in the Start menu. Translucent pixels are blended with what the owner window shows (a copy of its surface); outside the owner and where it has not drawn yet, pixels with alpha below 128 are dropped and the premultiplication of the rest is undone (the original image is kept and re-blended when the owner draws something new) (without a compositing manager the edges were black and jagged). When the window grows on hover, the new image is drawn first, then the size is changed, then it is flushed. The window is not managed by the WM, and after a resize X is synced before the image (the grown part flashed black). 0066's Start button class does not draw on layered windows. In the Wayland session (`WIN4WINE_COMPOSITED`) nothing is blended; it is left to the compositor | yes (`WIN4WINE_SHELL=win7`) |

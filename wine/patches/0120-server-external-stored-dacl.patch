@@ -1,8 +1,15 @@
 From: Codex <codex@localhost>
-Subject: [PATCH] server: keep the DACL of files for Windows 7's shell
+Subject: [PATCH] server: keep the DACL of files for XP's and Windows 7's shell
 
-Purpose: stop Windows 7's shell from reporting "C:\ のごみ箱が壊れています" at
-every start.
+Purpose: make the Recycle Bin work in the XP session, and stop Windows 7's
+shell from reporting "C:\ のごみ箱が壊れています" at every start.
+XP behavior: shell32 creates RECYCLER\<user SID> on a fixed drive with a
+DACL of six ACEs: for the user, SYSTEM (S-1-5-18) and Administrators
+(S-1-5-32-544) each full access (0x1F01FF) and an inherit-only GENERIC_ALL.
+Before it uses the bin it reads the folder's owner and DACL
+(GetFileSecurityW, EqualSid) and compares them with those. On a mismatch it
+says "The Recycle Bin on C:\ is corrupted. Do you want to empty the Recycle
+Bin for this drive?".
 Windows 7 behavior: shell32 creates C:\$RECYCLE.BIN\<user SID> with the
 DACL D:P(A;CIOI;GA;;;BA)(A;CIOI;GA;;;SY)(A;CIOI;GA;;;<user SID>), and at
 start it reads the folder's security (NtQuerySecurityObject) and compares
@@ -10,24 +17,29 @@ the DACL with that one. On a mismatch it asks to empty the broken recycle
 bin.
 Wine before: the server does not keep a file's security descriptor; it
 builds one from the Unix mode (two ACEs), so the comparison always failed.
-Change: when the server runs with WIN4WINE_SHELL=win7 and the
-WIN4WINE_EXTERNAL_SHELL opt-in, the DACL given when
-a file or directory is created (FILE_CREATE, FILE_SUPERSEDE,
-FILE_OVERWRITE_IF) or set with DACL_SECURITY_INFORMATION is kept in the
-user.wine.dacl extended attribute (the DACL control flags, then the ACL),
-and reading the security returns it with the owner and group made from
-the Unix owner as before. The Unix mode is still set from the DACL as
-before.
-Evidence: with WIN4WINE_SHELL=win7, a recreated recycle bin folder carries
-the three ACEs and the message no longer appears.
-Scope: only in the Windows 7 shell session; elsewhere nothing is stored or
-read, and XP and ReactOS sessions behave as before.
+In the XP session deleted files did not show in the Recycle Bin: its index,
+INFO2, ended up with a record where the header belongs.
+Change: when the server runs with the WIN4WINE_EXTERNAL_SHELL opt-in and
+WIN4WINE_SHELL unset (the XP session) or win7, the DACL given when a file
+or directory is created (FILE_CREATE, FILE_SUPERSEDE, FILE_OVERWRITE_IF)
+or set with DACL_SECURITY_INFORMATION is kept in the user.wine.dacl
+extended attribute (the DACL control flags, then the ACL), and reading the
+security returns it with the owner and group made from the Unix owner as
+before. The Unix mode is still set from the DACL as before. The server
+decides from the environment it was started with.
+Evidence: tests/recycle.c run with XP's shell32. Before, the first delete
+brings the message; with the DACL kept it does not, INFO2 is sound (a
+20-byte header, then records of 800 bytes) and the Recycle Bin folder lists
+the deleted files. With WIN4WINE_SHELL=win7, a recreated recycle bin folder
+carries the three ACEs and the message no longer appears.
+Scope: only in the XP and Windows 7 shell sessions; without the opt-in and
+in the ReactOS session nothing is stored or read.
 ---
- server/change.c | 12 +++++++++-
- server/fd.c     | 70 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ server/change.c | 12 ++++++++++-
+ server/fd.c     | 66 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  server/file.c   | 15 ++++++++++++-
  server/file.h   |  2 ++
- 4 files changed, 97 insertions(+), 2 deletions(-)
+ 4 files changed, 93 insertions(+), 2 deletions(-)
 
 diff --git a/server/change.c b/server/change.c
 index 5bcd067..2e522e4 100644
@@ -67,10 +79,10 @@ index 5bcd067..2e522e4 100644
      return 1;
  }
 diff --git a/server/fd.c b/server/fd.c
-index f70bec3..e2f9e65 100644
+index f70bec3..4664053 100644
 --- a/server/fd.c
 +++ b/server/fd.c
-@@ -101,6 +101,7 @@
+@@ -101,9 +101,11 @@
  #include "handle.h"
  #include "process.h"
  #include "request.h"
@@ -78,26 +90,25 @@ index f70bec3..e2f9e65 100644
  
  #include "winternl.h"
  #include "winioctl.h"
-@@ -2464,6 +2465,75 @@ static int xattr_fremove( int filedes, const char *name )
++#include "wine/win4wine.h"
+ #include "ddk/ntifs.h"
+ #include "ddk/wdm.h"
+ 
+@@ -2464,6 +2466,70 @@ static int xattr_fremove( int filedes, const char *name )
  #endif
  }
  
 +#define XATTR_DACL XATTR_USER_PREFIX "wine.dacl"
 +
-+/* With the Windows 7 shell (WIN4WINE_SHELL=win7, with the WIN4WINE_EXTERNAL_SHELL
-+ * opt-in), the DACL given to a file or directory is kept in an extended attribute
-+ * and returned instead of the one made from the Unix mode: Windows 7's shell checks
-+ * the DACL of the folders it creates, such as the recycle bin. */
++/* In the XP shell session and with the Windows 7 shell, the DACL given to a
++ * file or directory is kept in an extended attribute and returned instead of the
++ * one made from the Unix mode: their shell32 checks the DACL of the recycle bin
++ * folders it creates. */
 +static int stored_dacl_enabled(void)
 +{
-+    static int enabled = -1;
++    enum win4wine_shell shell = win4wine_shell();
 +
-+    if (enabled == -1)
-+    {
-+        const char *shell = getenv( "WIN4WINE_SHELL" );
-+        enabled = getenv( "WIN4WINE_EXTERNAL_SHELL" ) && shell && !strcasecmp( shell, "win7" );
-+    }
-+    return enabled;
++    return shell == WIN4WINE_SHELL_XP || shell == WIN4WINE_SHELL_WIN7;
 +}
 +
 +int store_dacl( int unix_fd, const struct security_descriptor *sd )

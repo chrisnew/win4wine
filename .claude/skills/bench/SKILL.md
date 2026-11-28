@@ -69,6 +69,17 @@ EOF
 A probe that needs no session can run headless: `WINEPREFIX=/tmp/pfx $W x.exe` in `bench.sh sh`. Name it `startmenu.exe` to
 get XP's native shell32 (AppDefaults) and call XP's shell APIs directly.
 
+`tests/recycle.c` is such a probe: it deletes a file to the Recycle Bin, checks the bin's index (`INFO2`) and counts what the
+bin lists (exit code 0 when both are right). Headless it needs `WIN4WINE_EXTERNAL_SHELL=1` and no wineserver running yet, as
+Wine 0120 decides from the environment the wineserver was started with:
+
+```sh
+tools/bench/bench.sh sh w4w-bench <<'EOF'
+WIN4WINE_PROBES=/tmp/probes tests/build.sh && cp /tmp/probes/recycle-test.exe /tmp/probes/startmenu.exe
+WINEPREFIX=$P WIN4WINE_EXTERNAL_SHELL=1 xvfb-run -a $W 'Z:\tmp\probes\startmenu.exe' 'C:\recycle-probe'
+EOF
+```
+
 ## Other devices on a network
 
 Extra containers on a user-defined Docker network see each other's multicast (rootless too): `docker network create w4w-net`,

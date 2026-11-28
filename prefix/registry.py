@@ -3,10 +3,12 @@ import os
 import pwd
 import struct
 
-VERSION = 26
+VERSION = 27
 FONT_PROFILE = r'HKCU\Software\Win4Wine\ThemeProfiles\JapaneseXPLuna'
 # The classic fonts of a new prefix (prefix/theme-settings.c classic-initialize).
 CLASSIC_FONT_PROFILE = r'HKCU\Software\Win4Wine\ThemeProfiles\XPClassic'
+# The Recycle Bin's namespace class, a shell extension of itself
+RECYCLE_BIN = '{645FF040-5081-101B-9F08-00AA002F954E}'
 # Wine's Unix root folder, a desktop item of Wine's shell namespace
 UNIX_ROOT = '{9D20AAE8-0625-44B0-9CA7-71889C2254D9}'
 # The classic theme's fonts per language of the XP media, read with public SPI
@@ -103,7 +105,7 @@ XP_SHELL32 = r'@%SystemRoot%\system32\SHELL32.dll,'
 NAMESPACE_STRINGS = (
     ('{20D04FE0-3AEA-1069-A2D8-08002B30309D}', XP_SHELL32 + '-9216', XP_SHELL32 + '-22913'),
     ('{208D2C60-3AEA-1069-A2D7-08002B30309D}', XP_SHELL32 + '-9217', XP_SHELL32 + '-22912'),
-    ('{645FF040-5081-101B-9F08-00AA002F954E}', XP_SHELL32 + '-8964', XP_SHELL32 + '-22915'),
+    (RECYCLE_BIN, XP_SHELL32 + '-8964', XP_SHELL32 + '-22915'),
     ('{450D8FBA-AD25-11D0-98A8-0800361B1103}', XP_SHELL32 + '-9227', XP_SHELL32 + '-22914'),
     ('{2227A280-3AEA-1069-A2DE-08002B30309D}', XP_SHELL32 + '-9319', XP_SHELL32 + '-12696'),
     ('{871C5380-42A0-1069-A2EA-08002B30309D}', '@shdoclc.dll,-880', '@shdoclc.dll,-881'),
@@ -208,6 +210,16 @@ def install(run, exists, language='ja'):
     # has a separate name so Wine's explorer.exe can remain the desktop manager.
     run('reg', 'add', r'HKCR\CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\DefaultIcon',
         '/ve', '/t', 'REG_SZ', '/d', r'C:\xp\xp-explorer.exe,0', '/f')
+    # XP's Recycle Bin handles its own context menu and property sheet: without
+    # these keys its menu has no "Empty Recycle Bin", the folder window's task of
+    # that name does nothing and Properties lacks the bin's settings.
+    for kind in ('ContextMenuHandlers', 'PropertySheetHandlers'):
+        run('reg', 'add', f'HKCR\\CLSID\\{RECYCLE_BIN}\\shellex\\{kind}\\{RECYCLE_BIN}', '/f')
+    # The icons XP's shell switches the Recycle Bin between, by writing one into
+    # the user's DefaultIcon. Wine registers only the full one.
+    for name, icon in (('empty', '-32'), ('full', '-33')):
+        run('reg', 'add', f'HKCR\\CLSID\\{RECYCLE_BIN}\\DefaultIcon', '/v', name, '/t', 'REG_EXPAND_SZ',
+            '/d', rf'%SystemRoot%\system32\shell32.dll,{icon}', '/f')
     # Publicly documented Pin to Start Menu handler; users choose their own pins.
     for file_type in ('exefile', 'lnkfile'):
         run('reg', 'add', 'HKCR\\' + file_type + '\\shellex\\ContextMenuHandlers\\StartMenuPin',
