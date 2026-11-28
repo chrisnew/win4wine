@@ -37,7 +37,7 @@ import xp_schemes
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / '.local/bridge'
 # Bumped when apply() changes; setup.sh applies it again on existing prefixes.
-VERSION = '15'
+VERSION = '16'
 MARKER = '.xp-extras'
 # What goes from .local/bridge to C:\xp\bin.
 HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'linux-launch.exe',
@@ -72,6 +72,11 @@ TRAY_INTERFACES = (('{FB852B2C-6BAD-4605-9551-F15F87830935}', 'ITrayNotify'),
 # The class of .iso files, whose "Mount" starts linux-launch.exe --mount-iso.
 ISO_CLASS = 'win4wine.isoimage'
 LAYOUTS_KEY = r'System\CurrentControlSet\Control\Keyboard Layouts'
+# The security zones' policies for ShellExecute of high, moderate and low risk
+# items (1806 to 1808), as XP's urlmon.dll registers them: 0 allow, 1 ask,
+# 3 refuse, for My Computer, intranet, trusted, Internet and restricted sites.
+ZONES_KEY = r'HKLM\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Zones'
+SHELL_ZONES = ((0, 0, 0), (0, 0, 0), (0, 0, 0), (1, 1, 0), (3, 1, 0))
 
 
 def xp_explorer():
@@ -111,6 +116,13 @@ def registry(xpx):
     # startmenu.exe drives XP's own Start panel settings and pins.
     for dll in ('shell32', 'shlwapi', 'comctl32', 'linkinfo', 'shdocvw', 'browseui'):
         r.add(r'HKCU\Software\Wine\AppDefaults\startmenu.exe\DllOverrides', dll, 'native')
+    # Wine's zones lack these, and its urlmon fails the check without them. XP's
+    # shell32 asks before it opens a file system item such as the desktop's My
+    # Documents, and drops the click and the context menu without a word. HKCU,
+    # where Internet Options writes, still comes first.
+    for zone, policies in enumerate(SHELL_ZONES):
+        for action, policy in zip(('1806', '1807', '1808'), policies):
+            r.add(f'{ZONES_KEY}\\{zone}', action, str(policy), 'REG_DWORD')
     # XP's task pane on the left of folder windows ("Use common tasks in folders").
     r.add(advanced, 'WebView', '1', 'REG_DWORD')
     r.add(advanced, 'Start_ShowRun', '1', 'REG_DWORD')

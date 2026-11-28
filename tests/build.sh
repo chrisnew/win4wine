@@ -71,6 +71,7 @@ done
 
 compile "$out/shell-names-test.exe" -municode "$root/tests/shell-names.c" -ladvapi32
 compile "$out/desktop-icons.exe" -municode "$root/tests/desktop-icons.c" -ladvapi32 -lshell32
+compile "$out/desktop-items-test.exe" -municode "$root/tests/desktop-items.c" -luser32 -lshell32 -lshlwapi -lole32 -luuid
 compile "$out/text-widths-test.exe" -municode "$root/tests/text-widths.c" -lgdi32 -luser32
 compile "$out/folder-icons-test.exe" -municode "$root/tests/folder-icons.c" -lshell32 -lole32 -luuid
 compile "$out/desktop-menu-test.exe" -municode "$root/tests/desktop-menu.c" -lshell32 -lole32 -luuid -ladvapi32 -luser32

@@ -69,6 +69,9 @@ EOF
 A probe that needs no session can run headless: `WINEPREFIX=/tmp/pfx $W x.exe` in `bench.sh sh`. Name it `startmenu.exe` to
 get XP's native shell32 (AppDefaults) and call XP's shell APIs directly.
 
+`tests/desktop-items.c` (run it as `startmenu.exe`, with a file for its output) shows each desktop icon of the running
+shell: its item ID, attributes and context menu. For an icon that does nothing, compare with a working one.
+
 `tests/recycle.c` is such a probe: it deletes a file to the Recycle Bin, checks the bin's index (`INFO2`) and counts what the
 bin lists (exit code 0 when both are right). Headless it needs `WIN4WINE_EXTERNAL_SHELL=1` and no wineserver running yet, as
 Wine 0120 decides from the environment the wineserver was started with:
