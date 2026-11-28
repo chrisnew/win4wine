@@ -167,6 +167,8 @@ How it works is in [docs/architecture.md](../docs/architecture.md#disc-images-se
 
 ## Phase 3: optional, for the demo
 
+AutoRun, sounds and Safely Remove Hardware for mounted images are now planned in [plans/usb-drives.md](usb-drives.md).
+
 - **AutoRun on arrival**, if phase 1 shows that XP only runs it when the helper opens the drive and not on its own: nothing to
   do as long as mounting always goes through the helper.
 - **"Mount" from Linux too**: `xdg-open` on an `.iso` in a Linux file manager could use the same `udisksctl` steps, and the
