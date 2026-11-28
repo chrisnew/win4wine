@@ -29,7 +29,7 @@ machine (a new Wine install, a relogin).
 
 ## Current state
 
-The machine against a fresh Debian 13 (trixie) install. Last checked on the machine: 2026-11-27.
+The machine against a fresh Debian 13 (trixie) install. Last checked on the machine: 2026-11-28.
 
 | Area | Setting | Why | Since |
 |---|---|---|---|
@@ -39,11 +39,11 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | X driver | `xserver-xorg-video-intel 2:2.99.917+git20210115-1+w4w1`, built by [xorg-intel/build.sh](xorg-intel/build.sh) with `sna-gen3-dri3.patch`; **held** with `apt-mark hold` | DRI3 on the GMA 3150, so OpenGL runs on the GPU instead of llvmpipe | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/20-intel.conf`: `Driver "intel"`, `Option "DRI" "3"` | The patched driver gives gen3 DRI3 only when asked | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/10-nodpms.conf`: blanking, standby, suspend and off times 0; `DPMS` false on LVDS1 | The screen never blanks (see "Not yet explained") | ? |
-| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0166 (repo 05e7ff0) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner; 0161 keeps copy and paste working after a folder window is closed; 0162 to 0164 are for mounted disc images; 0165 keeps Explorer from freezing when its windows redraw at once; 0166 keeps the desktop taking clicks after a program ends while it holds the mouse; 0120 keeps the access lists of files in the XP session too, so the Recycle Bin works | 2026-11-28 |
+| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0167 (repo d7470ce) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner; 0161 keeps copy and paste working after a folder window is closed; 0162 to 0164 are for mounted disc images; 0165 keeps Explorer from freezing when its windows redraw at once; 0166 keeps the desktop taking clicks after a program ends while it holds the mouse; 0120 keeps the access lists of files in the XP session too, so the Recycle Bin works; 0167 stores whole what XP's picture viewer registers, so image files have their icons | 2026-11-28 |
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
 | PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
-| Prefix | `prefix/extras.py` VERSION 16 (the security zones' values for the URL actions 1806 to 1808, without which My Documents on the desktop does not open). Since VERSION 15: the icon of `.iso` files. Since VERSION 14: "Mount" on `.iso` files. Since VERSION 13: IE's `NoUpdateCheck`. Since VERSION 12: "Open in Linux Terminal" (`C:\xp\bin\linux-launch.exe` and the context menu handler in `linuxcols.dll`). Since VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
+| Prefix | `prefix/extras.py` VERSION 17 (XP's icons for file types, from the ISO's HIVECLS.INF in `.local/assets/inf`). Since VERSION 16: the security zones' values for the URL actions 1806 to 1808, without which My Documents on the desktop does not open. Since VERSION 15: the icon of `.iso` files. Since VERSION 14: "Mount" on `.iso` files. Since VERSION 13: IE's `NoUpdateCheck`. Since VERSION 12: "Open in Linux Terminal" (`C:\xp\bin\linux-launch.exe` and the context menu handler in `linuxcols.dll`). Since VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
 | Prefix | Office's `MDM` and `MOSEARCH` services `Start=3` (manual) instead of automatic | MOSEARCH failed at every login (missing `TQUERY.DLL`); neither is needed by the session | 2026-11-26 |
 | Boot | `GRUB_CMDLINE_LINUX_DEFAULT="zswap.enabled=1 zswap.compressor=zstd"` | Compressed swap cache, for 2 GB of RAM. **zstd is not actually used**, see "Open" | ? |
 | Disk | `/` mounted `noatime,nodiratime`; 9.5 GB swap partition `/dev/sda2` | ? (the disk is a spinning HDD, Toshiba MK2552GSX) | ? |
@@ -78,6 +78,33 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-28: XP's icons for file types (Wine 0167, extras.py 17) installed
+
+- **What** (logged off, no wineserver left), in `~/win4wine`: copies of the prefix's `*.reg`, `system.ini`, `.xp-extras`,
+  `.xp-defaults`, `.xp-registry-version` and the extraction's `manifest.json` in `.local/backup-2026-11-28-filetypes/`;
+  `git fetch fork && git checkout -B master fork/master` (5cafcaf to 9aaf532, which also brings the German XP media and
+  offline keyboard changes of pull requests 1 and 2); on the development machine
+  `wine/container-build.sh --deploy 192.168.1.9` (the Wine up to 0166 is now `.local/wine-install-old`); then there
+
+  ```sh
+  TMPDIR=$PWD/.local/tmp python3 extract/extract.py --only=inf \
+      ~/Images/en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso .local/assets
+  xvfb-run -a -s '-screen 0 1280x800x24' sh -c 'p=$PWD/.local/prefix w=$PWD/.local/wine-install/bin/wine
+      python3 prefix/extras.py $p --wine $w && python3 session/linux_apps.py $p --wine $w &&
+      python3 xp-explorer/scripts/pins.py $p --wine $w' > .local/filetypes.log 2>&1
+  ```
+
+  and `wineserver -k` and `-w`.
+- **Why:** most files, seen in `C:\windows\system32`, showed the unknown file's icon.
+- **Result:** extraction 38 s (it adds `inf/hivecls.inf`), additions 450 s, exit status 0, `extras.py --check` passes
+  (VERSION 17). Run on the prefix in Xvfb: `tests/shreg-set-path.c` prints PASS, and of 245 registered types
+  `tests/file-icons.c` finds 44 without an icon, among them types of Office XP. Office's own icons (`.doc`, `.xls`) are
+  unchanged. `.htm` and `.html` stay blank: `htmlfile\DefaultIcon` was `"%1"` before this change. Not looked at in a
+  session yet.
+- **Undo:** logged off, `mv .local/wine-install .local/wine-install-0167 && mv .local/wine-install-old
+  .local/wine-install`, copy the backup's `*.reg`, `.xp-extras`, `.xp-defaults` and `.xp-registry-version` back into
+  `.local/prefix` and `system.ini` into `drive_c/windows`, and `git checkout -B master 5cafcaf`.
 
 ### 2026-11-28: the zone values that let My Documents open from the desktop (extras.py 16)
 
