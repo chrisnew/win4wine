@@ -5,8 +5,8 @@ XP Explorer runs the same XP shell in a Wine virtual desktop and added to it:
 the notification area's network, battery and volume icons with XP's own
 flyouts (xptray.exe), Network Connections, the folder task pane (DirectUser),
 XP's Display Properties, image thumbnails and the picture viewer, XP's sound
-scheme and Explorer defaults, Internet Explorer 6, Windows Media Player 9, and
-the Start menu's full left column (Internet, E-mail and the most used
+scheme and Explorer defaults, XP's icons for file types, Internet Explorer 6,
+Windows Media Player 9, and the Start menu's full left column (Internet, E-mail and the most used
 programs); XP's proxies for the shell's COM interfaces, which Taskbar
 Properties' Customize Notifications needs; Linux permissions, owner, group and
 path as columns and in the task pane's Details section of folder windows, and
@@ -37,7 +37,7 @@ import xp_schemes
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / '.local/bridge'
 # Bumped when apply() changes; setup.sh applies it again on existing prefixes.
-VERSION = '16'
+VERSION = '17'
 MARKER = '.xp-extras'
 # What goes from .local/bridge to C:\xp\bin.
 HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'linux-launch.exe',
@@ -72,6 +72,18 @@ TRAY_INTERFACES = (('{FB852B2C-6BAD-4605-9551-F15F87830935}', 'ITrayNotify'),
 # The class of .iso files, whose "Mount" starts linux-launch.exe --mount-iso.
 ISO_CLASS = 'win4wine.isoimage'
 LAYOUTS_KEY = r'System\CurrentControlSet\Control\Keyboard Layouts'
+# File types that take XP's class, name and icon from its HIVECLS.INF: Wine
+# registers some without an icon and others (.dll, .txt) not at all.
+FILE_TYPES = ('.ani', '.bat', '.cmd', '.cur', '.dll', '.drv', '.fon', '.hlp', '.ico', '.inf', '.ini', '.log',
+              '.otf', '.pnf', '.reg', '.scr', '.sys', '.ttc', '.ttf', '.txt')
+# Where XP has an icon handler that this prefix lacks: shell32's TrueType icon
+# for fontext.dll's, and a screen saver's own icon, as a program's.
+TRUETYPE_ICON = r'%SystemRoot%\system32\shell32.dll,-156'
+FILE_TYPE_ICONS = {'ttffile': TRUETYPE_ICON, 'ttcfile': TRUETYPE_ICON, 'otffile': TRUETYPE_ICON, 'scrfile': '%1'}
+# The kinds of files (PerceivedType, as XP's shell32.dll registers them) whose
+# extensions then take the kind's icon in SystemFileAssociations: Media
+# Player's for audio and video (wmp.inf), XP's text page for text.
+PERCEIVED_TYPES = ('audio', 'video', 'text')
 # The security zones' policies for ShellExecute of high, moderate and low risk
 # items (1806 to 1808), as XP's urlmon.dll registers them: 0 allow, 1 ask,
 # 3 refuse, for My Computer, intranet, trusted, Internet and restricted sites.
@@ -190,6 +202,85 @@ def iso_class(wine, prefix):
     if not value or value[1].strip() in ('', '(value not set)', ISO_CLASS):
         regedit(wine, prefix, 'Windows Registry Editor Version 5.00\r\n\r\n'
                 f'[HKEY_CLASSES_ROOT\\.iso]\r\n@="{ISO_CLASS}"\r\n')
+
+
+def reg_values(text):
+    """The keys of .reg TEXT: {key in lower case: (key, {value name in lower
+    case, None the default: its line})}. Continuation lines are left out."""
+    keys, values = {}, None
+    for line in text.splitlines():
+        if line.startswith('[') and not line.startswith('[-'):
+            key = line[1:line.rindex(']')]
+            values = keys.setdefault(key.lower(), (key, {}))[1]
+        elif values is not None and (match := re.match(r'(@|"(?:[^"\\]|\\.)*")=', line)):
+            values[None if match[1] == '@' else match[1][1:-1].lower()] = line
+    return keys
+
+
+def file_types(hivecls, shell32, present):
+    """The .reg text that gives FILE_TYPES what XP's setup registers for them
+    (HIVECLS, its INF's text): the extension's class, the class's name,
+    AlwaysShowExt and icon; and the extensions of PERCEIVED_TYPES their kind
+    (SHELL32, its REGINST's text). Only values missing from PRESENT (an export
+    of HKCR) are added, and an extension that has another class keeps it."""
+    import xpreg
+    present = reg_values(present)
+    root = 'HKEY_CLASSES_ROOT\\'
+    added = {}
+
+    def default(keys, key):
+        line = keys.get((root + key).lower(), (None, {}))[1].get(None, '')
+        return line[3:-1] if line.startswith('@="') else ''
+
+    def add(key, name, line):
+        old = present.get((root + key).lower(), (None, {}))[1].get(name and name.lower())
+        if old is None or old == '@=""':
+            added.setdefault(root + key, {})[name] = line
+
+    extensions = reg_values(xpreg.hive_entries(hivecls, 'HKCR', FILE_TYPES))
+    classes = {extension: default(extensions, extension) for extension in FILE_TYPES}
+    xp = reg_values(xpreg.hive_entries(hivecls, 'HKCR', tuple(sorted(set(filter(None, classes.values()))))))
+    for extension, name in classes.items():
+        if not name or default(present, extension) not in ('', name):
+            continue
+        add(extension, None, f'@="{name}"')
+        for key, value in ((name, None), (name, 'AlwaysShowExt'), (name + '\\DefaultIcon', None)):
+            line = xp.get((root + key).lower(), (None, {}))[1].get(value and value.lower())
+            if line:
+                add(key, value, line)
+        if name in FILE_TYPE_ICONS:
+            icon = (FILE_TYPE_ICONS[name] + '\0').encode('utf-16le')
+            add(name + '\\DefaultIcon', None, '@=hex(2):' + ','.join(f'{b:02x}' for b in icon))
+    for key, values in reg_values(xpreg.hive_entries(shell32, 'HKCR', ('',))).values():
+        extension, line = key[len(root):], values.get('perceivedtype', '')
+        if extension.startswith('.') and '\\' not in extension and line.partition('=')[2].strip('"') in PERCEIVED_TYPES:
+            add(extension, 'PerceivedType', line)
+    # XP's setup gives text files' icon; wmp.inf has given audio's and video's.
+    text = r'SystemFileAssociations\text\DefaultIcon'
+    line = reg_values(xpreg.hive_entries(hivecls, 'HKCR', (text,))).get((root + text).lower(), (None, {}))[1].get(None)
+    if line:
+        add(text, None, line)
+    lines = ['Windows Registry Editor Version 5.00', '']
+    for key, values in added.items():
+        lines += [f'[{key}]', *values.values(), '']
+    return '\r\n'.join(lines) + '\r\n'
+
+
+def add_file_types(assets, prefix, wine):
+    """XP's icons for file types, as far as the prefix has none (file_types)."""
+    import xpreg
+    inf = assets / 'inf/hivecls.inf'
+    if not inf.is_file():
+        return
+    env = dict(os.environ, WINEPREFIX=str(prefix), WINEDEBUG='-all')
+    env.pop('WINEARCH', None)
+    with tempfile.TemporaryDirectory() as temp:
+        export = Path(temp) / 'classes.reg'
+        subprocess.run([wine, r'C:\windows\syswow64\regedit.exe', '/E', 'Z:' + str(export).replace('/', '\\'),
+                        'HKEY_CLASSES_ROOT'], env=env, check=True)
+        present = xpreg.read_inf(export)
+    shell32 = xpreg.reginst(assets / 'system32/shell32.dll')
+    regedit(wine, prefix, file_types(xpreg.read_inf(inf), shell32, present))
 
 
 def removals():
@@ -385,6 +476,9 @@ def apply(prefix, wine):
     regedit(wine, prefix, 'Windows Registry Editor Version 5.00\r\n\r\n'
             '[HKEY_CLASSES_ROOT\\CLSID\\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\\DefaultIcon]\r\n'
             '@="C:\\\\xp\\\\xp-explorer.exe,0"\r\n')
+    # After everything that registers file types of its own.
+    print("* XP's file types and their icons", flush=True)
+    add_file_types(assets, prefix, wine)
     stop(wine, prefix)
     stage(prefix, xpx)
     (prefix / MARKER).write_text(wanted(xpx, wine) + '\n')

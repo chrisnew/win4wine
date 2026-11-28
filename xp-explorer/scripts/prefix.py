@@ -600,6 +600,11 @@ def install_wmp(assets, prefix, wine, env):
         verb = rf'HKCR\SystemFileAssociations\{media_type}\shell\play'
         r.add(verb, 'MUIVerb', 'Play with Windows Media Player')
         r.add(verb + r'\command', None, player + r' /Play "%1"', 'REG_EXPAND_SZ')
+    # wmp.inf's media icon, expandable: XP's setup writes the folder's path
+    # there, and the shell does not expand %ProgramFiles% in a REG_SZ.
+    for key in (r'SystemFileAssociations\audio', r'SystemFileAssociations\video', r'Applications\wmplayer.exe'):
+        r.add(rf'HKCR\{key}\DefaultIcon', None, r'%ProgramFiles%\Windows Media Player\wmplayer.exe,-120',
+              'REG_EXPAND_SZ')
     for extension in WMP_EXTENSIONS:
         r.add(rf'HKCR\{extension}\OpenWithList\wmplayer.exe', None, '')
     with tempfile.TemporaryDirectory() as temp:

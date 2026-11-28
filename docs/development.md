@@ -141,6 +141,7 @@ from upstream again. `wine/patch-edit.py --help` has the details.
 | `tests/uniscribe-thread.c` | Threads making Uniscribe's font caches at the same time (Wine patch 0165): `uniscribe-thread-test.exe` prints PASS; 32-bit and 64-bit |
 | `tests/clip-exit.c` | The cursor clip after a program that held it was ended or exited (Wine patch 0166): `clip-exit-test.exe` prints PASS twice; 32-bit and 64-bit |
 | `tests/shreg-set-path.c` | `SHRegSetPathA` and `SHRegSetPathW` store the whole path (Wine patch 0167): `shreg-set-path-test.exe` prints PASS |
+| `tests/file-icons.c` | In the session's prefix, run as `startmenu.exe` with an output file: the icon Explorer shows for each registered file type, and whether its `DefaultIcon` loads |
 | `tests/screen-saver.c` | The screen saver setting, its `system.ini` mapping and `LockWorkStation`, in the session's prefix |
 | `tests/*.c` | Probes of public APIs. The same program runs on Wine and on a real XP and the numbers are compared (DPI: `dpi-metrics.c`, `char-widths-dpi.c`, `caption-glyph-dpi.c`, `text-bits-dpi.c`) |
 

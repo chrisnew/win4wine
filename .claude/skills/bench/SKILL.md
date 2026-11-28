@@ -69,6 +69,9 @@ EOF
 A probe that needs no session can run headless: `WINEPREFIX=/tmp/pfx $W x.exe` in `bench.sh sh`. Name it `startmenu.exe` to
 get XP's native shell32 (AppDefaults) and call XP's shell APIs directly.
 
+`tests/file-icons.c` (run it as `startmenu.exe`, with a file for its output) lists the icon Explorer shows for each
+file type: look for `blank`.
+
 `tests/desktop-items.c` (run it as `startmenu.exe`, with a file for its output) shows each desktop icon of the running
 shell: its item ID, attributes and context menu. For an icon that does nothing, compare with a working one.
 

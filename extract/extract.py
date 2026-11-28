@@ -50,8 +50,9 @@ FILES = {
     # Languages (input.dll) and what they load, and the INFs that list XP's
     # keyboard layouts (prefix/extras.py).
     **dict.fromkeys(('intl.cpl', 'input.dll', 'syssetup.dll', 'sfcfiles.dll', 'intl.inf', 'hivesys.inf'), 'intl'),
-    # XP's registry defaults (sounds, Explorer settings), read by prefix/extras.py.
-    **dict.fromkeys(('hivedef.inf', 'hivesft.inf'), 'inf'),
+    # XP's registry defaults (sounds, Explorer settings, file types and their
+    # icons), read by prefix/extras.py.
+    **dict.fromkeys(('hivedef.inf', 'hivesft.inf', 'hivecls.inf'), 'inf'),
     # XP's proxies for the shell's COM interfaces. Taskbar Properties' Customize
     # Notifications reaches the notification area through two that Wine's lacks.
     'actxprxy.dll': 'com',
@@ -141,7 +142,7 @@ def missing_groups(output):
     def has(path):
         return (output / path).exists()
     checks = {'cpl': 'cpl/desk.cpl', 'tray': 'tray/xpsp2res.dll', 'ie': 'ie/iexplore.exe',
-              'wmp': 'wmp/wmplayer.exe', 'inf': 'inf/hivedef.inf', 'shell': 'shell/shimgvw.dll',
+              'wmp': 'wmp/wmplayer.exe', 'inf': 'inf/hivecls.inf', 'shell': 'shell/shimgvw.dll',
               'media': 'media', 'duser': 'system32/duser.dll', 'intl': 'intl/input.dll',
               'themes': 'themes/Windows Classic.theme', 'screensavers': 'screensavers/ssstars.scr',
               'com': 'com/actxprxy.dll'}
