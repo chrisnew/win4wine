@@ -167,3 +167,4 @@
 0167-shcore-reg-set-path-size.patch
 0168-mountmgr-removable-disks.patch
 0169-mountmgr-eject-sticks.patch
+0170-mountmgr-free-removed-letters.patch

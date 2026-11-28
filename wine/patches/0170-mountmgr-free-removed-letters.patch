@@ -1,0 +1,114 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] mountmgr: a removed drive's letter is free again
+
+Purpose: sticks and disc images keep getting the first letters from D:, however
+many have come and gone.
+Windows behavior: a removed drive's letter is used again.
+Wine before: a removable drive made two links in dosdevices, "d:" to its mount
+point and "d::" to its device. Removing the drive deleted only "d:", and a
+letter with a "d::" left is taken, unless the very same device number comes
+back. On the EeePC one stick left I:, J: and K: taken. A drive whose device
+was pulled out while Wine was not running came back at the next start as a
+"Local Disk" pointing nowhere.
+Change: removing a drive that UDisks reported deletes "d::" too. At its start
+mountmgr deletes the "d::" links that have neither a "d:" link nor a drive type
+in Software\Wine\Drives, and the drives under /media or /run/media, with a
+device link, whose mount point does not exist.
+Evidence: tools/bench/udisks-mock.py in the XP session on the bench: sticks
+plugged and pulled out, and leftover links made by hand before a start.
+Scope: all programs; drives UDisks reports, and leftover links of removable
+drives.
+---
+ dlls/mountmgr.sys/device.c | 54 ++++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 50 insertions(+), 4 deletions(-)
+
+diff --git a/dlls/mountmgr.sys/device.c b/dlls/mountmgr.sys/device.c
+index ae54537..acbe436 100644
+--- a/dlls/mountmgr.sys/device.c
++++ b/dlls/mountmgr.sys/device.c
+@@ -1069,6 +1069,29 @@ static void set_drive_info( struct dos_drive *drive, int letter, struct volume *
+     }
+ }
+ 
++/* removes the link to a drive letter's Unix device ("d::") */
++static void remove_device_link( int letter )
++{
++    char dosdev[] = "a::";
++    struct set_dosdev_symlink_params params = { dosdev, NULL };
++
++    dosdev[0] = 'a' + letter;
++    MOUNTMGR_CALL( set_dosdev_symlink, &params );
++}
++
++/* A removable drive's mount point that has gone: the device was taken away while
++ * nothing ran that would have removed the drive. */
++static BOOL stale_mount_point( const char *link )
++{
++    WCHAR path[MAX_PATH] = L"\\\\?\\unix";
++    unsigned int i, len = lstrlenW( path );
++
++    if (strncmp( link, "/media/", 7 ) && strncmp( link, "/run/media/", 11 )) return FALSE;
++    if (!MultiByteToWideChar( CP_UNIXCP, 0, link, -1, path + len, ARRAY_SIZE(path) - len )) return FALSE;
++    for (i = len; path[i]; i++) if (path[i] == '/') path[i] = '\\';
++    return GetFileAttributesW( path ) == INVALID_FILE_ATTRIBUTES;
++}
++
+ /* create devices for mapped drives */
+ static void create_drive_devices(void)
+ {
+@@ -1090,11 +1113,30 @@ static void create_drive_devices(void)
+ 
+         dosdev[0] = 'a' + i;
+         dosdev[2] = 0;
+-        if (MOUNTMGR_CALL( get_dosdev_symlink, &params )) continue;
++        driveW[0] = 'a' + i;
++        if (MOUNTMGR_CALL( get_dosdev_symlink, &params ))
++        {
++            /* A device link alone, of a drive that was never configured, is left
++             * over from a removable drive that has gone. It would keep the letter. */
++            if (!drives_key || RegQueryValueExW( drives_key, driveW, NULL, NULL, NULL, NULL ))
++                remove_device_link( i );
++            continue;
++        }
+         dosdev[2] = ':';
+         params.dest = unix_dev;
+         params.size = sizeof(unix_dev);
+         if (!MOUNTMGR_CALL( get_dosdev_symlink, &params )) device = unix_dev;
++        if (device && stale_mount_point( link ))
++        {
++            struct set_dosdev_symlink_params remove = { dosdev, NULL };
++
++            TRACE( "removing %c: left over on %s\n", 'a' + i, debugstr_a(link) );
++            MOUNTMGR_CALL( set_dosdev_symlink, &remove );
++            dosdev[2] = 0;
++            MOUNTMGR_CALL( set_dosdev_symlink, &remove );
++            if (drives_key) RegDeleteValueW( drives_key, driveW );
++            continue;
++        }
+ 
+         drive_type = i < 2 ? DEVICE_FLOPPY : DEVICE_HARDDISK_VOL;
+         if (drives_key)
+@@ -1102,7 +1144,6 @@ static void create_drive_devices(void)
+             WCHAR buffer[32];
+             DWORD j, type, size = sizeof(buffer);
+ 
+-            driveW[0] = 'a' + i;
+             if (!RegQueryValueExW( drives_key, driveW, NULL, &type, (BYTE *)buffer, &size ) &&
+                 type == REG_SZ)
+             {
+@@ -1435,8 +1476,13 @@ NTSTATUS remove_dos_device( int letter, const char *udi )
+             RegCloseKey( hkey );
+         }
+ 
+-        /* The letter goes: also for a volume that was unmounted first. */
+-        if (udi) notify = drive->drive;
++        /* The letter goes: also for a volume that was unmounted first. It is
++         * free again, so the link to its device goes too. */
++        if (udi)
++        {
++            remove_device_link( drive->drive );
++            notify = drive->drive;
++        }
+ 
+         delete_dos_device( drive );
+         status = STATUS_SUCCESS;

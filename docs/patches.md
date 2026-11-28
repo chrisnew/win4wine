@@ -1,6 +1,6 @@
 # Wine patches
 
-`wine/patches/` holds 169 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
+`wine/patches/` holds 170 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
 `wine/build.sh` applies them, and the actual applying is done by `wine/patch-state.py` (on a partly patched source it applies only
 what is missing).
 
@@ -14,7 +14,7 @@ Changes for the XP shell only take effect in processes that have the environment
 
 - The check is gathered in one place, `win4wine_external_shell()` in `include/wine/win4wine.h`, added by 0019.
   ntdll reads the same variable with Rtl functions, and wow64.dll (0023) with ntdll functions.
-- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155–0157, 0160–0169), 0025 and 0026,
+- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155–0157, 0160–0170), 0025 and 0026,
   which do not change the look or behaviour of ordinary apps, most of the APIs and Wine fixes for the Windows 7 shell (0094–0112), and the
   theme fixes that only apply to version 4 styles (0113–0119).
 - 0024 only takes effect with `WIN4WINE_SESSION_REQUEST`, and 0159's `LockWorkStation` only with `WIN4WINE_LOCK_REQUEST`.
@@ -270,7 +270,7 @@ Matched pixel by pixel against a real Windows 7 SP1 (the reference VM).
 | 0136 | riched20: text in Windows 7's search boxes (Start menu, folder windows; windowless RichEdit). Use the default format the host announces later (Meiryo 9 pt) (whole external shell), measure and draw paragraphs without complex scripts (Arabic and so on) with GDI, and create the font with DEFAULT_CHARSET (Latin in that font, Japanese through font linking; the same glyphs and positions as on real hardware). Japanese showed as boxes or overlapping | partly (`WIN4WINE_SHELL=win7`) |
 | 0137 | comdlg32: give the Windows 7 shell session's item dialogs (IFileDialog) Windows 7's form. The top row (back/forward, the breadcrumb address bar, refresh, search) is drawn by a new part (navbar7.c) with theme parts and explorerframe.dll's images and strings. 640x478, the message font, no details or preview pane, a size grip, "Folder:" and "Select Folder" when choosing a folder. Search filters by name within the folder (Windows 7 searches the index) | yes (`WIN4WINE_SHELL=win7`) |
 
-### Details of the XP shell (0138–0169)
+### Details of the XP shell (0138–0170)
 
 Changes for the XP shell (and upstream's ReactOS shell) that use mechanisms added for the Windows 7 shell (0117's themed menus, 0119's TS_MIN, 0126's
 comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading, 0133's message box layout).
@@ -311,6 +311,7 @@ comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading
 | 0167 | shcore: `SHRegSetPathA` and `SHRegSetPathW` store the whole path (before, the length in characters was passed as the size in bytes, so half of it was stored: XP's `shimgvw.dll` registered the image types with the icon `shimgv`, and `.jpg`, `.png`, `.bmp` and `.gif` files had the unknown file's icon) | no |
 | 0168 | mountmgr: a USB stick or memory card is a removable disk (`DRIVE_REMOVABLE`) with a letter for each partition that holds a file system (before, the whole disk got a letter too, and a mounted stick was a "Local Disk"). Its storage descriptor names the bus, vendor, product and serial number; FAT and exFAT are reported as FAT32 with their ID as the volume serial number. Only drives UDisks2 reports as removable. It belongs with 0001–0011 and has not been renumbered yet | no |
 | 0169 | mountmgr: ejecting a USB stick or memory card unmounts its partitions and powers the drive off, with `udisksctl`; a busy one gives `STATUS_DEVICE_BUSY` and stays mounted. `IOCTL_STORAGE_MEDIA_REMOVAL`, which XP's Eject sends first, succeeds for it (before it was unsupported, and XP said "An error was encountered trying to eject"). It belongs with 0001–0011 and has not been renumbered yet | no |
+| 0170 | mountmgr: a removed drive's letter is free again (before, the link to its device stayed in `dosdevices` and kept the letter; on the EeePC one stick left three letters taken). At its start it also removes the drives left over from a stick pulled out while Wine was not running. It belongs with 0001–0011 and has not been renumbered yet | no |
 
 ## Order
 
