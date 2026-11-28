@@ -164,8 +164,11 @@ class Mounter:
 def follow(mounter):
     """Reconcile at the start and after every change, until the monitor ends."""
     # Its output must come line by line, not when a buffer fills.
+    # Its errors are not logged: udisks 2.10 warns of a failed check of its own
+    # at many changes. That it ended is.
     monitor = subprocess.Popen(['stdbuf', '-oL', 'udisksctl', 'monitor'], stdin=subprocess.DEVNULL,
-                               stdout=subprocess.PIPE, env=dict(os.environ, LC_ALL='C.UTF-8'))
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                               env=dict(os.environ, LC_ALL='C.UTF-8'))
     output = monitor.stdout.fileno()
     pending = b''
     first = None
