@@ -89,6 +89,12 @@ def concerns_devices(line):
     return bool(re.match(r'\d\d:\d\d:\d\d\.\d+: ', line)) and BLOCKS in line
 
 
+def removed(line):
+    """The block device a line of "udisksctl monitor" says is gone, or None."""
+    match = re.match(r'\d\d:\d\d:\d\d\.\d+: Removed (' + BLOCKS + r'\S+)', line)
+    return match and match[1]
+
+
 def drive_letter(prefix, device, wait=3.0):
     """The Windows drive of DEVICE, as mountmgr links it in dosdevices, or None."""
     deadline = time.monotonic() + wait
@@ -113,6 +119,11 @@ class Mounter:
         env = dict(os.environ, LC_ALL='C.UTF-8')
         return self.run(['udisksctl', *arguments], env=env, stdin=subprocess.DEVNULL, capture_output=True,
                         text=True, errors='replace', timeout=60)
+
+    def forget(self, path):
+        """A device went: what appears under its name is new, also a stick that
+        is back before the devices are read."""
+        self.handled.pop(path, None)
 
     def reconcile(self):
         """Mount the removable file systems that have appeared since the last time."""
@@ -159,8 +170,15 @@ def follow(mounter):
     pending = b''
     first = None
     try:
-        # The monitor says it watches, and then no change can be missed.
-        select.select([output], [], [], 5)
+        # The monitor names the daemon once it watches: from then on no change is
+        # missed, so the devices there are can be read.
+        deadline = time.monotonic() + 5
+        while b'name-owner' not in pending and select.select([output], [], [], max(0, deadline - time.monotonic()))[0]:
+            data = os.read(output, 65536)
+            if not data:
+                return
+            pending += data
+        pending = pending.rpartition(b'\n')[2]
         mounter.reconcile()
         while True:
             timeout = None if first is None else max(0, min(QUIET, first + LATEST - time.monotonic()))
@@ -169,7 +187,10 @@ def follow(mounter):
                 if not data:
                     return
                 *lines, pending = (pending + data).split(b'\n')
-                if first is None and any(concerns_devices(line.decode('utf-8', 'replace')) for line in lines):
+                lines = [line.decode('utf-8', 'replace') for line in lines]
+                for path in filter(None, map(removed, lines)):
+                    mounter.forget(path)
+                if first is None and any(map(concerns_devices, lines)):
                     first = time.monotonic()
                 if first is None or time.monotonic() < first + LATEST:
                     continue

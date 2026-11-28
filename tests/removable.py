@@ -95,6 +95,8 @@ class Parsing(unittest.TestCase):
               '    Partitions:         /org/freedesktop/UDisks2/block_devices/sdb1']
         self.assertTrue(all(map(helper.concerns_devices, yes)))
         self.assertFalse(any(map(helper.concerns_devices, no)))
+        self.assertEqual([helper.removed(line) for line in yes],
+                         [None, None, '/org/freedesktop/UDisks2/block_devices/sdb1'])
 
 
 class Mounting(unittest.TestCase):
@@ -133,6 +135,13 @@ class Mounting(unittest.TestCase):
         self.mounter.reconcile()
         self.assertEqual(len(self.calls), 2)
 
+    def test_back_before_read(self):
+        """Pulled out and put back between two readings."""
+        self.mounter.reconcile()
+        self.mounter.forget('/org/freedesktop/UDisks2/block_devices/sdb1')
+        self.mounter.reconcile()
+        self.assertEqual(len(self.calls), 2)
+
     def test_again_for_another_card(self):
         self.mounter.reconcile()
         self.dump = DUMP.replace('266E-80E4', 'AAAA-0001')
@@ -168,6 +177,7 @@ import os, sys, time
 d = os.path.dirname(os.path.abspath(sys.argv[0]))
 if sys.argv[1] == 'monitor':
     print('Monitoring the udisks daemon. Press Ctrl+C to exit.', flush=True)
+    print('12:00:00.000: The udisks-daemon is running (name-owner :1.1).', flush=True)
     time.sleep(0.5)
     os.rename(d + '/later', d + '/dump')
     for n in range(3):
