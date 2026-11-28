@@ -54,6 +54,7 @@ and a mention in the matching skill, not in the scratchpad.
 **Every change that is visible in the session is documented with screenshots** in the commit that makes it: the picture in
 `docs/images/showcase/`, a section in [docs/showcase.md](docs/showcase.md), and a link from the feature's plan (skill
 `screenshots`). Prefer pictures from the EeePC, and replace bench pictures with EeePC ones once the feature is deployed there.
+A fix that only restores expected behaviour (an icon that opens again) needs no showcase entry or picture.
 
 ## Git
 

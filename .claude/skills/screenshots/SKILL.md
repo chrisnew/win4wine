@@ -6,8 +6,9 @@ description: Document with screenshots what a change adds to the screen, in docs
 # Documenting with screenshots
 
 This project is shown at a retro computing event, so what it adds must be seen, not only described. **Every change that is
-visible in the session gets a picture in the commit that makes it**, and so does every bug fix that changes the look. A change
-with nothing to see (a speed-up, a leak) gets its numbers instead.
+visible in the session gets a picture in the commit that makes it**, and so does every bug fix that changes the look. A fix
+that only restores expected behaviour (an icon that opens again) needs no showcase entry or picture. A change with nothing to
+see (a speed-up, a leak) gets its numbers instead.
 
 ## Where the pictures go
 
