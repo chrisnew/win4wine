@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-"""The registry profile follows the language of the XP media (Japanese or English XP).
+"""The registry profile follows the language of Japanese, English, or German XP media.
 
-  tests/xp_language.py [ja=ASSETS] [en=ASSETS]
+  tests/xp_language.py [ja=ASSETS] [en=ASSETS] [de=ASSETS]
 
-With extract/extract.py outputs of Japanese or English XP media, it also checks
+With extract/extract.py outputs of XP media, it also checks
 the language detected from them (extract/media.py).
 """
 from pathlib import Path
+import json
 import struct
 import sys
+from tempfile import TemporaryDirectory
 import unittest
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / 'prefix'))
 sys.path.insert(0, str(root / 'extract'))
 import media
 import registry
+import stage
 
 ASSETS = {}
 
@@ -54,7 +57,7 @@ class Language(unittest.TestCase):
         self.assertEqual(shell_dlg[0][-1], '/reg:64')
 
     def test_existing_values_kept(self):
-        for language in ('ja', 'en'):
+        for language in ('ja', 'en', 'de'):
             issued = commands(language, existing=True)
             self.assertFalse(values(issued, r'HKCU\Console', 'FaceName'))
 
@@ -63,7 +66,8 @@ class Language(unittest.TestCase):
         self.assertEqual(registry.shell_view(('wineboot', '-u')), ('wineboot', '-u'))
 
     def test_classic_fonts(self):
-        for language, face, height in (('ja', 'MS UI Gothic', -12), ('en', 'Tahoma', -11)):
+        for language, face, height in (('ja', 'MS UI Gothic', -12), ('en', 'Tahoma', -11),
+                                       ('de', 'Tahoma', -11)):
             issued = []
             registry.install_classic_fonts(lambda *args: issued.append(args), lambda key, name: False, language)
             self.assertEqual(len(issued), 6)
@@ -81,13 +85,21 @@ class Language(unittest.TestCase):
             self.assertEqual(media.LOCALES[expected].split('_')[0], expected)
             self.assertIsNone(media.warning(path))
 
+    def test_german_quick_launch(self):
+        with TemporaryDirectory() as directory:
+            prefix = Path(directory)
+            (prefix / 'xp-shell.json').write_text(json.dumps({'language': 'de'}))
+            stage.stage_quick_launch(prefix)
+            files = list(prefix.glob('**/Quick Launch/*.scf'))
+            self.assertEqual([path.name for path in files], ['Desktop anzeigen.scf'])
+
     def test_untested_language(self):
-        # German XP's shell32: set up as English XP, with a warning.
+        # French XP's shell32: set up as English XP, with a warning.
         saved = media.resource_languages
-        media.resource_languages = lambda path, rtype: [0x407]
+        media.resource_languages = lambda path, rtype: [0x40c]
         try:
             self.assertEqual(media.language('assets'), 'en')
-            self.assertIn('0x0407', media.warning('assets'))
+            self.assertIn('0x040c', media.warning('assets'))
         finally:
             media.resource_languages = saved
 

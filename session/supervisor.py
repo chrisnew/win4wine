@@ -104,8 +104,8 @@ class Session:
         else:
             self.cursor_theme = None
         # Linux applications take the XP shell's UI font: MS UI Gothic on
-        # Japanese XP, Tahoma on English XP (the prefix's "language").
-        self.linux_font = config.get('linux_font', 'Tahoma' if self.language() == 'en' else 'MS UI Gothic')
+        # Japanese XP, Tahoma on Western XP (the prefix's "language").
+        self.linux_font = config.get('linux_font', 'MS UI Gothic' if self.language() == 'ja' else 'Tahoma')
         self.linux_menu = config.get('linux_menu', True)
         # Devices on the local network in My Network Places (session/network_places.py):
         # true, false, or its options ("show", "limit", "grace").
