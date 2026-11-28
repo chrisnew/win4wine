@@ -30,8 +30,8 @@ sudo install -m755 "$root/greeter/xp-greeter.py" "$share/code/"
 sudo install -Dm644 "$root/greeter/win4wine-lock.pam" /etc/pam.d/win4wine-lock
 sudo install -m644 "$assets"/system32/{logonui.exe,msgina.dll,winlogon.exe} "$share/assets/system32/"
 fonts=(fonts/msgothic.ttc fonts/arial.ttf)
-if [[ $(python3 "$root/extract/media.py" "$assets") == en ]]; then
-    # English XP's screen is drawn in Arial, Tahoma and Franklin Gothic Medium with
+if [[ $(python3 "$root/extract/media.py" "$assets") != ja ]]; then
+    # Western XP draws the screen in Arial, Tahoma and Franklin Gothic Medium with
     # their own bold and italic faces, its dialog in Microsoft Sans Serif.
     fonts+=(fonts/{arialbd,arialbi,ariali,tahoma,tahomabd,framd,framdit,micross}.ttf)
 fi

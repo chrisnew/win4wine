@@ -31,7 +31,7 @@ def create(assets, dest, home, wine):
     for name in ('browselc.dll', 'shdoclc.dll'):
         if not (assets / 'system32' / name).is_file():
             raise SystemExit(f'Missing {name}: re-extract your local XP media')
-    # Japanese or English XP: the prefix takes the media's language.
+    # The prefix takes the media's language.
     language = media.language(assets)
     for name in ('fonts/msgothic.ttc',) * (language == 'ja') + ('themes/Luna/luna.msstyles',):
         if not (assets / name).is_file():

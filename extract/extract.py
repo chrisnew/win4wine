@@ -76,14 +76,13 @@ FILES = {
     'metal_ss.dll': 'themes/Luna/Shell/Metallic',
 }
 
-# English XP's own fonts where Japanese XP uses MS UI Gothic: its Luna theme's
+# Western XP fonts where Japanese XP uses MS UI Gothic: the Luna theme's
 # Franklin Gothic Medium (Start panel), the Welcome screen's Arial with its
 # bold and italic faces, Microsoft Sans Serif behind MS Shell Dlg, and the
-# console's raster Terminal font (code page 437), which Wine does not have.
-LANGUAGE_FILES = {
-    'en': dict.fromkeys(('framd.ttf', 'framdit.ttf', 'arialbd.ttf', 'arialbi.ttf', 'ariali.ttf',
-                         'micross.ttf', 'vgaoem.fon'), 'fonts'),
-}
+# console's raster Terminal fonts, which Wine does not have.
+WESTERN_FONTS = dict.fromkeys(('framd.ttf', 'framdit.ttf', 'arialbd.ttf', 'arialbi.ttf', 'ariali.ttf',
+                               'micross.ttf', 'vgaoem.fon'), 'fonts')
+LANGUAGE_FILES = {'en': WESTERN_FONTS, 'de': {**WESTERN_FONTS, 'vga850.fon': 'fonts'}}
 
 # Files that XP's setup installs under another name (LAYOUT.INF).
 RENAMED = {'classic.the': 'Windows Classic.theme'}

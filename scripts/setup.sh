@@ -155,10 +155,8 @@ if [[ $greeter == yes && $(cat /etc/X11/default-display-manager 2>/dev/null) != 
 fi
 
 # The Unix locale of the session and its Wine prefix, in the language of the
-# XP media (Japanese or English XP).
+# XP media.
 make_locale() {
-    locale=ja_JP.UTF-8
-    [[ $lang == ja ]] || locale=en_US.UTF-8
     [[ $lang != ja ]] || install_input_method
     step "Locale $locale"
     if ! locale -a | grep -qix "${locale%.UTF-8}.utf8"; then
@@ -230,7 +228,12 @@ if ((${#added[@]})); then
     TMPDIR=$local/tmp python3 "$root/extract/extract.py" "${added[@]/#/--only=}" "$media" "$assets"
 fi
 lang=$(python3 "$root/extract/media.py" --warn "$assets")
-printf 'Windows XP in %s\n' "$([[ $lang == ja ]] && echo Japanese || echo English)"
+case $lang in
+    ja) locale=ja_JP.UTF-8; name=Japanese ;;
+    de) locale=de_DE.UTF-8; name=German ;;
+    *) locale=en_US.UTF-8; name=English ;;
+esac
+printf 'Windows XP in %s\n' "$name"
 make_locale
 
 step 'XP prefix'

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""The language of extracted XP files: ja (Japanese XP) or en (English XP).
+"""The language of extracted XP files: Japanese, English, or German.
 
 It is the language of the version resource of the extraction's shell32.dll,
 read from the PE resource directory (no code is read or run). XP in any other
-language is set up as English XP; no other language has been tested.
+language is set up as English XP.
 
   media.py [--warn] ASSETS    prints the language of an extract/extract.py output;
                               --warn also warns on stderr about an untested language
@@ -13,9 +13,9 @@ import struct
 import sys
 
 RT_VERSION = 16
-LANGUAGES = {0x411: 'ja', 0x409: 'en'}
+LANGUAGES = {0x411: 'ja', 0x409: 'en', 0x407: 'de'}
 # The Unix locale of each language's session and Wine processes.
-LOCALES = {'ja': 'ja_JP.UTF-8', 'en': 'en_US.UTF-8'}
+LOCALES = {'ja': 'ja_JP.UTF-8', 'en': 'en_US.UTF-8', 'de': 'de_DE.UTF-8'}
 
 
 def resource_directory(path):
@@ -77,7 +77,7 @@ def resource_ids(path, rtype):
 
 
 def tested(assets):
-    """The tested language (ja or en) of the extracted XP files in ASSETS, or None."""
+    """The recognized language of the extracted XP files in ASSETS, or None."""
     for lang in resource_languages(Path(assets) / 'system32/shell32.dll', RT_VERSION):
         if lang in LANGUAGES:
             return LANGUAGES[lang]
@@ -85,7 +85,7 @@ def tested(assets):
 
 
 def language(assets):
-    """ja or en for the extracted XP files in ASSETS; en for XP in other languages."""
+    """The recognized language of ASSETS; en for XP in other languages."""
     return tested(assets) or 'en'
 
 
@@ -95,8 +95,8 @@ def warning(assets):
         return None
     shell32 = Path(assets) / 'system32/shell32.dll'
     found = ', '.join(f'{lang:#06x}' for lang in resource_languages(shell32, RT_VERSION)) or 'none'
-    return (f'Warning: this XP is neither Japanese nor English (language of {shell32}: {found}).\n'
-            'It is set up as English XP. XP in other languages has not been tested at all.')
+    return (f'Warning: this XP is not Japanese, English, or German (language of {shell32}: {found}).\n'
+            'It is set up as English XP.')
 
 
 if __name__ == '__main__':

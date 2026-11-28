@@ -14,7 +14,7 @@ UNIX_ROOT = '{9D20AAE8-0625-44B0-9CA7-71889C2254D9}'
 # The classic theme's fonts per language of the XP media, read with public SPI
 # calls on the reference machines: Japanese XP uses MS UI Gothic 9pt, English
 # XP Tahoma 8pt (captions bold in both).
-CLASSIC_FONTS = {'ja': ('MS UI Gothic', -12), 'en': ('Tahoma', -11)}
+CLASSIC_FONTS = {'ja': ('MS UI Gothic', -12), 'en': ('Tahoma', -11), 'de': ('Tahoma', -11)}
 
 
 def shell_view(args):
