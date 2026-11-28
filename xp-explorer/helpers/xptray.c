@@ -1111,12 +1111,14 @@ typedef struct
     BOOL media;             /* it has a volume */
     BOOL stick;             /* a USB stick or memory card: real hardware */
     BOOL sd;                /* on an SD bus */
+    BOOL at_logon;          /* there before xptray, and not yet mounted */
     ULONGLONG unmounted;    /* when its volume went */
     WCHAR serial[128];      /* the drive's, the same for its partitions */
 } DRIVE;
 
 static DRIVE drives[26];
-static BOOL ejecting[26];           /* by us, from the menu */
+static BOOL ejecting[26];           /* by us, from the menu, */
+static DRIVE ejected[26];           /* and what the drive was then */
 static WCHAR safe_serial[128];      /* the drive last said to be safe to remove, */
 static ULONGLONG safe_time;         /* and when */
 static ULONGLONG balloon_until;     /* the Safely Remove icon stays for its balloon */
@@ -1273,7 +1275,12 @@ static void drive_arrived(int index)
     /* Mounted again shortly after it was unmounted: an eject that failed. */
     BOOL again = known && drives[index].unmounted && GetTickCount64() - drives[index].unmounted < 10000;
 
+    /* Mounted by session/removable.py after the logon: no news. */
+    BOOL quiet = known && drives[index].at_logon;
+
     if (!query_drive(index, &drive)) return;
+    /* Back again: the next eject is told of anew. */
+    if (drive.serial[0] && !wcscmp(drive.serial, safe_serial)) safe_serial[0] = 0;
     drive.listed = drive.media = TRUE;
     KillTimer(window, TIMER_EJECTED + index);
     drives[index] = drive;
@@ -1284,7 +1291,7 @@ static void drive_arrived(int index)
             device_sound(TRUE);
             if (drive.stick) found_new_hardware(&drive);
         }
-        if (!again && !ejecting[index]) autoplay(index);
+        if (!again && !quiet && !ejecting[index]) autoplay(index);
     }
     hotplug_icon();
 }
@@ -1318,7 +1325,10 @@ static void scan_drives(void)
     DWORD present = GetLogicalDrives();
     for (int i = 2; i < 26; i++)
         if ((present & (1u << i)) && query_drive(i, &drives[i]))
-            drives[i].listed = drives[i].media;
+        {
+            drives[i].listed = TRUE;
+            drives[i].at_logon = !drives[i].media;
+        }
 }
 
 /* Ejects a drive as XP's Eject does. In a thread of its own: unmounting writes
@@ -1352,6 +1362,7 @@ static void eject(int index)
     HANDLE thread;
     if (ejecting[index]) return;
     ejecting[index] = TRUE;
+    ejected[index] = drives[index];
     if ((thread = CreateThread(NULL, 0, eject_thread, (void *)(INT_PTR)index, 0, NULL))) CloseHandle(thread);
     else ejecting[index] = FALSE;
 }
@@ -3052,7 +3063,8 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
         return 0;
     case WM_EJECTED:
     {
-        DRIVE drive = drives[wparam];
+        /* The drive itself may be gone by now. */
+        DRIVE drive = ejected[wparam];
         ejecting[wparam] = FALSE;
         if (!lparam) safe_to_remove(&drive);
         else

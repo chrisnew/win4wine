@@ -410,7 +410,8 @@ follows `WM_DEVICECHANGE` and uses Windows APIs only, so it treats sticks, cards
 `DRIVE_CDROM` is a disc image to it.
 
 - **Sounds**: `DeviceConnect` when a drive arrives and `DeviceDisconnect` when its letter goes, from XP's sound scheme
-  (Sounds control panel), once for the partitions of one stick. Drives there at logon are silent.
+  (Sounds control panel), once for the partitions of one stick. Drives there at logon are silent, also
+  those `removable.py` mounts just after it.
 - **Found New Hardware**: for a stick seen the first time, XP's two balloons. Seen serial numbers are kept in
   `HKCU\Software\win4wine\Hotplug\Seen`.
 - **Safely Remove Hardware**: the icon shows while a stick or disc image is in. A click lists XP's "Safely remove USB Mass
@@ -431,7 +432,8 @@ would hear nothing. Ours is built to look like it.
 
 - **AutoRun**: a disc image or CD with an `autorun.inf` runs its `open=` or `shellexecute=` line from its root, with no
   dialog. **Never from a stick or card** (anything whose media is removable on USB or SD), also not from a hybrid live
-  stick that is a CD drive. Shift held while the drive arrives skips AutoRun and AutoPlay.
+  stick that is a CD drive. A stick that presents itself as an optical drive (U3)
+  counts as a CD. Shift held while the drive arrives skips AutoRun and AutoPlay.
 - **The files** are looked at two folders deep, for at most 0.7 s, hidden and dot files left out. Only pictures, only music
   or only video give XP's dialog with "Always do the selected action"; anything else, or nothing, gives "This disk or device
   contains more than one type of content." A disc with nothing to play or show opens in a window.
