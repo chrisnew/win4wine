@@ -1,6 +1,7 @@
 # Plan: mount ISO images as CD drives
 
-Status (2026-11-27): phases 0 to 2 are done and on the EeePC. AutoRun is open (phase 3). The probes changed phase 2 and
+Status (2026-11-28): phases 0 to 2 are done and on the EeePC. AutoRun (phase 3) is built with
+[plans/usb-drives.md](usb-drives.md), not yet on the EeePC. The probes changed phase 2 and
 parts of phase 1: read [As built](#as-built-2026-11-27) first, the sections after it are the plan as it was made.
 
 Goal: double-clicking an `.iso` file in XP's Explorer mounts it on the Linux side, and a few moments later it is a CD-ROM drive

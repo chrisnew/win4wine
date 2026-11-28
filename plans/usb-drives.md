@@ -1,6 +1,8 @@
 # Plan: USB sticks, SD cards and disc images as removable drives, with XP's hotplug UI
 
-Status (2026-11-28): planned, nothing built. Phase 0 (probes on the EeePC) comes first and may change the phases after it.
+Status (2026-11-28): phases 1 to 4 are built and work on the bench with stand-in sticks. **Nothing is on the EeePC yet**
+and no real stick has been tried: read [As built](#as-built-2026-11-28) first, the sections after it are the plan as it was
+made.
 
 Goal: plugging a USB stick (or an SD card into the card reader) into the EeePC goes the way it went on XP:
 
@@ -21,6 +23,45 @@ sticks at `/media/cr/LABEL`, as they see the images.
 
 For the demo, a visitor plugs in their own stick and gets the sound, the balloon and the AutoPlay dialog, then sees their
 pictures in XP's slideshow. Or they double-click `Office XP.iso` and the Office XP setup screen appears.
+
+## As built (2026-11-28)
+
+How it works is in [docs/architecture.md](../docs/architecture.md#removable-drives-sessionremovablepy), the pictures are in
+[docs/showcase.md](../docs/showcase.md#usb-sticks-and-memory-cards).
+
+<img src="../docs/images/showcase/usb-autoplay.png" alt="XP's AutoPlay dialog for a stick with pictures" width="348" />
+
+The order changed: with the bench first, phase 0 was done there as far as it could be, with a fake UDisks2
+([tools/bench/udisks-mock.py](../tools/bench/udisks-mock.py), loop device nodes bound as `/dev/sdb` and so on).
+
+- **Phase 0, read only on the EeePC.** The empty card reader has **no block device**, so no phantom drive. A stick plugged
+  in at 11:31 that day had left `i:: -> /dev/sdb`, `j:: -> sdb2` and `k:: -> sdb1`: a letter for the whole disk, and letters
+  that stay taken (D: to G: were held by old disc images' links too). The prefix has the `DeviceConnect` sounds and only
+  Media Player's AutoPlay handlers; `hotplug.dll`, `newdev.dll` and `shsvcs.dll` were not extracted.
+- **XP's Eject on a stick** (traced on the bench) locks the volume (a stub in `ntdll`), then sends
+  `IOCTL_STORAGE_MEDIA_REMOVAL`, then `IOCTL_STORAGE_EJECT_MEDIA`. No dismount.
+- **Three patches, not one**: 0168 (the drive; the serial number was dropped by `add_dos_device`, and vendor, product, bus
+  and FAT serial were missing), 0169 (Eject), 0170 (letters freed, left-over drives removed). `kernelbase` needed nothing.
+  FAT and exFAT report as FAT32.
+- **No IPC from `removable.py`**: "not formatted" is `xptray.exe --not-formatted E:`, and `xptray.exe` tells an eject from a
+  pulled stick by the order of the messages (unmounted before the letter went).
+- **The Safely Remove icon** is `stobject.dll`'s (210), already extracted; `hotplug.dll` gives the balloon's and message's
+  texts. A click shows the menu; XP's own window was not tried (no device tree).
+- **XP's AutoPlay service was not run.** Decided from Wine's code: `mountmgr` registers no volume device interfaces, so
+  `ShellHWDetection` would hear of no drive, and that is more than one small patch. Ours uses XP's templates 1120 and 1121.
+- **The slideshow** is XP's viewer with F11 sent to it. **The wait before a folder window** had to be 3.5 s (2.6 s too short
+  on the bench).
+
+**Open, all on the EeePC** (after asking; deploying needs a logoff, a new Wine, the prefix additions and, once,
+`extract/extract.py ISO .local/assets --only tray`):
+
+1. Phase 0 with real media: a FAT stick, an exFAT or NTFS one, an SD card (does it appear as `sdX` or `mmcblk`, with
+   `Removable`?), `udisksctl power-off` without a password, and whether UDisks2 says "unmounted" before "removed" for a
+   stick pulled out (else a "Safe To Remove" balloon would follow).
+2. Sounds (the bench has none), the time from plugging in to drive and dialog on the Atom, idle wakeups.
+3. Disc images (the bench cannot loop-mount): AutoRun of each image in `~/Images`, Eject from the tray, Shift.
+4. Windows Media Player does not start in the bench (BUGS.md): music and video's "Play" depends on it.
+5. EeePC pictures in place of the bench ones.
 
 ## What exists
 

@@ -10,13 +10,13 @@ I got the beta ISO laying around, we can play around with that.
 
 Seamless integration of USB storage etc. Attaching media will show it up in explorer using the Windows API. Removing will do the same.
 
-Planned: [plans/usb-drives.md](plans/usb-drives.md).
+Built and tried on the bench, not yet on the EeePC: [plans/usb-drives.md](plans/usb-drives.md).
 
 ## Mounting ISOs natively
 
 Some helper tool that will mount/unmount .iso files and show them as drives.
 
-Done and on the EeePC, except AutoRun: [plans/iso-mount.md](plans/iso-mount.md).
+Done and on the EeePC: [plans/iso-mount.md](plans/iso-mount.md). AutoRun is built, not yet on the EeePC.
 
 ## Notification manager
 
@@ -42,4 +42,4 @@ the removed Windows 7 taskbar read: drop it with the next change to that patch, 
 
 Right now, nothing happens when you connect a USB stick etc.
 
-Planned, with Safely Remove Hardware, Found New Hardware and AutoPlay (also for disc images): [plans/usb-drives.md](plans/usb-drives.md).
+Built, with Safely Remove Hardware, Found New Hardware and AutoPlay (also for disc images), not yet on the EeePC: [plans/usb-drives.md](plans/usb-drives.md).
