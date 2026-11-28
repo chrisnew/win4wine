@@ -8,7 +8,8 @@ Input Languages (input.dll) writes them, and Wine patch 0043 gives them to
 Windows programs. The keys themselves follow the session's XKB layout, so the
 session sets XKB from the same list: labwc's environment file in the Wayland
 session, setxkbmap in the X11 session. A prefix first takes the Linux
-system's layout (localectl) as its input language.
+system's layout as its input language, using /etc/default/keyboard if
+localectl cannot report an X11 layout during offline setup.
 
   keyboard.py seed PREFIX --wine WINE    the system's layout as XP's, once
   keyboard.py env PREFIX                 XKB_DEFAULT_* lines for labwc
@@ -20,6 +21,7 @@ import argparse
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -52,20 +54,40 @@ LAYOUTS = {
 # (XP's default), 2 Ctrl+Shift, 3 none, 4 the grave accent.
 TOGGLES = {'1': 'grp:lalt_lshift_toggle', '2': 'grp:ctrl_shift_toggle', '3': '', '4': 'grp:tilde_toggle'}
 MARKER = r'HKCU\Software\Win4Wine\Profile'
+DEBIAN_KEYBOARD = Path('/etc/default/keyboard')
 
 
 def system():
-    """The Linux system's XKB settings (localectl), as a dict."""
+    """The Linux system's XKB settings, including during offline setup."""
     settings = {'layout': 'us', 'model': '', 'variant': '', 'options': ''}
     try:
-        out = subprocess.run(['localectl', 'status'], capture_output=True, text=True, timeout=10).stdout
+        out = subprocess.run(['localectl', 'status'], capture_output=True, text=True, timeout=10,
+                             env=dict(os.environ, LC_ALL='C')).stdout
     except (OSError, subprocess.SubprocessError):
         out = ''
-    for key, name in (('layout', 'X11 Layout'), ('model', 'X11 Model'), ('variant', 'X11 Variant'),
-                      ('options', 'X11 Options')):
-        m = re.search(rf'^\s*{name}:\s*(\S+)', out, re.MULTILINE)
-        if m:
-            settings[key] = m.group(1)
+    reported = {}
+    for key in settings:
+        m = re.search(rf'^[ \t]*X11 {key.title()}:[ \t]*(\S+)', out, re.MULTILINE)
+        if m and m.group(1) != 'n/a':
+            reported[key] = m.group(1)
+    if 'layout' in reported:
+        return settings | reported
+    try:
+        lines = DEBIAN_KEYBOARD.read_text().splitlines()
+    except (OSError, UnicodeError):
+        return settings
+    names = {'XKB' + key.upper(): key for key in settings}
+    for line in lines:
+        key, sep, value = line.strip().partition('=')
+        key = names.get(key.strip())
+        if not sep or key is None:
+            continue
+        try:
+            words = shlex.split(value, comments=True)
+        except ValueError:
+            continue
+        if len(words) == 1:
+            settings[key] = words[0]
     return settings
 
 
