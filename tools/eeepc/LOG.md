@@ -39,7 +39,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | X driver | `xserver-xorg-video-intel 2:2.99.917+git20210115-1+w4w1`, built by [xorg-intel/build.sh](xorg-intel/build.sh) with `sna-gen3-dri3.patch`; **held** with `apt-mark hold` | DRI3 on the GMA 3150, so OpenGL runs on the GPU instead of llvmpipe | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/20-intel.conf`: `Driver "intel"`, `Option "DRI" "3"` | The patched driver gives gen3 DRI3 only when asked | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/10-nodpms.conf`: blanking, standby, suspend and off times 0; `DPMS` false on LVDS1 | The screen never blanks (see "Not yet explained") | ? |
-| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0167 (repo d7470ce) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner; 0161 keeps copy and paste working after a folder window is closed; 0162 to 0164 are for mounted disc images; 0165 keeps Explorer from freezing when its windows redraw at once; 0166 keeps the desktop taking clicks after a program ends while it holds the mouse; 0120 keeps the access lists of files in the XP session too, so the Recycle Bin works; 0167 stores whole what XP's picture viewer registers, so image files have their icons | 2026-11-28 |
+| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0170 (repo ccaa301) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner; 0161 keeps copy and paste working after a folder window is closed; 0162 to 0164 are for mounted disc images; 0165 keeps Explorer from freezing when its windows redraw at once; 0166 keeps the desktop taking clicks after a program ends while it holds the mouse; 0120 keeps the access lists of files in the XP session too, so the Recycle Bin works; 0167 stores whole what XP's picture viewer registers, so image files have their icons; 0168 to 0170 are for USB sticks and memory cards | 2026-11-28 |
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
 | PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
@@ -53,7 +53,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | Profiling | `linux-perf` 7.3.4 (trixie-backports, matches the kernel) and `strace` | Profiling Wine programs on the machine itself; `perf_event_paranoid` stays 3, so perf runs with sudo | 2026-11-26 |
 | Build tools | build-essential, MinGW, Xvfb, python3-xlib and the rest of win4wine's build dependencies | Building Wine and the bridge on the machine (Wine is now built in a container on the development machine) | 2026-11-23 |
 | Network | `avahi-daemon` (first installed with `redshift-gtk`), marked as manually installed | mDNS for My Network Places (`session/network_places.py`) | 2026-11-27 |
-| Disc images | `udisks2` | "Mount" on `.iso` files: it mounts them without root, and Wine makes them CD drives | 2026-11-27 |
+| Disc images and USB sticks | `udisks2` | "Mount" on `.iso` files, and `session/removable.py` for sticks and memory cards: it mounts them without root, and Wine makes drives of them | 2026-11-27 |
 
 ## Open
 
@@ -78,6 +78,37 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-28: USB sticks and AutoPlay (Wine 0168 to 0170, extras.py 18) installed
+
+- **What** (logged off, no wineserver left), in `~/win4wine`: copies of the prefix's `*.reg`, `system.ini`, `.xp-extras`,
+  `.xp-defaults`, `.xp-registry-version`, a listing of `dosdevices` and the extraction's `manifest.json` in
+  `.local/backup-2026-11-28-usb/`; `git fetch fork && git checkout -B master fork/master` (1739f01 to ccaa301); then
+
+  ```sh
+  TMPDIR=$PWD/.local/tmp python3 extract/extract.py --only=tray \
+      ~/Images/en_windows_xp_professional_with_service_pack_3_x86_cd_vl_x14-73974.iso .local/assets
+  bridge-wm/build.sh
+  ```
+
+  on the development machine `wine/container-build.sh --deploy 192.168.1.9` (the Wine up to 0167 is now
+  `.local/wine-install-old`); then there
+
+  ```sh
+  xvfb-run -a -s '-screen 0 1280x800x24' sh -c 'p=$PWD/.local/prefix w=$PWD/.local/wine-install/bin/wine
+      python3 prefix/extras.py $p --wine $w && python3 session/linux_apps.py $p --wine $w &&
+      python3 xp-explorer/scripts/pins.py $p --wine $w' > .local/usb.log 2>&1
+  ```
+
+  and `wineserver -k` and `-w`.
+- **Why:** plugging in a USB stick did nothing, and the stick plugged in that morning had left the letters I:, J: and K:
+  taken ([plan](../../plans/usb-drives.md)).
+- **Result:** extraction 35 s (it adds `hotplug.dll` and `newdev.dll`), additions 475 s, exit status 0, `extras.py
+  --check` passes (VERSION 18). The new mountmgr removed the left-over links `d::` to `g::` (old disc images) and `i::` to
+  `k::` from `dosdevices`: only `c:`, `h:`, `z:` and the serial ports remain. Not yet checked in a session.
+- **Undo:** logged off, `mv .local/wine-install .local/wine-install-0170 && mv .local/wine-install-old
+  .local/wine-install`, copy the backup's `*.reg`, `.xp-extras`, `.xp-defaults` and `.xp-registry-version` back into
+  `.local/prefix` and `system.ini` into `drive_c/windows`, `git checkout -B master 1739f01` and `bridge-wm/build.sh`.
 
 ### 2026-11-28: XP's icons for file types (Wine 0167, extras.py 17) installed
 
