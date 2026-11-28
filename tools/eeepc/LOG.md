@@ -105,7 +105,10 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   taken ([plan](../../plans/usb-drives.md)).
 - **Result:** extraction 35 s (it adds `hotplug.dll` and `newdev.dll`), additions 475 s, exit status 0, `extras.py
   --check` passes (VERSION 18). The new mountmgr removed the left-over links `d::` to `g::` (old disc images) and `i::` to
-  `k::` from `dosdevices`: only `c:`, `h:`, `z:` and the serial ports remain. Not yet checked in a session.
+  `k::` from `dosdevices`: only `c:`, `h:`, `z:` and the serial ports remain. Checked in the session the same day:
+  confirmed working, among other things with a USB stick holding a `dd`'d Debian image and a Raspberry Pi's SD card; the
+  first got an extra empty CD drive (fixed in 0168 afterwards, not yet installed). Timings and the idle session in the
+  [README](README.md#removable-drives).
 - **Undo:** logged off, `mv .local/wine-install .local/wine-install-0170 && mv .local/wine-install-old
   .local/wine-install`, copy the backup's `*.reg`, `.xp-extras`, `.xp-defaults` and `.xp-registry-version` back into
   `.local/prefix` and `system.ini` into `drive_c/windows`, `git checkout -B master 1739f01` and `bridge-wm/build.sh`.

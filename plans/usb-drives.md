@@ -1,8 +1,8 @@
 # Plan: USB sticks, SD cards and disc images as removable drives, with XP's hotplug UI
 
-Status (2026-11-28): phases 1 to 4 are built and work on the bench with stand-in sticks. **Nothing is on the EeePC yet**
-and no real stick has been tried: read [As built](#as-built-2026-11-28) first, the sections after it are the plan as it was
-made.
+Status (2026-11-28): phases 1 to 4 are built, **on the EeePC and confirmed working** there with real media. Some of it is
+still to be tried, and a fix waits to be deployed: read [As built](#as-built-2026-11-28) first, the sections after it are
+the plan as it was made.
 
 Goal: plugging a USB stick (or an SD card into the card reader) into the EeePC goes the way it went on XP:
 
@@ -52,16 +52,25 @@ The order changed: with the bench first, phase 0 was done there as far as it cou
 - **The slideshow** is XP's viewer with F11 sent to it. **The wait before a folder window** had to be 3.5 s (2.6 s too short
   on the bench).
 
-**Open, all on the EeePC** (after asking; deploying needs a logoff, a new Wine, the prefix additions and, once,
-`extract/extract.py ISO .local/assets --only tray`):
+**On the EeePC** (repo ccaa301, the same day): confirmed working, among other things with a USB stick holding a `dd`'d
+Debian image and a Raspberry Pi's SD card, both of whose partitions appeared. From `udisksctl monitor` meanwhile:
 
-1. Phase 0 with real media: a FAT stick, an exFAT or NTFS one, an SD card (does it appear as `sdX` or `mmcblk`, with
-   `Removable`?), `udisksctl power-off` without a password, and whether UDisks2 says "unmounted" before "removed" for a
-   stick pulled out (else a "Safe To Remove" balloon would follow).
-2. Sounds (the bench has none), the time from plugging in to drive and dialog on the Atom, idle wakeups.
-3. Disc images (the bench cannot loop-mount): AutoRun of each image in `~/Images`, Eject from the tray, Shift.
-4. Windows Media Player does not start in the bench (BUGS.md): music and video's "Play" depends on it.
-5. EeePC pictures in place of the bench ones.
+- The card reader is a USB drive ("Multiple Card Reader") that appears **only with a card in it**; the card is `sdb`
+  with partitions, not `mmcblk`. vfat and ext4 were both mounted.
+- A stick was mounted 0.8 s after it was seen, the card's two partitions 1.9 s after.
+- A stick that was ejected was unmounted and gone half a second later: **power-off works without a password**.
+- A card pulled out sent **no "unmounted" before "removed"**, which is how `xptray.exe` tells it from an eject.
+- **Idle**, no stick in: nothing new in the sample ([tools/eeepc/README.md](../tools/eeepc/README.md#removable-drives)).
+- **The hybrid stick's whole disk** said it held a file system, without a `Filesystem` interface, and got an empty CD
+  drive. Fixed in 0168, **not yet deployed**.
+
+**Still open, on the EeePC:**
+
+1. Deploy the 0168 fix (a new Wine).
+2. Not reported as tried: an exFAT or NTFS stick, the sounds one by one, AutoRun of each image in `~/Images`, Eject of an
+   image from the tray, Shift, and the time to the AutoPlay dialog.
+3. Windows Media Player does not start in the bench (BUGS.md): music and video's "Play" depends on it.
+4. EeePC pictures in place of the bench ones.
 
 ## What exists
 

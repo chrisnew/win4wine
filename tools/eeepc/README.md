@@ -222,6 +222,18 @@ Measured 2026-11-27, `udisks2` 2.10.1, the images in `~/Images` (300 to 600 MB, 
   and 237 after the tests (xp-explorer 2.4% and 28/s before, 3.7% and 55/s after; `udisksd` 0.0%). The second sample was
   taken after some twenty mounts in that session, so the two are not like for like; **not yet repeated on a fresh logon**.
 
+## Removable drives
+
+Measured 2026-11-28 (repo ccaa301), from `udisksctl monitor` while the user plugged media in, and `eee.sh sample 60`.
+
+- **Plugged in until mounted** (`session/removable.py`, which waits 0.3 s for the changes to end): a USB stick with a
+  `dd`'d Debian image 0.8 s, both partitions of a Raspberry Pi's SD card 1.9 s; `udisksctl mount` itself 0.4 to 0.7 s.
+- **Eject**: from unmounted until the drive was gone (powered off) 0.5 s.
+- **The card reader** is a USB drive ("Multiple Card Reader") that appears only with a card in it.
+- **Idle session**, 60 s, the desktop only, no stick in: 4.6% of one logical CPU and 148 wakeups/s (xp-explorer 2.7% and
+  31/s, wineserver 0.8% and 97/s, xptray 0.8% and 15/s, Xorg 0.2% and 3/s). `removable.py` and its `udisksctl monitor`
+  stay under the sample's limit (0.5% and 2/s).
+
 ## Recycle Bin
 
 Wine 0120 reads an extended attribute whenever a file's security is read. Measured 2026-11-28 (repo 05e7ff0), logged off,
