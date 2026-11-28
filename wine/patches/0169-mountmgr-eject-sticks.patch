@@ -1,0 +1,204 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] mountmgr: ejecting a USB stick unmounts it and powers it off
+
+Purpose: XP's own "Eject" on a stick's drive, and the Safely Remove Hardware
+icon (xptray.exe), unmount the stick and switch it off, so that it can be
+pulled out.
+Windows behavior: Eject on a removable disk locks the volume, sends it
+IOCTL_STORAGE_MEDIA_REMOVAL to allow the removal and then
+IOCTL_STORAGE_EJECT_MEDIA; it takes the volume's device (\\?\Volume{GUID}).
+Wine before: mountmgr.sys answered IOCTL_STORAGE_MEDIA_REMOVAL as
+unsupported, so XP said "An error was encountered trying to eject" and went
+no further, and it did not eject sticks (0164 ejects disc images).
+Change: for a removable drive that 0168 knows as a stick or a memory card,
+IOCTL_STORAGE_MEDIA_REMOVAL and IOCTL_DISK_MEDIA_REMOVAL succeed (there is no
+lock), and the eject requests run "udisksctl unmount" on each mounted
+partition of the drive and then "udisksctl power-off". A volume that cannot be
+unmounted (files open on it) gives STATUS_DEVICE_BUSY, and the partitions
+already unmounted are mounted again. A drive that cannot be powered off stays,
+with nothing mounted. UDisks2 allows both to the user of
+the active session without a password. The drive letters go with the devices
+(0163 announces it).
+Evidence: XP Explorer's Eject on the bench with tools/bench/udisks-mock.py;
+tests/hotplug-probe.c eject.
+Scope: all programs; only drives UDisks2 reports as removable that are neither
+optical nor floppy.
+---
+ dlls/mountmgr.sys/dbus.c    |  3 +-
+ dlls/mountmgr.sys/device.c  | 80 ++++++++++++++++++++++++++++++++++++++++++++-
+ dlls/mountmgr.sys/unixlib.c |  2 ++
+ dlls/mountmgr.sys/unixlib.h |  1 +
+ 4 files changed, 84 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/mountmgr.sys/dbus.c b/dlls/mountmgr.sys/dbus.c
+index 453921f..23ebe4a 100644
+--- a/dlls/mountmgr.sys/dbus.c
++++ b/dlls/mountmgr.sys/dbus.c
+@@ -381,7 +381,7 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+     const char *iface, *name;
+     int removable = FALSE, hint_ignore = FALSE, hint_system = FALSE;
+     enum device_type drive_type = DEVICE_UNKNOWN;
+-    struct hotplug_info hotplug = { "", NULL, NULL, NULL, NULL };
++    struct hotplug_info hotplug = { NULL, "", NULL, NULL, NULL, NULL };
+     dbus_uint64_t size = 0;
+     const char *usage = NULL;
+     BOOL stick;
+@@ -474,6 +474,7 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+             return;
+         }
+         if (drive_type == DEVICE_UNKNOWN) drive_type = DEVICE_HARDDISK;
++        hotplug.drive = drive;
+         hotplug.fs_type = type;
+     }
+     if (device)
+diff --git a/dlls/mountmgr.sys/device.c b/dlls/mountmgr.sys/device.c
+index c575ca2..db70ed3 100644
+--- a/dlls/mountmgr.sys/device.c
++++ b/dlls/mountmgr.sys/device.c
+@@ -708,6 +708,7 @@ static NTSTATUS create_disk_device( enum device_type type, struct disk_device **
+ /* what UDisks2 said about the stick or memory card a device is, if it is one */
+ static void set_hotplug_info( struct disk_device *device, const struct hotplug_info *info )
+ {
++    free( (char *)device->hotplug.drive );
+     free( (char *)device->hotplug.bus );
+     free( (char *)device->hotplug.vendor );
+     free( (char *)device->hotplug.product );
+@@ -715,6 +716,7 @@ static void set_hotplug_info( struct disk_device *device, const struct hotplug_i
+     free( (char *)device->hotplug.fs_uuid );
+     memset( &device->hotplug, 0, sizeof(device->hotplug) );
+     if (!info) return;
++    device->hotplug.drive = info->drive ? strdup( info->drive ) : NULL;
+     device->hotplug.bus = strdup( info->bus );
+     device->hotplug.vendor = info->vendor ? strdup( info->vendor ) : NULL;
+     device->hotplug.product = info->product ? strdup( info->product ) : NULL;
+@@ -1903,6 +1905,70 @@ static NTSTATUS eject_disc_image( struct disk_device *dev )
+     return status;
+ }
+ 
++#define MAX_EJECT_PARTITIONS 16
++
++/* Eject a stick or a memory card: unmount every volume of its drive, then power
++ * the drive off, with UDisks2. The drive letters go with the devices. A drive
++ * that cannot be powered off (some card readers) stays, with nothing mounted. */
++static NTSTATUS eject_stick( struct disk_device *dev )
++{
++    static char udisksctl[] = "udisksctl", unmount[] = "unmount", mount[] = "mount", power_off[] = "power-off",
++                no_questions[] = "--no-user-interaction", block_device[] = "-b";
++    char *argv[] = { udisksctl, unmount, no_questions, block_device, NULL, NULL };
++    char *mounted[MAX_EJECT_PARTITIONS], *device = NULL;
++    unsigned int i, done, count = 0;
++    struct volume *volume;
++    NTSTATUS status = STATUS_SUCCESS;
++
++    EnterCriticalSection( &device_section );
++    if (dev->unix_device) device = strdup( dev->unix_device );
++    if (device && dev->unix_mount) mounted[count++] = strdup( device );
++    /* the drive's other partitions, which go with it */
++    LIST_FOR_EACH_ENTRY( volume, &volumes_list, struct volume, entry )
++    {
++        struct disk_device *other = volume->device;
++
++        if (count == MAX_EJECT_PARTITIONS) break;
++        if (other == dev || !other->unix_mount || !other->unix_device) continue;
++        if (!dev->hotplug.drive || !other->hotplug.drive || strcmp( dev->hotplug.drive, other->hotplug.drive ))
++            continue;
++        mounted[count++] = strdup( other->unix_device );
++    }
++    LeaveCriticalSection( &device_section );
++    if (!device) return STATUS_NO_SUCH_DEVICE;
++
++    /* Not within device_section: mountmgr learns of the changes while we wait. */
++    for (done = 0; done < count; done++)
++    {
++        argv[4] = mounted[done];
++        if (__wine_unix_spawnvp( argv, TRUE ))
++        {
++            WARN( "could not unmount %s\n", debugstr_a(mounted[done]) );
++            status = STATUS_DEVICE_BUSY;
++            break;
++        }
++    }
++    if (status)
++    {
++        /* One volume is in use: the drive stays as it was. */
++        argv[1] = mount;
++        for (i = 0; i < done; i++)
++        {
++            argv[4] = mounted[i];
++            if (__wine_unix_spawnvp( argv, TRUE )) WARN( "could not mount %s again\n", debugstr_a(mounted[i]) );
++        }
++    }
++    for (i = 0; i < count; i++) free( mounted[i] );
++    if (!status)
++    {
++        argv[1] = power_off;
++        argv[4] = device;
++        if (__wine_unix_spawnvp( argv, TRUE )) WARN( "could not power off %s\n", debugstr_a(device) );
++    }
++    free( device );
++    return status;
++}
++
+ /* handler for ioctls on the harddisk device */
+ static NTSTATUS WINAPI harddisk_ioctl( DEVICE_OBJECT *device, IRP *irp )
+ {
+@@ -1918,7 +1984,7 @@ static NTSTATUS WINAPI harddisk_ioctl( DEVICE_OBJECT *device, IRP *irp )
+     if (irpsp->Parameters.DeviceIoControl.IoControlCode == IOCTL_DISK_EJECT_MEDIA ||
+         irpsp->Parameters.DeviceIoControl.IoControlCode == IOCTL_STORAGE_EJECT_MEDIA)
+     {
+-        status = eject_disc_image( dev );
++        status = dev->hotplug.bus ? eject_stick( dev ) : eject_disc_image( dev );
+         irp->IoStatus.Status = status;
+         IoCompleteRequest( irp, IO_NO_INCREMENT );
+         return status;
+@@ -1963,6 +2029,18 @@ static NTSTATUS WINAPI harddisk_ioctl( DEVICE_OBJECT *device, IRP *irp )
+         status = STATUS_SUCCESS;
+         break;
+     }
++    case IOCTL_DISK_MEDIA_REMOVAL:
++    case IOCTL_STORAGE_MEDIA_REMOVAL:
++        /* XP's shell allows the removal of a stick before it ejects it. There
++         * is no lock to open or close. */
++        if (dev->hotplug.bus)
++        {
++            status = STATUS_SUCCESS;
++            break;
++        }
++        FIXME( "Unsupported ioctl %lx\n", irpsp->Parameters.DeviceIoControl.IoControlCode );
++        status = STATUS_NOT_SUPPORTED;
++        break;
+     case IOCTL_STORAGE_GET_DEVICE_NUMBER:
+     {
+         DWORD len = min( sizeof(dev->devnum), irpsp->Parameters.DeviceIoControl.OutputBufferLength );
+diff --git a/dlls/mountmgr.sys/unixlib.c b/dlls/mountmgr.sys/unixlib.c
+index 261b4a4..845411b 100644
+--- a/dlls/mountmgr.sys/unixlib.c
++++ b/dlls/mountmgr.sys/unixlib.c
+@@ -157,6 +157,7 @@ void queue_device_op( enum device_op op, const char *udi, const char *device,
+     ADD_STR(label);
+     if (hotplug)
+     {
++        ADD_STR_FROM(hotplug.drive, hotplug->drive);
+         ADD_STR_FROM(hotplug.bus, hotplug->bus);
+         ADD_STR_FROM(hotplug.vendor, hotplug->vendor);
+         ADD_STR_FROM(hotplug.product, hotplug->product);
+@@ -201,6 +202,7 @@ static NTSTATUS dequeue_device_op( void *args )
+     if (dst->mount_point) dst->mount_point = (char *)dst + (src->mount_point - (char *)src);
+     if (dst->serial) dst->serial = (char *)dst + (src->serial - (char *)src);
+     if (dst->label) dst->label = (char *)dst + (src->label - (char *)src);
++    if (dst->hotplug.drive) dst->hotplug.drive = (char *)dst + (src->hotplug.drive - (char *)src);
+     if (dst->hotplug.bus) dst->hotplug.bus = (char *)dst + (src->hotplug.bus - (char *)src);
+     if (dst->hotplug.vendor) dst->hotplug.vendor = (char *)dst + (src->hotplug.vendor - (char *)src);
+     if (dst->hotplug.product) dst->hotplug.product = (char *)dst + (src->hotplug.product - (char *)src);
+diff --git a/dlls/mountmgr.sys/unixlib.h b/dlls/mountmgr.sys/unixlib.h
+index 6f9955e..f475175 100644
+--- a/dlls/mountmgr.sys/unixlib.h
++++ b/dlls/mountmgr.sys/unixlib.h
+@@ -32,6 +32,7 @@ enum device_op
+  * reader (from UDisks2). bus is NULL for every other device. */
+ struct hotplug_info
+ {
++    const char *drive;    /* UDisks2's object path of the drive, the same for its partitions */
+     const char *bus;      /* "usb", "sdio" or "" */
+     const char *vendor;
+     const char *product;

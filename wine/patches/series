@@ -166,3 +166,4 @@
 0166-server-release-clip-on-thread-exit.patch
 0167-shcore-reg-set-path-size.patch
 0168-mountmgr-removable-disks.patch
+0169-mountmgr-eject-sticks.patch
