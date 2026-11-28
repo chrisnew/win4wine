@@ -1,8 +1,8 @@
 # Plan: a working Recycle Bin (BUGS.md "Recycle bin not working")
 
-Status (2026-11-28): built and checked on the development machine (steps 1 to 4), not yet on the EeePC (steps 5 and 6).
-Pictures: [docs/showcase.md](../docs/showcase.md#recycle-bin). One decision is open:
-[the existing bins on the EeePC](#open-the-existing-bins-on-the-eeepc).
+Status (2026-11-28): done and on the EeePC (repo 05e7ff0). Pictures: [docs/showcase.md](../docs/showcase.md#recycle-bin).
+Not checked: a USB stick (under [Risks](#risks)), items surviving a logoff on the EeePC (checked on the bench), and the
+Office XP and Visual Studio 6 installs.
 
 Goal: a file deleted in Explorer or on the desktop shows in the Recycle Bin, the icon turns full, and Restore and Empty work,
 with no warning, on drive C: and drive H:.
@@ -40,10 +40,10 @@ with no warning, on drive C: and drive H:.
   sets one, now reads that DACL back, as on Windows. The Unix mode is set as before. Files created without a security
   descriptor (almost all) are not touched and get no extended attribute.
 
-## Open: the existing bins on the EeePC
+## The existing bins on the EeePC
 
 The folders XP made so far carry no stored DACL, so after the fix XP still shows the warning once per drive. Answering Yes
-empties that drive's bin and makes the folder again, this time with the DACL kept.
+empties that drive's bin and makes the folder again, this time with the DACL kept. **Decided (2026-11-28): A**, done.
 
 | | What happens | Lost |
 |---|---|---|
@@ -69,6 +69,15 @@ bothers the visitors' view of the home folder, option B or C of the XDG folders 
   task link, no settings under Properties, an icon that never changed). Added to `prefix/registry.py` (profile 27), which the
   session's staging applies at the next start.
 - With bins removed by hand, the icon stays as it was until the next logon, delete or Empty.
+
+## What the EeePC showed (2026-11-28)
+
+- Deletes from the desktop and from H:\ show in the bin with original location and date, Restore all items brings both back,
+  Empty on the icon's menu removes them, and the icon follows. Both new bins carry the stored access list.
+- Step 5, measured differently: instead of timing Explorer, [tests/security-time.c](../tests/security-time.c) reads the
+  security of all of `system32` with and without 0120 acting: about 19 µs (3%) more per read
+  ([numbers](../tools/eeepc/README.md#recycle-bin)).
+- Seen again, not part of this fix: My Documents on the desktop does not open (an older bug, in the local BUGS.md).
 
 ## Steps
 

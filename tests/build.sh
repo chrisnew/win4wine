@@ -75,6 +75,7 @@ compile "$out/text-widths-test.exe" -municode "$root/tests/text-widths.c" -lgdi3
 compile "$out/folder-icons-test.exe" -municode "$root/tests/folder-icons.c" -lshell32 -lole32 -luuid
 compile "$out/desktop-menu-test.exe" -municode "$root/tests/desktop-menu.c" -lshell32 -lole32 -luuid -ladvapi32 -luser32
 compile "$out/recycle-test.exe" -municode "$root/tests/recycle.c" -lshell32 -lshlwapi -lole32 -luuid -ladvapi32
+compile "$out/security-time-test.exe" -municode "$root/tests/security-time.c" -ladvapi32
 compile "$out/reg-dump-test.exe" -municode "$root/tests/reg-dump.c" -ladvapi32
 compile "$out/string-id-test.exe" -municode "$root/tests/string-id.c"
 compile "$out/ole-clipboard-thread-test.exe" "$root/tests/ole-clipboard-thread.c" -lole32

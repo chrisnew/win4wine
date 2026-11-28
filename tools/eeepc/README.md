@@ -221,3 +221,18 @@ Measured 2026-11-27, `udisks2` 2.10.1, the images in `~/Images` (300 to 600 MB, 
 - **Idle session**, 60 s, the desktop only: 4.9% of one logical CPU and 177 wakeups/s before `udisks2` was installed, 6.4%
   and 237 after the tests (xp-explorer 2.4% and 28/s before, 3.7% and 55/s after; `udisksd` 0.0%). The second sample was
   taken after some twenty mounts in that session, so the two are not like for like; **not yet repeated on a fresh logon**.
+
+## Recycle Bin
+
+Wine 0120 reads an extended attribute whenever a file's security is read. Measured 2026-11-28 (repo 05e7ff0), logged off,
+governor `schedutil`, with [tests/security-time.c](../../tests/security-time.c): owner and DACL of all 879 entries of
+`C:\windows\system32` (as a 32-bit program sees it), best of 7 rounds, in a wineserver started without and with
+`WIN4WINE_EXTERNAL_SHELL`, three times each, in turn.
+
+| | Without (0120 idle) | With |
+|---|---|---|
+| All entries, three runs | 463, 515, 525 ms | 509, 531, 536 ms |
+| Per entry, median | 586 µs | 605 µs |
+
+About 19 µs (3%) more per read, near the spread between runs. How often Explorer reads security while it lists a folder was
+not measured.

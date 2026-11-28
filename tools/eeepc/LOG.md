@@ -39,7 +39,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | X driver | `xserver-xorg-video-intel 2:2.99.917+git20210115-1+w4w1`, built by [xorg-intel/build.sh](xorg-intel/build.sh) with `sna-gen3-dri3.patch`; **held** with `apt-mark hold` | DRI3 on the GMA 3150, so OpenGL runs on the GPU instead of llvmpipe | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/20-intel.conf`: `Driver "intel"`, `Option "DRI" "3"` | The patched driver gives gen3 DRI3 only when asked | 2026-11-26 |
 | X config | `/etc/X11/xorg.conf.d/10-nodpms.conf`: blanking, standby, suspend and off times 0; `DPMS` false on LVDS1 | The screen never blanks (see "Not yet explained") | ? |
-| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0166 (repo 0780637) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner; 0161 keeps copy and paste working after a folder window is closed; 0162 to 0164 are for mounted disc images; 0165 keeps Explorer from freezing when its windows redraw at once; 0166 keeps the desktop taking clicks after a program ends while it holds the mouse | 2026-11-28 |
+| Wine | `.local/wine-install` built with ntsync (repo 0a46acc), patches up to Wine 0166 (repo 05e7ff0) | Wine uses `/dev/ntsync` for its synchronization instead of asking the wineserver; 0157 batches immediate mode GL calls; 0158 and 0159 are for the screen savers and the lock screen; 0160 gives the Linux columns each file's mode and owner; 0161 keeps copy and paste working after a folder window is closed; 0162 to 0164 are for mounted disc images; 0165 keeps Explorer from freezing when its windows redraw at once; 0166 keeps the desktop taking clicks after a program ends while it holds the mouse; 0120 keeps the access lists of files in the XP session too, so the Recycle Bin works | 2026-11-28 |
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
 | PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
@@ -78,6 +78,25 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-28: a working Recycle Bin (Wine 0120 for the XP session) installed
+
+- **What** (logged off):
+  - removed the two old, broken bins: `rm -r ~/win4wine/.local/prefix/drive_c/RECYCLER ~/RECYCLER`. They held
+    `New Microsoft Word Document.doc` (10 KB, from the desktop) and `Shortcut to Book1.lnk` (from H:);
+  - `git fetch fork && git checkout -B master fork/master` (982cb4c to 05e7ff0); on the development machine
+    `wine/container-build.sh --deploy 192.168.1.9` (the Wine with 0166 is now `.local/wine-install-old`);
+  - copies of the prefix's `*.reg`, `system.ini`, `.xp-extras` and `.xp-registry-version` in
+    `.local/backup-2026-11-28-recyclebin/`, then in `xvfb-run` `prefix/extras.py`, `session/linux_apps.py` and
+    `xp-explorer/scripts/pins.py` (355 s), then `wineserver -k` and `-w`;
+  - at the next logon the session applied registry profile 27 (`prefix/registry.py`).
+- **Why:** deleted files did not show in the Recycle Bin ([plan](../../plans/recycle-bin.md)).
+- **Result:** in the session, deletes from the desktop and H: listed, restored and emptied; the icon switches between
+  full and empty; `RECYCLER` is back on C: and in the home folder, with the access list stored. Reading a file's security
+  costs about 3% more ([README](README.md#recycle-bin)). My Documents on the desktop still does not open (an older bug).
+- **Undo:** logged off, `mv .local/wine-install .local/wine-install-0120 && mv .local/wine-install-old .local/wine-install`,
+  copy the backup's `*.reg`, `.xp-extras` and `.xp-registry-version` back into `.local/prefix` and `system.ini` into
+  `drive_c/windows`, and `git checkout -B master 982cb4c`. The two removed files cannot be brought back.
 
 ### 2026-11-28: Wine 0166 (the desktop takes clicks after a program ends holding the mouse) installed
 

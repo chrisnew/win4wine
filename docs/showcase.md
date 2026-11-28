@@ -64,9 +64,9 @@ good. The desktop icon shows whether it is empty, and its menu has Empty Recycle
 
 <img src="images/showcase/recycle-bin.png" alt="The Recycle Bin window in Details view, listing two deleted files with their original location and the date" width="800" />
 
-<img src="images/showcase/recycle-bin-full.png" alt="The desktop's Recycle Bin icon, full" width="104" /> <img src="images/showcase/recycle-bin-empty.png" alt="The desktop's Recycle Bin icon, empty" width="104" /> <img src="images/showcase/recycle-bin-menu.png" alt="The Recycle Bin's context menu with Empty Recycle Bin" width="164" />
+<img src="images/showcase/recycle-bin-full.png" alt="The desktop's Recycle Bin icon, full" width="76" /> <img src="images/showcase/recycle-bin-empty.png" alt="The desktop's Recycle Bin icon, empty" width="76" /> <img src="images/showcase/recycle-bin-menu.png" alt="The Recycle Bin's context menu with Empty Recycle Bin" width="174" />
 
-*Bench, 2026-11-28.*
+*EeePC, 2026-11-28 (repo 05e7ff0).*
 
 ## Not pictured yet
 
