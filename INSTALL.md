@@ -41,7 +41,7 @@ If it fails, just run it again: finished steps are skipped. Everything it builds
 
 ## 2. What the script does
 
-1. Installs packages (Wine's build dependencies, Xorg, python3-xlib, fcitx5 + Mozc, UDisks2 for mounting disc images, …), and LightDM if there is no display manager.
+1. Installs packages (Wine's build dependencies, Xorg, python3-xlib, fcitx5 + Mozc, UDisks2 for mounting disc images and USB sticks, …), and LightDM if there is no display manager.
 2. Fetches Wine 11.0, applies the patches and builds it (`.local/wine-install`; about 90 minutes on 4 cores; log in `.local/wine-build.log`).
    While it builds, only the step, the number and share of files compiled, an estimate of the time left and the last few lines of output are shown.
 3. Builds the bridge (the WM and the proxy windows).
@@ -100,6 +100,7 @@ Restart the display manager (or reboot).
 | start a Linux application | Start → All Programs (names end in "(Linux)") |
 | install a Windows application | `wine setup.exe` in a terminal; the session's `PATH` starts with this Wine |
 | mount a disc image | double-click the `.iso` file: it becomes a CD drive in My Computer; its **Eject** takes it away |
+| use a USB stick or memory card | plug it in: it becomes a Removable Disk in My Computer; **Eject** it before pulling it out |
 | start a Windows application from outside the session (ssh, another desktop) | `win4wine-wine setup.exe` (`~/.local/bin`): it runs with the session's prefix, Wine and settings, and looks as in the session. Plain `wine` uses `~/.wine` and Wine's own look |
 | open the Start menu | the Windows key, Ctrl+Esc |
 | Run / Explorer | Win+R / Win+E |
@@ -115,6 +116,7 @@ Restart the display manager (or reboot).
 | `linux_font` | `MS UI Gothic` (`Tahoma` for English XP) | font of Linux applications; `null` leaves it alone |
 | `linux_menu` | `true` | list Linux applications in the Start menu |
 | `network_places` | `true` | show the local network's web pages, printers, SSH servers and computers in My Network Places (XP shell; mDNS needs `avahi-daemon`). `false` turns it off; `{"show": ["web", "printer"], "limit": 10}` shows only some kinds (`web`, `printer`, `ssh`, `computer`) or fewer entries (30 by default), `"grace"` is the seconds a device that left stays (60) |
+| `removable` | `true` | mount USB sticks and memory cards as they are plugged in, and show them in My Computer (XP shell; needs `udisks2`). `false` leaves them unmounted; `{"forget_autoplay": true}` also drops at each logon what AutoPlay's "Always do the selected action" kept |
 | `welcome_screen` | `true` | show XP's screens after login and while logging off |
 | `screen_saver` | `true` | start the screen saver chosen in XP's Display Properties after its wait time (XP shell, X11) |
 | `lock_screen` | `true` | lock the screen on Win+L, `LockWorkStation` and "On resume, password protect", behind XP's Welcome screen (XP shell, X11; needs `/etc/pam.d/win4wine-lock`, which `greeter/install.sh` and so `setup.sh --greeter` install) |

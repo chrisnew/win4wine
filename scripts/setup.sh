@@ -116,7 +116,8 @@ packages=(
     python3-gi gir1.2-glib-2.0 gir1.2-gdkpixbuf-2.0 librsvg2-common
     # My Network Places: mDNS (session/network_places.py)
     avahi-daemon
-    # "Mount" on .iso files (session/iso_mount.py), without a password in the session
+    # "Mount" on .iso files (session/iso_mount.py) and USB sticks (session/removable.py),
+    # without a password in the session
     udisks2 polkitd libpam-systemd
     locales
 )

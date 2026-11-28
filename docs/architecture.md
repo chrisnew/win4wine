@@ -14,6 +14,7 @@ Display manager (LightDM)
       ├─ greeter/xp-lock.py ........... the lock screen, while the screen is locked
       ├─ session/logind-watch.py ...... locks on logind's request and before sleep
       ├─ session/network_places.py .... devices on the local network in My Network Places
+      ├─ session/removable.py ......... mounts USB sticks and memory cards
       ├─ proxy.exe (on Wine) .......... stand-ins for Linux windows, and their XP frames
       └─ xp-explorer.exe (on Wine) .... the XP shell (explorer.exe extracted from the ISO)
                     ↑ ↓  files in the IPC directory (WM ⇄ proxy ⇄ tray.py)
@@ -363,7 +364,8 @@ UDisks2); Wine does not read the file.
 - **Eject** is XP's own, on the drive's menu and in My Computer's task pane. XP's shell32 sends `IOCTL_DISK_EJECT_MEDIA` to
   the volume, with no lock or dismount before it, and patch 0164 makes `mountmgr` unmount the image and delete its loop device
   (`udisksctl`, which needs no password for a device the user set up). The drive goes with the device (0163 tells Explorer).
-  Only loop devices that are CD or DVD drives are touched. Real drives and USB sticks keep Wine's behaviour.
+  Only loop devices that are CD or DVD drives are deleted. USB sticks and memory cards are ejected as
+  [Removable drives](#removable-drives-sessionremovablepy) says; real drives keep Wine's behaviour.
   While a folder window shows the drive (the wineserver holds the folder open) or a program has a file or its working
   directory on it, the unmount fails and the disc stays. XP shows **no message** then; close the window and eject again.
 - **Arrivals**: `mountmgr` announces a drive once, when it can be read, as a new drive (0163): Explorer adds it to My
@@ -372,6 +374,32 @@ UDisks2); Wine does not read the file.
   A disc's `autorun.inf` is **not** run: XP's Explorer looks for the file and does not read it (as far as traced, with
   no Shell Hardware Detection service here).
 - **Images stay mounted across a log off**, like a disc left in a drive. A restart of the machine clears them.
+
+## Removable drives (`session/removable.py`)
+
+A USB stick or memory card becomes a **Removable Disk** in My Computer, under "Devices with Removable Storage", with its
+label and XP's icon, and XP's **Eject** switches it off. Linux mounts it, at `/media/USER/LABEL`, so Linux programs see the
+files too; Wine never reads the block device. Linux and Windows are linked only by what `mountmgr.sys` announces.
+
+- **Mounting** is `session/removable.py`'s, which the supervisor starts with the XP shell (setting `removable`, default on).
+  Debian's session has no automounter. It follows `udisksctl monitor` (through `stdbuf -oL`, or the lines come only when a
+  buffer fills), so it sleeps in `read()` while nothing happens, and after a change to a block device it reads `udisksctl
+  dump` once. A file system of a removable drive that UDisks2 does not mark `HintIgnore` or `HintSystem` is mounted once,
+  when it appears (also one that was there at logon). One that was ejected and stays (a card in a reader that cannot be
+  powered off) is left alone until it goes and comes back. polkit allows mounting without a password to the active local
+  session. A file system that cannot be mounted is told with `xptray.exe --not-formatted E:`. Nothing but a mount is
+  ever asked of a stick.
+- **The drive** is Wine's: `mountmgr.sys` follows UDisks2 and gives each partition with a file system a letter, the first
+  free one from `D:` (0168). It is `DRIVE_REMOVABLE`; its storage descriptor
+  (`IOCTL_STORAGE_QUERY_PROPERTY`) has the bus, vendor, product and UDisks2's drive ID as the serial number. A whole disk
+  with a partition table and an empty card reader get no letter. FAT and exFAT show as FAT32 with their volume serial
+  number. Letters are freed with their drives (0170).
+- **Eject** (0169): XP's shell locks the volume, sends it `IOCTL_STORAGE_MEDIA_REMOVAL` and `IOCTL_STORAGE_EJECT_MEDIA`;
+  `mountmgr` then unmounts every partition of the drive and powers it off (`udisksctl`). A partition in use fails the
+  eject, and the others are mounted again. A drive that cannot be powered off stays, with nothing mounted.
+- **A drive that appears before its mount** (for under a second) has no label yet. A folder window opened or refreshed in
+  that moment keeps showing "Removable Disk" until it is refreshed again.
+- **Internal disks** are not added, as before: only drives UDisks2 reports as removable.
 
 ## The Recycle Bin
 

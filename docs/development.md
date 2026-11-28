@@ -10,7 +10,7 @@ To just use LunaticOS, `scripts/setup.sh` from [INSTALL.md](../INSTALL.md) is en
 | `wine/` | The Wine it is based on (`upstream.env`), the patches (`patches/` and `series`), the build (`build.sh`), applying the patches (`patch-state.py`) |
 | `bridge-wm/` | The X11 WM (`wm.c`, and `wm.py` that behaves the same), the Win32 proxy (`proxy.c`), the tray broker (`tray.py`), a tool for investigations (`inspect.c`) |
 | `wayland/` | The Wayland session: labwc and wlroots versions (`upstream.env`), patches (`patches/`), the build (`build.sh`), labwc's configuration (`labwc/`), startup (`session.sh`) |
-| `session/` | Starting and watching the session (`supervisor.py`), the Start menu of Linux apps (`linux_apps.py`), My Network Places (`network_places.py`), `win4wine-wine` for use outside the session (`wine.py`; the Wine environment is in `wineenv.py`), registering the session |
+| `session/` | Starting and watching the session (`supervisor.py`), the Start menu of Linux apps (`linux_apps.py`), My Network Places (`network_places.py`), mounting USB sticks (`removable.py`), `win4wine-wine` for use outside the session (`wine.py`; the Wine environment is in `wineenv.py`), registering the session |
 | `prefix/` | Creating the prefix (`create.py`), updating it (`stage.py`), appearance and DPI (`display.py`), registry settings (registry profiles) |
 | `extract/` | Taking only the needed files from the ISO (`extract.py`), detecting the XP language (`media.py`) |
 | `greeter/` | The XP Welcome screen for LightDM, the log on/log off screens, XP's cursors |
@@ -130,6 +130,8 @@ from upstream again. `wine/patch-edit.py --help` has the details.
 | `tests/logind_watch.py` | `session/logind-watch.py` with a stand-in for logind on a private bus: `Lock` and the delayed sleep |
 | `tests/linux_apps.py` | The Start menu of Linux apps |
 | `tests/iso_mount.py` | Mounting a disc image (`session/iso_mount.py`) with a stand-in for `udisksctl`; no Wine, no loop devices |
+| `tests/removable.py` | Mounting sticks and cards as they come (`session/removable.py`): reading `udisksctl`'s output, which file systems are mounted and when, with a stand-in for `udisksctl` |
+| `tests/hotplug-probe.c` | The removable drives, `WM_DEVICECHANGE` messages and eject as a Windows program sees them; in the bench with `tools/bench/udisks-mock.py` (skill `bench`) |
 | `tests/network_places.py` | My Network Places: names, URLs, mDNS, SSDP and UPnP descriptions (hostile ones too), the shortcuts per device, and which files are touched; no Wine, no network |
 | `tests/linuxcols.py` | The plain C part of XP Explorer's Linux columns: the permissions as `ls -l` writes them, user and group names, the paths left alone (host gcc; no Wine, no X) |
 | `tests/recovery_integration.py CONFIG.json` | Switching over when the shell crashes |

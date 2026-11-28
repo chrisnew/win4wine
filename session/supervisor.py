@@ -113,6 +113,15 @@ class Session:
         if not isinstance(self.network_places, (bool, dict)):
             raise SystemExit('Invalid network_places')
         self.network = None
+        # USB sticks and memory cards mounted as they come (session/removable.py):
+        # true, false, or {"forget_autoplay": true} to drop at each logon what
+        # AutoPlay's "Always do the selected action" kept (for a demonstration).
+        self.removable = config.get('removable', True)
+        if not isinstance(self.removable, (bool, dict)):
+            raise SystemExit('Invalid removable')
+        if isinstance(self.removable, dict) and self.removable.get('forget_autoplay'):
+            self.env['WIN4WINE_AUTOPLAY_FORGET'] = '1'
+        self.mounter = None
         self.composite = config.get('composite', True)
         # The WM: bridge-wm/wm.c as bridge-wm/build.sh built it, else wm.py
         # ("wm": "python" picks wm.py; the two behave the same).
@@ -311,6 +320,16 @@ class Session:
         elif isinstance(self.network_places, dict):
             command += ['--options', json.dumps(self.network_places)]
         self.network = self.spawn(command, 'network-places')
+
+    def start_removable(self):
+        """Once the shell is up, so that XP sees the drives arrive. The XP shell
+        only; xptray.exe and autoplay.exe do the rest of XP's hotplug UI."""
+        if self.mounter or self.removable is False or self.shell['marker'] != 'xp-shell.json':
+            return
+        if not shutil.which('udisksctl'):
+            return
+        self.mounter = self.spawn([sys.executable, str(ROOT / 'session/removable.py'), str(self.prefix),
+                                   '--wine', self.wine], 'removable')
 
     def play_sound(self, event):
         """An event of XP's sound scheme (the XP shell only), as XP plays it."""
@@ -631,6 +650,7 @@ class Session:
                     self.hide_welcome()
                     self.start_guard()
                     self.start_network_places()
+                    self.start_removable()
                     if attempt == 1:
                         self.play_sound('SystemStart')
                 if ready and has_tray:
