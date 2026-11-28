@@ -43,7 +43,7 @@ The machine against a fresh Debian 13 (trixie) install. Last checked on the mach
 | Display manager | LightDM, `/etc/lightdm/lightdm.conf.d/95-xp-greeter.conf`: `greeter-session=xp-greeter`, `user-session=xp-shell`; the greeter's code and XP files in `/usr/local/share/win4wine/greeter` | The XP logon screen and the win4wine session (win4wine's install) | 2026-11-23, reinstalled 2026-11-27 |
 | PAM | `/etc/pam.d/win4wine-lock` (`@include common-auth`, `@include common-account`), installed by `greeter/install.sh` | The session's lock screen checks the password with it | 2026-11-27 |
 | Session config | `~/.config/win4wine/session.json`: wine, prefix, `en_US.UTF-8`. `session.json.before-trace` is the copy kept while a `+server` trace was on | | 2026-11-23 |
-| Prefix | `prefix/extras.py` VERSION 15 (the icon of `.iso` files). Since VERSION 14: "Mount" on `.iso` files. Since VERSION 13: IE's `NoUpdateCheck`. Since VERSION 12: "Open in Linux Terminal" (`C:\xp\bin\linux-launch.exe` and the context menu handler in `linuxcols.dll`). Since VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
+| Prefix | `prefix/extras.py` VERSION 16 (the security zones' values for the URL actions 1806 to 1808, without which My Documents on the desktop does not open). Since VERSION 15: the icon of `.iso` files. Since VERSION 14: "Mount" on `.iso` files. Since VERSION 13: IE's `NoUpdateCheck`. Since VERSION 12: "Open in Linux Terminal" (`C:\xp\bin\linux-launch.exe` and the context menu handler in `linuxcols.dll`). Since VERSION 9: XP's `actxprxy.dll`, native in XP Explorer only. Since VERSION 8: the Linux columns (`C:\xp\bin\linuxcols.dll`, registered as a column handler, and the `Details` property list on `HKCR\*` and `HKCR\Directory`). Since VERSION 7: XP's screen savers in `drive_c/windows/syswow64`, and the `IniFileMapping` entry for `SCRNSAVE.EXE`. In Display Properties (the user's choice, changes freely): 3D Flying Objects, 5 minutes, password protect | [Screen savers and the lock screen](../../plans/screensaver-and-lock.md) | 2026-11-27 |
 | Prefix | Office's `MDM` and `MOSEARCH` services `Start=3` (manual) instead of automatic | MOSEARCH failed at every login (missing `TQUERY.DLL`); neither is needed by the session | 2026-11-26 |
 | Boot | `GRUB_CMDLINE_LINUX_DEFAULT="zswap.enabled=1 zswap.compressor=zstd"` | Compressed swap cache, for 2 GB of RAM. **zstd is not actually used**, see "Open" | ? |
 | Disk | `/` mounted `noatime,nodiratime`; 9.5 GB swap partition `/dev/sda2` | ? (the disk is a spinning HDD, Toshiba MK2552GSX) | ? |
@@ -78,6 +78,30 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   Left from the first desktop setup; not needed by the session.
 
 ## Entries
+
+### 2026-11-28: the zone values that let My Documents open from the desktop (extras.py 16)
+
+- **What** (logged off, no wineserver left), in `~/win4wine`: copies of the prefix's `*.reg`, `system.ini`,
+  `.xp-extras` and `.xp-defaults` in `.local/backup-before-extras16/`, `git fetch fork && git checkout -B master
+  fork/master` (05e7ff0 to 5cafcaf), then the prefix additions as `scripts/setup.sh` runs them, and `wineserver -k` and
+  `-w`:
+
+  ```sh
+  xvfb-run -a -s '-screen 0 1280x800x24' sh -c 'p=$PWD/.local/prefix w=$PWD/.local/wine-install/bin/wine
+      python3 prefix/extras.py $p --wine $w && python3 session/linux_apps.py $p --wine $w &&
+      python3 xp-explorer/scripts/pins.py $p --wine $w' > .local/extras16.log 2>&1
+  ```
+
+- **Why:** double click, Enter and right click on the desktop's My Documents did nothing: Wine's security zones had no
+  values for the URL actions 1806 to 1808, which XP's shell32 asks about before it opens the item (repo 24ea233).
+- **Result:** additions 253 s, exit status 0, `extras.py --check` passes (VERSION 16). The five zones under
+  `HKLM\Software\Wow6432Node\...\Internet Settings\Zones` have the three values; My Documents keeps XP's attributes
+  (0xF080013D). `user.reg` and `userdef.reg` unchanged. In `system.reg` XP's own registrations are now written over the
+  session's registry profile, which the next logon does not apply again: among others two menu classes
+  (`{E13EF4E4-...}`, `{ECD4FC4F-...}`) name `shell32.dll` instead of `browseui.dll` (the Start menu works so on the
+  bench), and the display adapter reads "Wine Adapter" after the run under Xvfb. Not yet checked in a session.
+- **Undo:** logged off, copy the backup's `*.reg`, `.xp-extras` and `.xp-defaults` back into `.local/prefix` and
+  `system.ini` into `drive_c/windows`, and `git checkout -B master 05e7ff0`. That brings the bug back.
 
 ### 2026-11-28: a working Recycle Bin (Wine 0120 for the XP session) installed
 
