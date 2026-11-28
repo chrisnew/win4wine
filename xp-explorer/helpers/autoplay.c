@@ -95,7 +95,8 @@ static BOOL exists(const WCHAR *path)
 
 /* ---- the drive ----------------------------------------------------------- */
 
-/* Whether the drive is a USB stick or memory card, whatever its files are. */
+/* Whether the drive is a USB stick or memory card, whatever its files are. Also
+ * when that cannot be told: AutoRun is for what is surely a disc. */
 static BOOL removable_medium(void)
 {
     WCHAR volume[64];
@@ -103,12 +104,12 @@ static BOOL removable_medium(void)
     union { STORAGE_DEVICE_DESCRIPTOR d; char bytes[1024]; } answer = {0};
     DWORD done;
     HANDLE device;
-    BOOL removable = FALSE;
+    BOOL removable = TRUE;
 
-    if (!GetVolumeNameForVolumeMountPointW(root, volume, ARRAYSIZE(volume))) return FALSE;
+    if (!GetVolumeNameForVolumeMountPointW(root, volume, ARRAYSIZE(volume))) return TRUE;
     volume[wcslen(volume) - 1] = 0;
     device = CreateFileW(volume, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
-    if (device == INVALID_HANDLE_VALUE) return FALSE;
+    if (device == INVALID_HANDLE_VALUE) return TRUE;
     if (DeviceIoControl(device, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), &answer, sizeof(answer),
                         &done, NULL))
         removable = answer.d.RemovableMedia;
