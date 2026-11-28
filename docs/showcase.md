@@ -9,15 +9,6 @@ Each picture says where it was taken: **EeePC** (the real machine, 1024x600) or 
 and few Linux apps). The pictures are in [images/showcase/](images/showcase/). The XP screens in them are copyrighted by
 Microsoft.
 
-## My Documents on the desktop
-
-My Documents on the desktop opens by double click again and has XP's context menu. Delete there removes only the icon,
-after XP's own question.
-
-<img src="images/showcase/my-documents-menu.png" alt="The context menu of My Documents on the desktop: Open, Explore, Search, Copy, Create Shortcut, Delete, Rename, Properties" width="175" />
-
-*Bench, 2026-11-28 (the commit that adds this picture).*
-
 ## Alt+F4 on the desktop
 
 With the desktop active (clicked, or after the last window was closed), Alt+F4 opens XP's "Turn off computer", as on XP.
