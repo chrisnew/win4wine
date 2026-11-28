@@ -72,27 +72,128 @@ Debian image and a Raspberry Pi's SD card, both of whose partitions appeared. Fr
 3. To try: a stick with music or video. Windows Media Player does not start in the bench (BUGS.md), and "Play" depends
    on it.
 4. EeePC pictures in place of the bench ones.
-5. Encrypted drives do nothing: [Encrypted drives](#encrypted-drives-luks-not-built).
+5. Encrypted drives do nothing yet: [Encrypted drives](#encrypted-drives-luks-planned-not-built) is their plan.
 
-## Encrypted drives (LUKS): not built
+## Encrypted drives (LUKS): planned, not built
 
 Plugging in a LUKS drive shows nothing at all. Seen on the EeePC 2026-11-28 with a USB hard disk: its partition is
 `IdUsage` `crypto` with an `Encrypted` interface (`CleartextDevice` `/`) and no `Filesystem`, so mountmgr gives it no
-letter (0168) and `removable.py` passes it over. Unlocking it by hand would not help: the unlocked device (`dm-N`) belongs to
-no drive of its own (to be checked), and both halves look for a removable one. It was not part of the plan's scope.
+letter (0168) and `removable.py` passes it over. Unlocking it by hand would not help: the unlocked device (`dm-N`) most
+likely belongs to no drive of its own (UDisks2 links it to the partition only by `CryptoBackingDevice`; to be checked), and
+both halves look for a removable drive. It was not part of the first scope.
 
-What it would take:
+Goal: a visitor plugs in an encrypted stick, hears the "hardware inserted" sound and gets a password dialog in XP's style.
+With the right passphrase the stick then goes the way any other does: Removable Disk, Found New Hardware the first time,
+AutoPlay, Safely Remove Hardware. Cancel leaves it locked and nothing else happens.
 
-- `removable.py`: on a locked partition of a removable drive, ask for the passphrase and unlock it (`udisksctl unlock
-  --key-file`, a file in `$XDG_RUNTIME_DIR` that is deleted at once, or the same call over D-Bus without a file). polkit
-  allows `encrypted-unlock` to the active session without a password (checked on the EeePC). Follow
-  `CryptoBackingDevice` to the drive to mount what appears.
-- A passphrase dialog in XP's style (XP had nothing for this, so it is ours), with Cancel leaving the drive locked and a
-  message for a wrong passphrase. Safely Remove Hardware should list a drive that stays locked.
-- mountmgr (a change to 0168): take the removable drive of the `CryptoBackingDevice` for the unlocked device, so that it
-  is a Removable Disk.
-- Eject (a change to 0169): unmount, **lock** (`udisksctl lock`), then power off.
-- To probe: what UDisks2 reports once unlocked, and what is left behind when the drive is pulled out unlocked.
+**What is known** (EeePC, 2026-11-28, read only): `libblockdev-crypto3` 3.3.0 and `libcryptsetup12` 2.7.5 are installed
+with `udisks2`, so UDisks2 can unlock LUKS1 and LUKS2 without `cryptsetup-bin`. polkit's
+`org.freedesktop.udisks2.encrypted-unlock` is `yes` for the active session, so `removable.py` can unlock without a password
+prompt of polkit's. UDisks2 lets the user who unlocked a device mount what is in it.
+
+### Decisions
+
+- **The same two halves as for any stick.** `removable.py` (Linux) unlocks and mounts. mountmgr makes the unlocked
+  device the removable drive. The Windows side (xptray, autoplay) sees an ordinary arrival and needs no change except the
+  dialog and one sound.
+- **Only what UDisks2 unlocks by itself**: LUKS1 and LUKS2 with a passphrase. If UDisks2 reports a BitLocker To Go stick as
+  `crypto` too (cryptsetup reads BitLocker since 2.3), it gets the same dialog: to try in phase L0, as visitors may bring
+  one from Windows. Not supported: key files, TPM or FIDO2 tokens, VeraCrypt (needs options UDisks2 does not guess), and
+  LVM or RAID inside the container. For those Cancel is the only way out, and a container whose inside cannot be mounted
+  gets XP's "The disk in drive E: is not formatted." as any other file system that fails.
+- **The passphrase dialog is ours**, as XP had nothing for this: a small modal window after XP's password dialogs (the
+  look of "Connect to" and the logon box, Luna's theme through comctl32 v6): the drive's icon (XP's removable drive icon
+  with shell32's padlock; a new icon only if neither fits, drawn after [the icon guide](../XP-Style%20Icon%20Guide.md)), the
+  title "Unlock Drive", the text "This drive is protected with a password. Type the password to unlock *LABEL* (7.4 GB)."
+  (the label, or vendor and model when it has none), a password field, OK and Cancel. No "Remember" box: these are
+  visitors' sticks.
+- **It lives in `xptray.exe`** as `xptray.exe --unlock "NAME" SIZE [--wrong]`, a second instance as for `--not-formatted`,
+  so it uses xptray's resources and look. It does not post to the running one: it shows the dialog itself, writes the
+  passphrase to stdout and exits 0, or exits 1 on Cancel. `--wrong` adds "The password is incorrect. Try again." in
+  red above the field, as XP's logon box did.
+- **The passphrase never touches the disk, a command line or the log.** `removable.py` reads it from xptray's stdout and
+  gives it to `udisksctl unlock --no-user-interaction -b DEVICE --key-file /dev/stdin` on a pipe, without the trailing
+  newline (a key file is taken byte for byte). Not `gdbus call ... Unlock`, which would put it in `argv` and `/proc`. Not a
+  file in `$XDG_RUNTIME_DIR`, which is more to clean up. xptray zeroes its buffer (`SecureZeroMemory`) after writing it.
+  If Wine's stdout from a GUI program does not reach the pipe (phase L0), a FIFO in the IPC directory (0600) instead.
+- **A wrong passphrase asks again**, with `--wrong`, until it is right or Cancel. Other errors of `udisksctl unlock` go to
+  the log and end the asking.
+- **When it asks**: once per appearance, as a stick is mounted once. A drive that was cancelled, or locked by Eject and
+  still there (a card in its reader), is not asked again until it goes and comes back. A locked drive already there at
+  logon is asked for once the shell is up (`removable.py` waits until xptray's window exists, at most 30 s).
+- **Sounds**: `DeviceConnect` plays when the dialog opens, as that is when the visitor plugged it in. The arrival of the
+  unlocked drive a moment later plays none: the `--unlock` instance posts `WM_UNLOCKED` to the running xptray, which skips
+  the sound for the next arrival within 10 s. Found New Hardware and AutoPlay come with that arrival as usual. Cancel: no
+  further sound. Pulling a locked drive out plays `DeviceDisconnect` only if the dialog is still open (it closes then).
+- **Safely Remove Hardware does not list a locked drive**: nothing of it is mounted, so pulling it out is safe, and without
+  a letter XP's text "... - Drive(E:)" has nothing to name. It stays powered until it is pulled out.
+- **mountmgr (a change to 0168)**: a block device with a `CryptoBackingDevice` other than `/` takes the drive of that
+  device (its `Drive` property, looked up in the same dictionary of managed objects that `udisks2_get_drive_info` reads), so
+  the unlocked file system is a Removable Disk with the stick's vendor, model and serial, and Found New Hardware knows it.
+  The serial is the drive's, so the same stick is "seen" whether it is locked or not. The locked partition itself still
+  gets no letter (no `Filesystem`). The backing device's path is kept in `hotplug_info` for Eject.
+- **Eject (a change to 0169)**: for an unlocked device, unmount it, **lock** its backing device (`udisksctl lock -b
+  /dev/sdc1`), then power off through the backing device (`udisksctl power-off -b /dev/sdc1`, which finds the drive;
+  `dm-N` has none). UDisks2 refuses to power off a drive with an unlocked container, so the lock must come first. If the
+  lock fails (busy), the file system is mounted again and Eject answers `STATUS_DEVICE_BUSY`, as for a busy stick.
+- **At the end of the session** `removable.py` unmounts and locks what it unlocked (best effort, logged), so the next
+  person at the machine does not find a visitor's stick open.
+
+### Phase L0: probes (on the EeePC after asking, nothing installed; and the bench)
+
+1. With the USB hard disk (or a stick made with `cryptsetup luksFormat` on this machine, in a container): `udisksctl
+   dump` before and after `udisksctl unlock` in the session's terminal. What do `dm-N`'s `Drive`, `CryptoBackingDevice`,
+   `HintSystem`, `HintIgnore`, `IdUsage` say, and does `udisksctl mount -b /dev/dm-N` work without a password? Keep the
+   output as test data for `tests/removable.py`.
+2. What mountmgr does with `dm-N` today (`winedevice.exe:+mountmgr`): no letter, a "Local Disk", or something else.
+3. Pull the disk out while unlocked and mounted: does UDisks2 unmount and close the mapping by itself (its cleanup of
+   devices it unlocked), how long it takes, and which messages `udisksctl monitor` shows in which order (xptray tells an
+   eject from a pulled stick by that order).
+4. `udisksctl power-off` with the container unlocked: confirm that it refuses, and that it works after `lock`.
+5. `--key-file /dev/stdin` with a pipe, a wrong passphrase (its error text and exit code, for telling it from other
+   errors), and the time to unlock on the Atom (LUKS2's argon2 may take seconds and much of the 2 GB of RAM: note both).
+6. On the bench: whether `wine xptray.exe --unlock ...` started from Python gets its stdout to the pipe.
+7. If a BitLocker To Go stick is at hand: what UDisks2 reports and whether it unlocks.
+
+### Phase L1: unlock in `removable.py`, and the dialog
+
+1. `removable.py`: a second filter beside `removable()`: locked containers (`Encrypted` interface, `CleartextDevice` `/`)
+   on a removable drive, with the same hints and size checks. For each new one: ask (xptray `--unlock`), unlock, and then
+   the unlocked device is mounted by the usual path. `removable()` follows `CryptoBackingDevice` to find the drive of a
+   cleartext device, so it counts as removable. What it unlocked is remembered for the end of the session.
+2. `xptray.exe --unlock`: the dialog, its strings in xptray's resources, the `WM_UNLOCKED` message and the skipped sound.
+3. **Tests**: `tests/removable.py` with the dump of phase L0 (locked, unlocked, pulled out), the filter, the asking once,
+   and the passphrase given on stdin, not in `argv` (a fake `run`). The bench's
+   [tools/bench/udisks-mock.py](../tools/bench/udisks-mock.py) gets an `Encrypted` object whose `Unlock` takes one
+   passphrase and then exposes a second image as the cleartext device, so the dialog and the whole path can be tried there.
+
+### Phase L2: mountmgr and Eject (Wine, changes to 0168 and 0169)
+
+1. 0168: `CryptoBackingDevice` as in Decisions, and the backing device kept in `hotplug_info`.
+2. 0169: unmount, lock, power off, and undo on busy.
+3. Skill `wine-patch`; the rows of 0168 and 0169 in [docs/patches.md](../docs/patches.md) say they cover encrypted drives.
+4. **Test** on the bench with the mock (one letter, Removable Disk, the stick's name in Safely Remove, Eject locks), then on
+   the EeePC: unlock, AutoPlay, Eject (the light goes out, the next plug-in asks again), Eject with a window open (busy),
+   pulling out unlocked, Cancel, a wrong passphrase, a drive there at logon, logging off with it unlocked, and idle
+   wakeups with a locked drive in (none new).
+
+### Phase L3: docs and screenshots
+
+[docs/architecture.md](../docs/architecture.md) (the removable drives section: unlocking, and why the passphrase goes
+through a pipe), [docs/showcase.md](../docs/showcase.md) with the dialog from the EeePC (skill `screenshots`), and the
+times of phase L0 into [tools/eeepc/README.md](../tools/eeepc/README.md#removable-drives).
+
+### Risks
+
+- **argon2 on the Atom**: a LUKS2 container made on a fast machine may take several seconds and up to 1 GB of memory to
+  unlock. The dialog shows "Unlocking..." with the busy cursor meanwhile, so it does not look hung. If it is much slower,
+  that is how it is (the cost is set when the container is made).
+- **A visitor's passphrase** is typed on a keyboard with the German layout at a public stand: the dialog shows the
+  keyboard layout (as XP's logon box did with its language indicator) only if that turns out to confuse people.
+- **Pulled out while unlocked** loses unwritten data, as for any stick, and may leave a stale mapping if UDisks2 does not
+  clean up (phase L0, step 3). If it does not, `removable.py` locks the mapping of a backing device that went away.
+- **The dialog is a Windows window over the desktop**, which a full-screen program may hide: it is topmost and takes the
+  focus, as XP's balloons do not, since the visitor is waiting for it.
 
 ## What exists
 
@@ -327,3 +428,4 @@ Safely Remove menu and its balloon.
   sticks), the patch row for Eject, [plans/iso-mount.md](iso-mount.md) (its phase 3 is done here), and the IDEAS.md
   entries "Handling mass storage media" and "Make Thumb drives work".
 - Phase 5: [docs/showcase.md](../docs/showcase.md).
+- Encrypted drives: their phase L3.
