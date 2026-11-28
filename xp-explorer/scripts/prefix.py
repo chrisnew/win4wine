@@ -465,20 +465,16 @@ def xp_defaults(assets, prefix, wine, folders=True):
     # shimgvw's image preview control ("Preview Class") is in its ATL registry
     # script, which only its DllRegisterServer applies, as XP's setup ran it.
     if shimgvw.is_file():
-        subprocess.run([wine, r'C:\windows\syswow64\regsvr32.exe', '/s', r'C:\windows\system32\shimgvw.dll'], env=env)
-        # XP's DllRegisterServer leaves the image ProgID open commands cut off
-        # at "...\system32\s" under Wine. Restore the viewer verb explicitly
-        # after registration so Explorer can launch the real image viewer.
-        image_open = Reg()
-        command = r'rundll32.exe %SystemRoot%\system32\shimgvw.dll,ImageView_Fullscreen "%1"'
-        for progid in IMAGE_PROGIDS:
-            image_open.add(rf'HKCR\{progid}\shell\open\command', None, command, 'REG_EXPAND_SZ')
-        image_open.add(r'HKCR\SystemFileAssociations\image\shell\open\command', None, command, 'REG_EXPAND_SZ')
+        # It writes a printto command only where there is none, and Wine before
+        # patch 0167 stored half of it: those go first.
         with tempfile.TemporaryDirectory() as temp:
-            reg = Path(temp) / 'image-open.reg'
-            reg.write_text(image_open.text(), encoding='utf-16')
+            reg = Path(temp) / 'image-printto.reg'
+            reg.write_text('Windows Registry Editor Version 5.00\r\n\r\n' +
+                           ''.join(f'[-HKEY_CLASSES_ROOT\\{progid}\\shell\\printto]\r\n\r\n' for progid in IMAGE_PROGIDS),
+                           encoding='utf-16')
             subprocess.run([wine, r'C:\windows\syswow64\regedit.exe', '/S', 'Z:' + str(reg).replace('/', '\\')],
                            env=env, check=True)
+        subprocess.run([wine, r'C:\windows\syswow64\regsvr32.exe', '/s', r'C:\windows\system32\shimgvw.dll'], env=env)
     # XP's names and icons for My Pictures, My Music and My Recent Documents:
     # a desktop.ini (hidden, system) in a folder marked system. An existing
     # desktop.ini is left alone.

@@ -1,6 +1,6 @@
 # Wine patches
 
-`wine/patches/` holds 166 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
+`wine/patches/` holds 167 patches, applied in order to an unmodified Wine 11.0 (the commit in `wine/upstream.env`).
 `wine/build.sh` applies them, and the actual applying is done by `wine/patch-state.py` (on a partly patched source it applies only
 what is missing).
 
@@ -14,7 +14,7 @@ Changes for the XP shell only take effect in processes that have the environment
 
 - The check is gathered in one place, `win4wine_external_shell()` in `include/wine/win4wine.h`, added by 0019.
   ntdll reads the same variable with Rtl functions, and wow64.dll (0023) with ntdll functions.
-- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155–0157, 0160–0166), 0025 and 0026,
+- Without the opt-in, these take effect: fixes of documented Win32 behaviour (0001–0018, 0084, 0085, 0086, 0091, 0144–0146, 0155–0157, 0160–0167), 0025 and 0026,
   which do not change the look or behaviour of ordinary apps, most of the APIs and Wine fixes for the Windows 7 shell (0094–0112), and the
   theme fixes that only apply to version 4 styles (0113–0119).
 - 0024 only takes effect with `WIN4WINE_SESSION_REQUEST`, and 0159's `LockWorkStation` only with `WIN4WINE_LOCK_REQUEST`.
@@ -308,6 +308,7 @@ comctl32 switching, 0130's and 0131's control checks, 0132's system icon loading
 | 0164 | mountmgr: `IOCTL_DISK_EJECT_MEDIA` and `IOCTL_STORAGE_EJECT_MEDIA` unmount a CD or DVD drive that is a loop device (a mounted disc image) and delete the loop device, with `udisksctl`; a volume that cannot be unmounted gives `STATUS_DEVICE_BUSY`. XP's Eject sends the first to the volume; before, it was unsupported and Eject did nothing. Real drives and other devices are answered as before. It belongs with 0001–0011 and has not been renumbered yet | no |
 | 0165 | gdi32: Uniscribe's font cache list stays whole when two threads make the cache of one font at once (before, Wine took the other thread's cache off the list and freed its own, which stayed on it; a later lookup crashed holding the list's lock, and every thread drawing text then waited for ever. An Eject with two folder windows open froze My Computer. It belongs with 0001–0011 and has not been renumbered yet) | no |
 | 0166 | server: the cursor clip is released when the foreground thread ends (before, a program that was ended or exited while it held the mouse left its clip rectangle behind, and winex11's invisible clipping window stayed mapped over the desktop: no desktop icon took a click until another Wine window became the foreground. It belongs with 0001–0011 and has not been renumbered yet) | no |
+| 0167 | shcore: `SHRegSetPathA` and `SHRegSetPathW` store the whole path (before, the length in characters was passed as the size in bytes, so half of it was stored: XP's `shimgvw.dll` registered the image types with the icon `shimgv`, and `.jpg`, `.png`, `.bmp` and `.gif` files had the unknown file's icon) | no |
 
 ## Order
 

@@ -1,0 +1,45 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] shcore: store the whole path in SHRegSetPath
+
+Purpose: show XP's icons for image files, and run the open commands XP's
+picture viewer (shimgvw.dll) registers.
+XP behavior: SHRegSetPath writes a file path to the registry; read back, it
+is the path that was passed.
+Wine before: SHRegSetPathA and SHRegSetPathW passed the path's length in
+characters as the data's size in bytes, without the terminator. The W form
+stored half the path: shimgvw's DllRegisterServer left the image types with
+DefaultIcon "shimgv" (for "shimgvw.dll,1"), so .jpg, .png, .bmp and .gif
+files had the unknown file's icon, and its commands ended at
+"...\system32\shimgvw.dl".
+Change: both pass the size in bytes, with the terminator.
+Evidence: a +reg trace of regsvr32 registering XP's shimgvw.dll shows
+SHRegSetPathW writing L"shimgvw.dll,1" followed by NtSetValueKey with 13
+bytes. tests/shreg-set-path.c fails before and prints PASS with the change.
+Scope: every caller. Environment strings are still not put back into the
+path (Wine's FIXME).
+---
+ dlls/shcore/main.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/dlls/shcore/main.c b/dlls/shcore/main.c
+index 426a842..db60243 100644
+--- a/dlls/shcore/main.c
++++ b/dlls/shcore/main.c
+@@ -2348,7 +2348,7 @@ DWORD WINAPI SHRegSetPathA(HKEY hkey, const char *subkey, const char *value, con
+ 
+     /* FIXME: PathUnExpandEnvStringsA() */
+ 
+-    return SHSetValueA(hkey, subkey, value, REG_SZ, path, lstrlenA(path));
++    return SHSetValueA(hkey, subkey, value, REG_SZ, path, (lstrlenA(path) + 1) * sizeof(*path));
+ }
+ 
+ /*************************************************************************
+@@ -2361,7 +2361,7 @@ DWORD WINAPI SHRegSetPathW(HKEY hkey, const WCHAR *subkey, const WCHAR *value, c
+ 
+     /* FIXME: PathUnExpandEnvStringsW(); */
+ 
+-    return SHSetValueW(hkey, subkey, value, REG_SZ, path, lstrlenW(path));
++    return SHSetValueW(hkey, subkey, value, REG_SZ, path, (lstrlenW(path) + 1) * sizeof(*path));
+ }
+ 
+ /*************************************************************************

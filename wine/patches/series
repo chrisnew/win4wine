@@ -164,3 +164,4 @@
 0164-mountmgr-eject-disc-images.patch
 0165-gdi32-uniscribe-script-cache-race.patch
 0166-server-release-clip-on-thread-exit.patch
+0167-shcore-reg-set-path-size.patch

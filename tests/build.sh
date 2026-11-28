@@ -57,6 +57,7 @@ compile "$out/cleartype-test.exe" -municode "$root/tests/cleartype.c" -luser32 -
 compile "$out/icon-alpha-test.exe" "$root/tests/icon-alpha.c" -luser32 -lgdi32
 compile "$out/gl-perf-test.exe" "$root/tests/gl-perf.c" -lopengl32 -lgdi32 -luser32
 compile "$out/clip-exit-test.exe" "$root/tests/clip-exit.c" -luser32 -lgdi32
+compile "$out/shreg-set-path-test.exe" "$root/tests/shreg-set-path.c" -lshlwapi -ladvapi32
 compile "$out/class-probe.exe" -municode "$root/prefix/class-probe.c" -lole32 -luuid
 
 compile "$out/display-test.exe" -s "$root/tests/display.c" -luxtheme -lgdi32
