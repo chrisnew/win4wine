@@ -99,7 +99,7 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
   (0xF080013D). `user.reg` and `userdef.reg` unchanged. In `system.reg` XP's own registrations are now written over the
   session's registry profile, which the next logon does not apply again: among others two menu classes
   (`{E13EF4E4-...}`, `{ECD4FC4F-...}`) name `shell32.dll` instead of `browseui.dll` (the Start menu works so on the
-  bench), and the display adapter reads "Wine Adapter" after the run under Xvfb. Not yet checked in a session.
+  bench), and the display adapter reads "Wine Adapter" after the run under Xvfb. Checked in the session the same day: good.
 - **Undo:** logged off, copy the backup's `*.reg`, `.xp-extras` and `.xp-defaults` back into `.local/prefix` and
   `system.ini` into `drive_c/windows`, and `git checkout -B master 05e7ff0`. That brings the bug back.
 
