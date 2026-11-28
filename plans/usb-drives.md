@@ -67,8 +67,8 @@ Debian image and a Raspberry Pi's SD card, both of whose partitions appeared. Fr
 **Still open, on the EeePC:**
 
 1. Deploy the 0168 fix (a new Wine).
-2. The sounds play, and disc images work (AutoRun and Eject, reported by the user). To try: an exFAT or NTFS stick,
-   Shift, and the time to the AutoPlay dialog.
+2. Reported working by the user: the sounds, disc images (AutoRun and Eject), an NTFS stick and Shift. To try: an exFAT
+   stick, and the time to the AutoPlay dialog.
 3. To try: a stick with music or video. Windows Media Player does not start in the bench (BUGS.md), and "Play" depends
    on it.
 4. EeePC pictures in place of the bench ones.
