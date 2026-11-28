@@ -1,0 +1,507 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] mountmgr: USB sticks and memory cards are removable disks
+
+Purpose: a USB stick that Linux mounts is a Removable Disk in XP's My
+Computer, with one drive letter.
+Windows behavior: a stick or the card in a reader is DRIVE_REMOVABLE.
+IOCTL_STORAGE_QUERY_PROPERTY says that its media is removable, its bus (USB
+or SD), vendor, product and serial number. A disk has no letter of its own
+beside its partitions.
+Wine before: every block device whose UDisks2 drive is removable got a
+letter, of unknown type unless the drive listed optical or floppy media: a
+partitioned stick got one for the whole disk and one for each partition (the
+disk's and a swap or empty partition's could not be opened). Once mounted it
+was DRIVE_FIXED, a "Local Disk" with a hard disk's icon, as mountmgr knew no
+type and ntdll marks only CD and floppy file systems removable. UDisks2's
+serial number was not passed on to drive letters, and the storage descriptor
+had no vendor or product and said fixed media on a SCSI bus.
+Change: of a removable drive that is neither optical nor floppy, only a block
+device with a file system (IdUsage "filesystem", a size, neither HintIgnore
+nor HintSystem) is a drive, of type DEVICE_HARDDISK, which is reported as
+DRIVE_REMOVABLE; one that loses its file system (a card taken out of its
+reader) loses its letter. The disk keeps UDisks2's drive ID as its serial
+number, and its vendor, model and bus for the storage descriptor. Where the
+device cannot be read, FAT and exFAT are reported as FAT32, and their ID
+(IdUUID) is the volume serial number, which was 0. ntddstor.h gets the bus
+types from BusTypeiScsi to BusTypeMmc.
+Evidence: tests/hotplug-probe.c in the XP session on the bench with
+tools/bench/udisks-mock.py: a partitioned stick, one without a partition
+table and one with two partitions.
+Scope: all programs; only drives UDisks2 reports as removable.
+---
+ dlls/mountmgr.sys/dbus.c     | 57 +++++++++++++++++++++++++-----
+ dlls/mountmgr.sys/device.c   | 82 +++++++++++++++++++++++++++++++++++++-------
+ dlls/mountmgr.sys/diskarb.c  |  6 ++--
+ dlls/mountmgr.sys/mountmgr.c |  5 +--
+ dlls/mountmgr.sys/mountmgr.h |  5 ++-
+ dlls/mountmgr.sys/unixlib.c  | 22 ++++++++++--
+ dlls/mountmgr.sys/unixlib.h  | 14 +++++++-
+ include/ntddstor.h           |  5 +++
+ 8 files changed, 166 insertions(+), 30 deletions(-)
+
+diff --git a/dlls/mountmgr.sys/dbus.c b/dlls/mountmgr.sys/dbus.c
+index 09501fc..453921f 100644
+--- a/dlls/mountmgr.sys/dbus.c
++++ b/dlls/mountmgr.sys/dbus.c
+@@ -268,8 +268,8 @@ static void udisks_new_device( const char *udi )
+ 
+     if (device)
+     {
+-        if (removable) queue_device_op( ADD_DOS_DEVICE, udi, device, mount_point, drive_type, guid_ptr, NULL, label, NULL );
+-        else if (guid_ptr) queue_device_op( ADD_VOLUME, udi, device, mount_point, DEVICE_HARDDISK_VOL, guid_ptr, NULL, label, NULL );
++        if (removable) queue_device_op( ADD_DOS_DEVICE, udi, device, mount_point, drive_type, guid_ptr, NULL, label, NULL, NULL );
++        else if (guid_ptr) queue_device_op( ADD_VOLUME, udi, device, mount_point, DEVICE_HARDDISK_VOL, guid_ptr, NULL, label, NULL, NULL );
+     }
+ 
+     p_dbus_message_unref( reply );
+@@ -279,7 +279,7 @@ static void udisks_new_device( const char *udi )
+ static void udisks_removed_device( const char *udi )
+ {
+     TRACE( "removed %s\n", wine_dbgstr_a(udi) );
+-    queue_device_op( REMOVE_DEVICE, udi, NULL, NULL, 0, NULL, NULL, NULL, NULL );
++    queue_device_op( REMOVE_DEVICE, udi, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL );
+ }
+ 
+ /* UDisks callback for changed device */
+@@ -336,7 +336,8 @@ static const char *udisks2_string_from_array( DBusMessageIter *iter )
+ 
+ /* find the drive entry in the dictionary and get its parameters */
+ static void udisks2_get_drive_info( const char *drive_name, DBusMessageIter *dict,
+-                                    enum device_type *drive_type, int *removable, const char **serial )
++                                    enum device_type *drive_type, int *removable, const char **serial,
++                                    struct hotplug_info *hotplug )
+ {
+     DBusMessageIter iter, drive, variant;
+     const char *name;
+@@ -356,6 +357,12 @@ static void udisks2_get_drive_info( const char *drive_name, DBusMessageIter *dic
+                     *drive_type = udisks_parse_media_compatibility( &variant );
+                 else if (!strcmp( name, "Id" ))
+                     p_dbus_message_iter_get_basic( &variant, serial );
++                else if (!strcmp( name, "ConnectionBus" ))
++                    p_dbus_message_iter_get_basic( &variant, &hotplug->bus );
++                else if (!strcmp( name, "Vendor" ))
++                    p_dbus_message_iter_get_basic( &variant, &hotplug->vendor );
++                else if (!strcmp( name, "Model" ))
++                    p_dbus_message_iter_get_basic( &variant, &hotplug->product );
+             }
+         }
+     }
+@@ -372,8 +379,12 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+     const char *label = NULL;
+     GUID guid, *guid_ptr = NULL;
+     const char *iface, *name;
+-    int removable = FALSE;
++    int removable = FALSE, hint_ignore = FALSE, hint_system = FALSE;
+     enum device_type drive_type = DEVICE_UNKNOWN;
++    struct hotplug_info hotplug = { "", NULL, NULL, NULL, NULL };
++    dbus_uint64_t size = 0;
++    const char *usage = NULL;
++    BOOL stick;
+ 
+     while ((iface = udisks_next_dict_entry( block, &iter )))
+     {
+@@ -405,8 +416,16 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+                 else if (!strcmp( name, "Drive" ))
+                 {
+                     p_dbus_message_iter_get_basic( &variant, &drive );
+-                    udisks2_get_drive_info( drive, dict, &drive_type, &removable, &id );
++                    udisks2_get_drive_info( drive, dict, &drive_type, &removable, &id, &hotplug );
+                 }
++                else if (!strcmp( name, "IdUsage" ))
++                    p_dbus_message_iter_get_basic( &variant, &usage );
++                else if (!strcmp( name, "Size" ))
++                    p_dbus_message_iter_get_basic( &variant, &size );
++                else if (!strcmp( name, "HintIgnore" ))
++                    p_dbus_message_iter_get_basic( &variant, &hint_ignore );
++                else if (!strcmp( name, "HintSystem" ))
++                    p_dbus_message_iter_get_basic( &variant, &hint_system );
+                 else if (!strcmp( name, "IdUUID" ))
+                 {
+                     const char *uuid_str;
+@@ -415,6 +434,7 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+                     else
+                         p_dbus_message_iter_get_basic( &variant, &uuid_str );
+                     guid_ptr = parse_uuid( &guid, uuid_str );
++                    hotplug.fs_uuid = uuid_str;
+                 }
+             }
+         }
+@@ -424,6 +444,10 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+            debugstr_a(udi), debugstr_a(device), debugstr_a(mount_point),
+            debugstr_guid(guid_ptr), debugstr_a(type), debugstr_a(label), removable );
+ 
++    /* A removable drive that is neither optical nor a floppy drive: a USB stick
++     * or the card in a reader, whatever file system it holds. */
++    stick = removable && drive_type == DEVICE_UNKNOWN;
++
+     if (type)
+     {
+         if (!strcmp( type, "iso9660" ))
+@@ -437,10 +461,27 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+             drive_type = DEVICE_DVD;
+         }
+     }
++    if (stick)
++    {
++        /* Only what holds a file system is a drive: not the disk around its
++         * partitions, a card reader with no card, or what UDisks2 says to
++         * leave alone. */
++        if (hint_ignore || hint_system || !size || !usage || strcmp( usage, "filesystem" ))
++        {
++            TRACE( "no drive for %s: usage %s size %s ignore %u system %u\n", debugstr_a(udi),
++                   debugstr_a(usage), size ? "set" : "0", hint_ignore, hint_system );
++            udisks_removed_device( udi );  /* it may have been a drive before */
++            return;
++        }
++        if (drive_type == DEVICE_UNKNOWN) drive_type = DEVICE_HARDDISK;
++        hotplug.fs_type = type;
++    }
+     if (device)
+     {
+-        if (removable) queue_device_op( ADD_DOS_DEVICE, udi, device, mount_point, drive_type, guid_ptr, id, label, NULL );
+-        else if (guid_ptr) queue_device_op( ADD_VOLUME, udi, device, mount_point, DEVICE_HARDDISK_VOL, guid_ptr, id, label, NULL );
++        if (removable) queue_device_op( ADD_DOS_DEVICE, udi, device, mount_point, drive_type, guid_ptr, id, label,
++                                        NULL, stick ? &hotplug : NULL );
++        else if (guid_ptr) queue_device_op( ADD_VOLUME, udi, device, mount_point, DEVICE_HARDDISK_VOL, guid_ptr, id,
++                                            label, NULL, NULL );
+     }
+ }
+ 
+diff --git a/dlls/mountmgr.sys/device.c b/dlls/mountmgr.sys/device.c
+index 25d36f7..c575ca2 100644
+--- a/dlls/mountmgr.sys/device.c
++++ b/dlls/mountmgr.sys/device.c
+@@ -71,6 +71,7 @@ struct disk_device
+     char                 *unix_device; /* unix device path */
+     char                 *unix_mount;  /* unix mount point path */
+     char                 *serial;      /* disk serial number */
++    struct hotplug_info   hotplug;     /* of a stick or memory card, strings of our own */
+     struct volume        *volume;      /* associated volume */
+ };
+ 
+@@ -704,6 +705,23 @@ static NTSTATUS create_disk_device( enum device_type type, struct disk_device **
+     return status;
+ }
+ 
++/* what UDisks2 said about the stick or memory card a device is, if it is one */
++static void set_hotplug_info( struct disk_device *device, const struct hotplug_info *info )
++{
++    free( (char *)device->hotplug.bus );
++    free( (char *)device->hotplug.vendor );
++    free( (char *)device->hotplug.product );
++    free( (char *)device->hotplug.fs_type );
++    free( (char *)device->hotplug.fs_uuid );
++    memset( &device->hotplug, 0, sizeof(device->hotplug) );
++    if (!info) return;
++    device->hotplug.bus = strdup( info->bus );
++    device->hotplug.vendor = info->vendor ? strdup( info->vendor ) : NULL;
++    device->hotplug.product = info->product ? strdup( info->product ) : NULL;
++    device->hotplug.fs_type = info->fs_type ? strdup( info->fs_type ) : NULL;
++    device->hotplug.fs_uuid = info->fs_uuid ? strdup( info->fs_uuid ) : NULL;
++}
++
+ /* delete the disk device for a given drive */
+ static void delete_disk_device( struct disk_device *device )
+ {
+@@ -716,6 +734,7 @@ static void delete_disk_device( struct disk_device *device )
+     free( device->unix_device );
+     free( device->unix_mount );
+     free( device->serial );
++    set_hotplug_info( device, NULL );
+     RtlFreeUnicodeString( &device->name );
+     IoDeleteDevice( device->dev_obj );
+ }
+@@ -1247,10 +1266,28 @@ NTSTATUS remove_volume( const char *udi )
+ }
+ 
+ 
++/* The user may not read the device itself, to see which file system it holds
++ * and its serial number: take them from UDisks2. */
++static void set_hotplug_volume_info( struct volume *volume, const struct hotplug_info *hotplug )
++{
++    unsigned int high, low;
++    char end;
++
++    if (volume->fs_type != FS_UNKNOWN || !hotplug->fs_type) return;
++    /* exFAT as FAT32, the nearest there is: XP shows no file system it cannot know */
++    if (strcmp( hotplug->fs_type, "vfat" ) && strcmp( hotplug->fs_type, "exfat" )) return;
++    volume->fs_type = FS_FAT32;
++
++    /* FAT's and exFAT's ID is the volume serial number */
++    if (hotplug->fs_uuid && sscanf( hotplug->fs_uuid, "%4x-%4x%c", &high, &low, &end ) == 2)
++        volume->serial = (high << 16) | low;
++}
++
+ /* create a new dos drive */
+ NTSTATUS add_dos_device( int letter, const char *udi, const char *device,
+                          const char *mount_point, enum device_type type, const GUID *guid,
+-                         const char *label, const struct scsi_info *scsi_info )
++                         const char *disk_serial, const char *label, const struct scsi_info *scsi_info,
++                         const struct hotplug_info *hotplug )
+ {
+     HKEY hkey;
+     NTSTATUS status = STATUS_SUCCESS;
+@@ -1326,7 +1363,12 @@ found:
+             flags = DBTF_MEDIA;
+         }
+     }
+-    set_volume_info( volume, drive, device, mount_point, type, guid, label, NULL );
++    set_volume_info( volume, drive, device, mount_point, type, guid, label, disk_serial );
++    if (udi)
++    {
++        set_hotplug_info( volume->device, hotplug );
++        if (hotplug) set_hotplug_volume_info( volume, hotplug );
++    }
+ 
+     TRACE( "added device %c: udi %s for %s on %s type %u\n",
+            'a' + drive->drive, wine_dbgstr_a(udi), wine_dbgstr_a(device),
+@@ -1550,6 +1592,18 @@ NTSTATUS query_unix_drive( void *buff, SIZE_T insize, SIZE_T outsize, IO_STATUS_
+     return status;
+ }
+ 
++/* Puts STRING at *END, if there is one; returns its offset from BASE, or 0. */
++static DWORD add_property_string( void *base, char **end, const char *string )
++{
++    DWORD offset;
++
++    if (!string) return 0;
++    offset = *end - (char *)base;
++    strcpy( *end, string );
++    *end += strlen( string ) + 1;
++    return offset;
++}
++
+ static NTSTATUS query_property( struct disk_device *device, IRP *irp )
+ {
+     IO_STACK_LOCATION *irpsp = IoGetCurrentIrpStackLocation( irp );
+@@ -1574,7 +1628,10 @@ static NTSTATUS query_property( struct disk_device *device, IRP *irp )
+     {
+         STORAGE_DEVICE_DESCRIPTOR *descriptor;
+         DWORD len = sizeof(*descriptor);
++        const char *vendor = device->hotplug.vendor, *product = device->hotplug.product;
+ 
++        if (vendor) len += strlen( vendor ) + 1;
++        if (product) len += strlen( product ) + 1;
+         if (device->serial) len += strlen( device->serial ) + 1;
+ 
+         if (irpsp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(STORAGE_DESCRIPTOR_HEADER))
+@@ -1589,6 +1646,8 @@ static NTSTATUS query_property( struct disk_device *device, IRP *irp )
+         }
+         else
+         {
++            char *end;
++
+             FIXME( "Faking StorageDeviceProperty data\n" );
+ 
+             memset( irp->AssociatedIrp.SystemBuffer, 0, irpsp->Parameters.DeviceIoControl.OutputBufferLength );
+@@ -1597,19 +1656,18 @@ static NTSTATUS query_property( struct disk_device *device, IRP *irp )
+             descriptor->Size = len;
+             descriptor->DeviceType = FILE_DEVICE_DISK;
+             descriptor->DeviceTypeModifier = 0;
+-            descriptor->RemovableMedia = FALSE;
++            descriptor->RemovableMedia = device->hotplug.bus != NULL;
+             descriptor->CommandQueueing = FALSE;
+-            descriptor->VendorIdOffset = 0;
+-            descriptor->ProductIdOffset = 0;
+             descriptor->ProductRevisionOffset = 0;
+-            descriptor->BusType = BusTypeScsi;
++            if (!device->hotplug.bus) descriptor->BusType = BusTypeScsi;
++            else if (!strcmp( device->hotplug.bus, "usb" )) descriptor->BusType = BusTypeUsb;
++            else if (!strcmp( device->hotplug.bus, "sdio" )) descriptor->BusType = BusTypeSd;
++            else descriptor->BusType = BusTypeScsi;
+             descriptor->RawPropertiesLength = 0;
+-            if (!device->serial) descriptor->SerialNumberOffset = 0;
+-            else
+-            {
+-                descriptor->SerialNumberOffset = sizeof(*descriptor);
+-                strcpy( (char *)descriptor + descriptor->SerialNumberOffset, device->serial );
+-            }
++            end = (char *)(descriptor + 1);
++            descriptor->VendorIdOffset = add_property_string( descriptor, &end, vendor );
++            descriptor->ProductIdOffset = add_property_string( descriptor, &end, product );
++            descriptor->SerialNumberOffset = add_property_string( descriptor, &end, device->serial );
+             irp->IoStatus.Information = len;
+             status = STATUS_SUCCESS;
+         }
+diff --git a/dlls/mountmgr.sys/diskarb.c b/dlls/mountmgr.sys/diskarb.c
+index 8c81d67..3ccd6ef 100644
+--- a/dlls/mountmgr.sys/diskarb.c
++++ b/dlls/mountmgr.sys/diskarb.c
+@@ -180,9 +180,9 @@ static void appeared_callback( DADiskRef disk, void *context )
+     }
+ 
+     if (removable)
+-        queue_device_op( ADD_DOS_DEVICE, device, device, mount_point, type, guid_ptr, NULL, NULL, &scsi_info );
++        queue_device_op( ADD_DOS_DEVICE, device, device, mount_point, type, guid_ptr, NULL, NULL, &scsi_info, NULL );
+     else
+-        if (guid_ptr) queue_device_op( ADD_VOLUME, device, device, mount_point, DEVICE_HARDDISK_VOL, guid_ptr, NULL, NULL, &scsi_info );
++        if (guid_ptr) queue_device_op( ADD_VOLUME, device, device, mount_point, DEVICE_HARDDISK_VOL, guid_ptr, NULL, NULL, &scsi_info, NULL );
+ 
+ done:
+     CFRelease( dict );
+@@ -208,7 +208,7 @@ static void disappeared_callback( DADiskRef disk, void *context )
+ 
+     TRACE( "got unmount notification for '%s'\n", device );
+ 
+-    queue_device_op( REMOVE_DEVICE, device, NULL, NULL, 0, NULL, NULL, NULL, NULL );
++    queue_device_op( REMOVE_DEVICE, device, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL );
+ 
+ done:
+     CFRelease( dict );
+diff --git a/dlls/mountmgr.sys/mountmgr.c b/dlls/mountmgr.sys/mountmgr.c
+index 26dcf34..424a316 100644
+--- a/dlls/mountmgr.sys/mountmgr.c
++++ b/dlls/mountmgr.sys/mountmgr.c
+@@ -257,7 +257,7 @@ static NTSTATUS define_unix_drive( const void *in_buff, SIZE_T insize )
+         case DRIVE_RAMDISK:   type = DEVICE_RAMDISK; break;
+         case DRIVE_FIXED:     type = DEVICE_HARDDISK_VOL; break;
+         }
+-        return add_dos_device( letter - 'a', NULL, device, mount_point, type, NULL, NULL, NULL );
++        return add_dos_device( letter - 'a', NULL, device, mount_point, type, NULL, NULL, NULL, NULL, NULL );
+     }
+     else
+     {
+@@ -399,7 +399,8 @@ static void CALLBACK device_op( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3 )
+     {
+     case ADD_DOS_DEVICE:
+         add_dos_device( -1, info.udi, info.device, info.mount_point,
+-                        info.type, info.guid, info.label, info.scsi_info );
++                        info.type, info.guid, info.serial, info.label, info.scsi_info,
++                        info.hotplug.bus ? &info.hotplug : NULL );
+         break;
+     case ADD_VOLUME:
+         add_volume( info.udi, info.device, info.mount_point, DEVICE_HARDDISK_VOL,
+diff --git a/dlls/mountmgr.sys/mountmgr.h b/dlls/mountmgr.sys/mountmgr.h
+index ae69273..0515920 100644
+--- a/dlls/mountmgr.sys/mountmgr.h
++++ b/dlls/mountmgr.sys/mountmgr.h
+@@ -79,6 +79,8 @@ enum scsi_device_type
+     SCSI_UNKNOWN_PERIPHERAL = ~0
+ };
+ 
++struct hotplug_info;  /* unixlib.h */
++
+ struct scsi_info
+ {
+     enum scsi_device_type type;
+@@ -94,7 +96,8 @@ extern NTSTATUS add_volume( const char *udi, const char *device, const char *mou
+ extern NTSTATUS remove_volume( const char *udi );
+ extern NTSTATUS add_dos_device( int letter, const char *udi, const char *device,
+                                 const char *mount_point, enum device_type type, const GUID *guid,
+-                                const char *label, const struct scsi_info *info );
++                                const char *disk_serial, const char *label, const struct scsi_info *info,
++                                const struct hotplug_info *hotplug );
+ extern NTSTATUS remove_dos_device( int letter, const char *udi );
+ extern NTSTATUS query_unix_drive( void *buff, SIZE_T insize, SIZE_T outsize,
+                                   IO_STATUS_BLOCK *iosb );
+diff --git a/dlls/mountmgr.sys/unixlib.c b/dlls/mountmgr.sys/unixlib.c
+index bcc3638..261b4a4 100644
+--- a/dlls/mountmgr.sys/unixlib.c
++++ b/dlls/mountmgr.sys/unixlib.c
+@@ -133,7 +133,8 @@ static void detect_devices( const char **paths, char *names, ULONG size )
+ 
+ void queue_device_op( enum device_op op, const char *udi, const char *device,
+                       const char *mount_point, enum device_type type, const GUID *guid,
+-                      const char *serial, const char *label, const struct scsi_info *scsi_info )
++                      const char *serial, const char *label, const struct scsi_info *scsi_info,
++                      const struct hotplug_info *hotplug )
+ {
+     struct device_info *info;
+     char *str, *end;
+@@ -143,17 +144,27 @@ void queue_device_op( enum device_op op, const char *udi, const char *device,
+     end = info->str_buffer + sizeof(info->str_buffer);
+     info->op = op;
+     info->type = type;
+-#define ADD_STR(s) if (s && str + strlen(s) + 1 <= end) \
++#define ADD_STR_FROM(field, s) if (s && str + strlen(s) + 1 <= end) \
+     { \
+-        info->s = strcpy( str, s ); \
++        info->field = strcpy( str, s ); \
+         str += strlen(str) + 1; \
+     }
++#define ADD_STR(s) ADD_STR_FROM(s, s)
+     ADD_STR(udi);
+     ADD_STR(device);
+     ADD_STR(mount_point);
+     ADD_STR(serial);
+     ADD_STR(label);
++    if (hotplug)
++    {
++        ADD_STR_FROM(hotplug.bus, hotplug->bus);
++        ADD_STR_FROM(hotplug.vendor, hotplug->vendor);
++        ADD_STR_FROM(hotplug.product, hotplug->product);
++        ADD_STR_FROM(hotplug.fs_type, hotplug->fs_type);
++        ADD_STR_FROM(hotplug.fs_uuid, hotplug->fs_uuid);
++    }
+ #undef ADD_STR
++#undef ADD_STR_FROM
+     if (guid)
+     {
+         info->guid_buffer = *guid;
+@@ -190,6 +201,11 @@ static NTSTATUS dequeue_device_op( void *args )
+     if (dst->mount_point) dst->mount_point = (char *)dst + (src->mount_point - (char *)src);
+     if (dst->serial) dst->serial = (char *)dst + (src->serial - (char *)src);
+     if (dst->label) dst->label = (char *)dst + (src->label - (char *)src);
++    if (dst->hotplug.bus) dst->hotplug.bus = (char *)dst + (src->hotplug.bus - (char *)src);
++    if (dst->hotplug.vendor) dst->hotplug.vendor = (char *)dst + (src->hotplug.vendor - (char *)src);
++    if (dst->hotplug.product) dst->hotplug.product = (char *)dst + (src->hotplug.product - (char *)src);
++    if (dst->hotplug.fs_type) dst->hotplug.fs_type = (char *)dst + (src->hotplug.fs_type - (char *)src);
++    if (dst->hotplug.fs_uuid) dst->hotplug.fs_uuid = (char *)dst + (src->hotplug.fs_uuid - (char *)src);
+     if (dst->guid) dst->guid = &dst->guid_buffer;
+     if (dst->scsi_info) dst->scsi_info = &dst->scsi_buffer;
+ 
+diff --git a/dlls/mountmgr.sys/unixlib.h b/dlls/mountmgr.sys/unixlib.h
+index c17e5f7..6f9955e 100644
+--- a/dlls/mountmgr.sys/unixlib.h
++++ b/dlls/mountmgr.sys/unixlib.h
+@@ -28,6 +28,17 @@ enum device_op
+     REMOVE_DEVICE
+ };
+ 
++/* A removable drive that is not optical: a stick in a USB port, or a card in a
++ * reader (from UDisks2). bus is NULL for every other device. */
++struct hotplug_info
++{
++    const char *bus;      /* "usb", "sdio" or "" */
++    const char *vendor;
++    const char *product;
++    const char *fs_type;  /* "vfat", "exfat", ... */
++    const char *fs_uuid;  /* the file system's ID; "1234-ABCD" for FAT and exFAT */
++};
++
+ struct device_info
+ {
+     enum device_op    op;
+@@ -39,6 +50,7 @@ struct device_info
+     const char       *label;
+     GUID             *guid;
+     struct scsi_info *scsi_info;
++    struct hotplug_info hotplug;
+ 
+     /* buffer space for pointers */
+     GUID              guid_buffer;
+@@ -181,7 +193,7 @@ enum mountmgr_funcs
+ extern void queue_device_op( enum device_op op, const char *udi, const char *device,
+                              const char *mount_point, enum device_type type, const GUID *guid,
+                              const char *disk_serial, const char *label,
+-                             const struct scsi_info *info );
++                             const struct scsi_info *info, const struct hotplug_info *hotplug );
+ extern void run_dbus_loop(void);
+ extern void run_diskarbitration_loop(void);
+ 
+diff --git a/include/ntddstor.h b/include/ntddstor.h
+index 0cb6d01..5604e66 100644
+--- a/include/ntddstor.h
++++ b/include/ntddstor.h
+@@ -281,6 +281,11 @@ typedef enum _STORAGE_BUS_TYPE {
+     BusTypeFibre,
+     BusTypeUsb,
+     BusTypeRAID,
++    BusTypeiScsi,
++    BusTypeSas,
++    BusTypeSata,
++    BusTypeSd,
++    BusTypeMmc,
+     BusTypeMaxReserved = 0x7F
+ } STORAGE_BUS_TYPE, *PSTORAGE_BUS_TYPE;
+ 
