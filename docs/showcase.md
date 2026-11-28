@@ -18,6 +18,11 @@ Remove Hardware** icon in the notification area ([plans/usb-drives.md](../plans/
 
 <img src="images/showcase/usb-my-computer.png" alt="My Computer with HOLIDAY (D:) under Devices with Removable Storage" width="800" />
 
+Then XP's **AutoPlay** asks what to do with it: a slideshow of the pictures, play the music, open the folder. A disc image
+with an AutoRun starts its setup instead.
+
+<img src="images/showcase/usb-autoplay.png" alt="XP's AutoPlay dialog for HOLIDAY (D:): View a slideshow of the images, Open folder to view files, Take no action" width="348" />
+
 <img src="images/showcase/usb-safely-remove.png" alt="The menu of the Safely Remove Hardware icon: Safely remove USB Mass Storage Device - Drive(D:)" width="360" />
 
 <img src="images/showcase/usb-safe-to-remove.png" alt="XP's Safe To Remove Hardware balloon" width="400" />

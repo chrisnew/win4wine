@@ -73,6 +73,11 @@ i686-w64-mingw32-windres -I "$helpers" "$helpers/xptray.rc" -O coff -o "$root/.l
 compile "$root/.local/bridge/xptray.exe" -std=gnu11 "$helpers/xptray.c" "$root/.local/bridge/xptray.res" \
     -mwindows -lcomctl32 -lgdi32 -luser32 -lkernel32 -ladvapi32 -lwinmm
 rm -f "$root/.local/bridge/xptray.res"
+# AutoPlay and AutoRun for sticks and disc images, which xptray.exe starts.
+i686-w64-mingw32-windres -I "$helpers" "$helpers/autoplay.rc" -O coff -o "$root/.local/bridge/autoplay.res"
+compile "$root/.local/bridge/autoplay.exe" -std=gnu11 "$helpers/autoplay.c" "$root/.local/bridge/autoplay.res" \
+    -mwindows -lcomctl32 -lgdi32 -luser32 -lshell32 -lshlwapi -ladvapi32
+rm -f "$root/.local/bridge/autoplay.res"
 compile "$root/.local/bridge/startmenu.exe" -std=gnu11 "$helpers/startmenu.c" -lshell32 -lole32 -luuid -ladvapi32 -luser32
 compile "$root/.local/bridge/iexplore.exe" -std=gnu11 "$helpers/iexplore.c" -mwindows -lshell32
 # XP Explorer's Linux columns and "Open in Linux Terminal", in-process shell extensions.

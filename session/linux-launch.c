@@ -19,7 +19,9 @@
  * message box instead: Wine would start it in another directory.
  *
  * linux-launch.exe --mount-iso PATH mounts the disc image PATH, "Mount" on .iso
- * files (prefix/extras.py), and opens the CD drive Wine makes of it. PATH is the
+ * files (prefix/extras.py), and opens the CD drive Wine makes of it, unless the
+ * disc was mounted just now and AutoPlay takes it from there (xptray.exe starts
+ * autoplay.exe for it). PATH is the
  * rest of the command line, as for --terminal. iso_mount.py beside this program
  * (session/iso_mount.py) asks UDisks2 and writes what came of it into a file;
  * Wine's mountmgr.sys, which follows UDisks2, gives the disc a drive letter. */
@@ -307,6 +309,18 @@ static void open_folder(const WCHAR *path)
     ShellExecuteW(NULL, NULL, L"C:\\xp\\xp-explorer.exe", argument, NULL, SW_SHOWNORMAL);
 }
 
+/* Whether a drive that arrives gets XP's AutoPlay: xptray.exe is there to hear
+ * of it, and autoplay.exe beside this program. */
+static BOOL autoplay_runs(void)
+{
+    WCHAR path[MAX_PATH];
+    DWORD size = GetModuleFileNameW(NULL, path, MAX_PATH);
+
+    if (!size || size >= MAX_PATH - 16 || !wcsrchr(path, '\\')) return FALSE;
+    wcscpy(wcsrchr(path, '\\') + 1, L"autoplay.exe");
+    return GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES && FindWindowW(L"XPTrayHelper", NULL);
+}
+
 static void open_disc(const char *device, const char *mount_point, BOOL new)
 {
     typedef WCHAR *(CDECL *dos_file_name)(const char *);
@@ -315,6 +329,8 @@ static void open_disc(const char *device, const char *mount_point, BOOL new)
 
     if ((root[0] = drive_of(device, mount_point)))
     {
+        /* A new disc is AutoPlay's: its AutoRun, its dialog or its window. */
+        if (new && autoplay_runs()) return;
         if (new) Sleep(SETTLE_MS);
         open_folder(root);
         return;

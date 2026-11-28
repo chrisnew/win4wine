@@ -101,6 +101,7 @@ Restart the display manager (or reboot).
 | install a Windows application | `wine setup.exe` in a terminal; the session's `PATH` starts with this Wine |
 | mount a disc image | double-click the `.iso` file: it becomes a CD drive in My Computer; its **Eject** takes it away |
 | use a USB stick or memory card | plug it in: it becomes a Removable Disk in My Computer; **Eject** it, or choose it under the **Safely Remove Hardware** icon, before pulling it out |
+| skip AutoRun and AutoPlay | hold **Shift** while the disc or stick arrives |
 | start a Windows application from outside the session (ssh, another desktop) | `win4wine-wine setup.exe` (`~/.local/bin`): it runs with the session's prefix, Wine and settings, and looks as in the session. Plain `wine` uses `~/.wine` and Wine's own look |
 | open the Start menu | the Windows key, Ctrl+Esc |
 | Run / Explorer | Win+R / Win+E |

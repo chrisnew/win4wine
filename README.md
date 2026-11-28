@@ -67,7 +67,9 @@ Details, all options and how to change the theme or the text size later:
   NetworkManager and PipeWire or PulseAudio. The wireless network list connects through XP's network key dialog.
 - XP's folder windows show a Linux file's permissions, owner, group and path as columns, and a folder's context menu opens a
   Linux terminal there.
-- A double click on an `.iso` file mounts it as a CD drive, and Eject takes it away again.
+- A double click on an `.iso` file mounts it as a CD drive, runs its AutoRun, and Eject takes it away again.
+- USB sticks and memory cards behave as on XP: the sounds, "Found New Hardware", a Removable Disk, the AutoPlay dialog and
+  the Safely Remove Hardware icon. AutoRun is never taken from a stick.
 - My Network Places lists what the local network announces (mDNS and UPnP): web pages open in the Linux browser, SSH servers
   in a terminal.
 - The keyboard layout follows XP's Regional and Language Options, and Left Alt+Shift switches between input languages as on XP.

@@ -359,8 +359,9 @@ UDisks2); Wine does not read the file.
   after installing `udisks2`, log off and on. The launcher asks `mountmgr` for up to 5 s which letter has the device
   (`IOCTL_MOUNTMGR_QUERY_UNIX_DRIVE`) and opens it; without one it opens the mount point through `Z:`. It starts
   `xp-explorer.exe` with the path for that: opening a folder as a document goes over DDE, which fails from another program.
-  For a disc mounted just now it waits 2 s first: a window asked for before Explorer has taken the new drive in is titled
-  `D:\`, without the label, and its address bar stays empty (on the EeePC after 0.3 and 0.8 s, not after 1.5 s).
+  For a disc mounted just now it leaves that to [AutoPlay](#autoplay-and-autorun-xp-explorerhelpersautoplayc) when
+  `xptray.exe` runs; without it, it waits 2 s first: a window asked for before Explorer has taken the new drive in is
+  titled `D:\`, without the label, and its address bar stays empty.
 - **Eject** is XP's own, on the drive's menu and in My Computer's task pane. XP's shell32 sends `IOCTL_DISK_EJECT_MEDIA` to
   the volume, with no lock or dismount before it, and patch 0164 makes `mountmgr` unmount the image and delete its loop device
   (`udisksctl`, which needs no password for a device the user set up). The drive goes with the device (0163 tells Explorer).
@@ -369,10 +370,10 @@ UDisks2); Wine does not read the file.
   While a folder window shows the drive (the wineserver holds the folder open) or a program has a file or its working
   directory on it, the unmount fails and the disc stays. XP shows **no message** then; close the window and eject again.
 - **Arrivals**: `mountmgr` announces a drive once, when it can be read, as a new drive (0163): Explorer adds it to My
-  Computer and opens nothing, so the one window is the launcher's. An image mounted from Linux appears without a window.
-  Unmounting from Linux (`udisksctl unmount`) leaves the drive with nothing in it; it goes when the loop device does.
-  A disc's `autorun.inf` is **not** run: XP's Explorer looks for the file and does not read it (as far as traced, with
-  no Shell Hardware Detection service here).
+  Computer and opens nothing; [AutoPlay](#autoplay-and-autorun-xp-explorerhelpersautoplayc) takes it from there, also for an
+  image mounted from Linux, and runs its `autorun.inf` (XP's Explorer does not read it). It is listed under Safely Remove
+  Hardware too. Unmounting from Linux (`udisksctl unmount`) leaves the drive with nothing in it; it goes when the loop
+  device does.
 - **Images stay mounted across a log off**, like a disc left in a drive. A restart of the machine clears them.
 
 ## Removable drives (`session/removable.py`)
@@ -421,6 +422,29 @@ follows `WM_DEVICECHANGE` and uses Windows APIs only, so it treats sticks, cards
   after it was unmounted.
 - The icons and texts are XP's, from `stobject.dll`, `hotplug.dll` and `newdev.dll` in `C:\xp\tray`. It sets timers only
   while a balloon is up, so an idle session wakes it no more than before.
+
+### AutoPlay and AutoRun (`xp-explorer/helpers/autoplay.c`)
+
+`xptray.exe` starts `autoplay.exe E:` for each drive that arrives. XP's own AutoPlay is the Shell Hardware Detection
+service (`shsvcs.dll`), which hears of drives through volume device interfaces; Wine's `mountmgr` publishes none, so it
+would hear nothing. Ours is built to look like it.
+
+- **AutoRun**: a disc image or CD with an `autorun.inf` runs its `open=` or `shellexecute=` line from its root, with no
+  dialog. **Never from a stick or card** (anything whose media is removable on USB or SD), also not from a hybrid live
+  stick that is a CD drive. Shift held while the drive arrives skips AutoRun and AutoPlay.
+- **The files** are looked at two folders deep, for at most 0.7 s, hidden and dot files left out. Only pictures, only music
+  or only video give XP's dialog with "Always do the selected action"; anything else, or nothing, gives "This disk or device
+  contains more than one type of content." A disc with nothing to play or show opens in a window.
+- **The dialog** is XP's: templates 1121 and 1120 of the user's `shell32.dll`, loaded as data, with its texts and icons.
+  The list is a list box drawn as XP's two-line tiles, in place of the template's list view.
+- **Actions**: for pictures XP's slideshow (Picture and Fax Viewer, then F11); for music and video the program the type
+  is associated with, else Windows Media Player, else `xdg-open`; "Open folder to view files"; "Take no action".
+- **A window** of the drive is asked for 3.5 s after it arrived: earlier, XP's Explorer shows "E:\" without the label (on
+  the bench 2.6 s were too short).
+- **"Always do the selected action"** is kept where XP keeps it
+  (`HKCU\...\Explorer\AutoplayHandlers\UserChosenExecuteHandlers`, one value per content type). With
+  `"removable": {"forget_autoplay": true}` the session forgets it at each logon.
+- `autoplay.exe PATH [--disc]` tries a folder as a stick (or a disc).
 
 ## The Recycle Bin
 

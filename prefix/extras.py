@@ -3,7 +3,7 @@
 
 XP Explorer runs the same XP shell in a Wine virtual desktop and added to it:
 the notification area's network, battery and volume icons with XP's own
-flyouts (xptray.exe), Network Connections, the folder task pane (DirectUser),
+flyouts and its Safely Remove Hardware icon (xptray.exe), AutoPlay (autoplay.exe), Network Connections, the folder task pane (DirectUser),
 XP's Display Properties, image thumbnails and the picture viewer, XP's sound
 scheme and Explorer defaults, XP's icons for file types, Internet Explorer 6,
 Windows Media Player 9, and the Start menu's full left column (Internet, E-mail and the most used
@@ -37,10 +37,10 @@ import xp_schemes
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / '.local/bridge'
 # Bumped when apply() changes; setup.sh applies it again on existing prefixes.
-VERSION = '17'
+VERSION = '18'
 MARKER = '.xp-extras'
 # What goes from .local/bridge to C:\xp\bin.
-HELPERS = ('xptray.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'linux-launch.exe',
+HELPERS = ('xptray.exe', 'autoplay.exe', 'startmenu.exe', 'iexplore.exe', 'linux-links.exe', 'linux-launch.exe',
            'linuxcols.dll', 'iso_mount.py', 'iso-disc.ico')
 # linuxcols.dll's column handler (xp-explorer/helpers/linuxcols.c), and the
 # property set of its columns.
