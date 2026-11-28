@@ -68,9 +68,11 @@ class Greeter(Input):
         self.fade_start = None
         self.pointer = (0, 0)
         self.tooltip_timer = None
+        self.autologin_session = None
         self.lightdm.connect('show-prompt', self.on_prompt)
         self.lightdm.connect('show-message', self.on_message)
         self.lightdm.connect('authentication-complete', self.on_complete)
+        self.lightdm.connect('autologin-timer-expired', self.on_autologin)
         self.lightdm.connect_to_daemon_sync()
 
         root = Gdk.get_default_root_window()
@@ -135,13 +137,26 @@ class Greeter(Input):
 
     # Authentication -------------------------------------------------
 
+    def on_autologin(self, greeter):
+        if self.screen.selected is not None or greeter.get_in_authentication():
+            return
+        username = greeter.get_autologin_user_hint()
+        for index, account in enumerate(self.accounts):
+            if account.get_name() == username:
+                self.screen.selected = index
+                self.autologin_session = greeter.get_autologin_session_hint()
+                greeter.authenticate_autologin()
+                return
+
     def select(self, index):
         if self.lightdm.get_in_authentication():
             self.lightdm.cancel_authentication()
         s = self.screen
         s.selected, s.password, s.error, s.prompt, s.caret = index, '', False, False, True
         self.message = None
+        self.autologin_session = None
         if index is not None:
+            self.lightdm.cancel_autologin()
             self.lightdm.authenticate(self.accounts[index].get_name())
         self.refresh()
 
@@ -166,6 +181,7 @@ class Greeter(Input):
             self.log_on(index)
             return
         # XP: the balloon says the password was wrong; the box is empty again.
+        self.autologin_session = None
         self.screen.error = True
         self.screen.password = ''
         self.screen.prompt = False
@@ -192,7 +208,8 @@ class Greeter(Input):
             d.close()
         except Exception:
             traceback.print_exc()
-        session = self.accounts[index].get_session() or self.lightdm.get_default_session_hint()
+        session = (self.autologin_session or self.accounts[index].get_session() or
+                   self.lightdm.get_default_session_hint())
         try:
             self.lightdm.start_session_sync(session)
         except GLib.Error as e:
