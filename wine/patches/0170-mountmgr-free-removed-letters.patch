@@ -11,22 +11,23 @@ back. On the EeePC one stick left I:, J: and K: taken. A drive whose device
 was pulled out while Wine was not running came back at the next start as a
 "Local Disk" pointing nowhere.
 Change: removing a drive that UDisks reported deletes "d::" too. At its start
-mountmgr deletes the "d::" links that have neither a "d:" link nor a drive type
-in Software\Wine\Drives, and the drives under /media or /run/media, with a
-device link, whose mount point does not exist.
+mountmgr deletes the "d::" links without a "d:" link that have no drive type in
+Software\Wine\Drives or name a /dev/sd*, /dev/mmcblk* or /dev/loop* device
+(UDisks2 reports the drives there are again), and the drives under /media or
+/run/media, with a device link, whose mount point does not exist.
 Evidence: tools/bench/udisks-mock.py in the XP session on the bench: sticks
 plugged and pulled out, and leftover links made by hand before a start.
 Scope: all programs; drives UDisks reports, and leftover links of removable
 drives.
 ---
- dlls/mountmgr.sys/device.c | 54 ++++++++++++++++++++++++++++++++++++++++++----
- 1 file changed, 50 insertions(+), 4 deletions(-)
+ dlls/mountmgr.sys/device.c | 71 +++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 67 insertions(+), 4 deletions(-)
 
 diff --git a/dlls/mountmgr.sys/device.c b/dlls/mountmgr.sys/device.c
-index ae54537..acbe436 100644
+index db70ed3..ac79744 100644
 --- a/dlls/mountmgr.sys/device.c
 +++ b/dlls/mountmgr.sys/device.c
-@@ -1069,6 +1069,29 @@ static void set_drive_info( struct dos_drive *drive, int letter, struct volume *
+@@ -1069,6 +1069,40 @@ static void set_drive_info( struct dos_drive *drive, int letter, struct volume *
      }
  }
  
@@ -38,6 +39,17 @@ index ae54537..acbe436 100644
 +
 +    dosdev[0] = 'a' + letter;
 +    MOUNTMGR_CALL( set_dosdev_symlink, &params );
++}
++
++/* Whether the link to a drive letter's device names a disk that comes and goes. */
++static BOOL removable_device_link( int letter )
++{
++    char dosdev[] = "a::", link[4096];
++    struct get_dosdev_symlink_params params = { dosdev, link, sizeof(link) };
++
++    dosdev[0] = 'a' + letter;
++    if (MOUNTMGR_CALL( get_dosdev_symlink, &params )) return FALSE;
++    return !strncmp( link, "/dev/sd", 7 ) || !strncmp( link, "/dev/mmcblk", 11 ) || !strncmp( link, "/dev/loop", 9 );
 +}
 +
 +/* A removable drive's mount point that has gone: the device was taken away while
@@ -56,7 +68,7 @@ index ae54537..acbe436 100644
  /* create devices for mapped drives */
  static void create_drive_devices(void)
  {
-@@ -1090,11 +1113,30 @@ static void create_drive_devices(void)
+@@ -1090,11 +1124,36 @@ static void create_drive_devices(void)
  
          dosdev[0] = 'a' + i;
          dosdev[2] = 0;
@@ -64,10 +76,16 @@ index ae54537..acbe436 100644
 +        driveW[0] = 'a' + i;
 +        if (MOUNTMGR_CALL( get_dosdev_symlink, &params ))
 +        {
-+            /* A device link alone, of a drive that was never configured, is left
-+             * over from a removable drive that has gone. It would keep the letter. */
++            /* A device link alone, of a drive that was never configured or of a
++             * disk that comes and goes, is left over from a removable drive. It
++             * would keep the letter. UDisks2 tells of the drives there are. */
 +            if (!drives_key || RegQueryValueExW( drives_key, driveW, NULL, NULL, NULL, NULL ))
 +                remove_device_link( i );
++            else if (removable_device_link( i ))
++            {
++                RegDeleteValueW( drives_key, driveW );
++                remove_device_link( i );
++            }
 +            continue;
 +        }
          dosdev[2] = ':';
@@ -88,7 +106,7 @@ index ae54537..acbe436 100644
  
          drive_type = i < 2 ? DEVICE_FLOPPY : DEVICE_HARDDISK_VOL;
          if (drives_key)
-@@ -1102,7 +1144,6 @@ static void create_drive_devices(void)
+@@ -1102,7 +1161,6 @@ static void create_drive_devices(void)
              WCHAR buffer[32];
              DWORD j, type, size = sizeof(buffer);
  
@@ -96,7 +114,7 @@ index ae54537..acbe436 100644
              if (!RegQueryValueExW( drives_key, driveW, NULL, &type, (BYTE *)buffer, &size ) &&
                  type == REG_SZ)
              {
-@@ -1435,8 +1476,13 @@ NTSTATUS remove_dos_device( int letter, const char *udi )
+@@ -1436,8 +1494,13 @@ NTSTATUS remove_dos_device( int letter, const char *udi )
              RegCloseKey( hkey );
          }
  
