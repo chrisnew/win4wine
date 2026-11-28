@@ -100,8 +100,8 @@ Found on the machine with no reason recorded. Add the reason, or undo the settin
 - **Result:** extraction 38 s (it adds `inf/hivecls.inf`), additions 450 s, exit status 0, `extras.py --check` passes
   (VERSION 17). Run on the prefix in Xvfb: `tests/shreg-set-path.c` prints PASS, and of 245 registered types
   `tests/file-icons.c` finds 44 without an icon, among them types of Office XP. Office's own icons (`.doc`, `.xls`) are
-  unchanged. `.htm` and `.html` stay blank: `htmlfile\DefaultIcon` was `"%1"` before this change. Not looked at in a
-  session yet.
+  unchanged. `.htm` and `.html` stay blank: `htmlfile\DefaultIcon` was `"%1"` before this change. Checked in the session the same
+  day: good.
 - **Undo:** logged off, `mv .local/wine-install .local/wine-install-0167 && mv .local/wine-install-old
   .local/wine-install`, copy the backup's `*.reg`, `.xp-extras`, `.xp-defaults` and `.xp-registry-version` back into
   `.local/prefix` and `system.ini` into `drive_c/windows`, and `git checkout -B master 5cafcaf`.
