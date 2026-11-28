@@ -134,6 +134,9 @@ pkill -TERM -f '[s]ession/supervisor.py' || true
 for i in $(seq 20); do pgrep -f '[s]ession/supervisor.py' >/dev/null || break; sleep 0.5; done
 WINEPREFIX=$P $S -k 2>/dev/null || true
 WINEPREFIX=$P timeout 30 $S -w 2>/dev/null || true
+# dbus-run-session's daemons stay behind; each holds inotify instances, and after
+# some restarts the supervisor gets none (errno 24).
+pkill -x -u tester dbus-daemon || true
 echo stopped
 EOF
     ;;
