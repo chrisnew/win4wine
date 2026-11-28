@@ -306,14 +306,11 @@ class Mock:
             table = {'org.freedesktop.UDisks2.Block': self.block(disk, stick, size, ''),
                      'org.freedesktop.UDisks2.PartitionTable': {
                          'Type': 'dos', 'Partitions': [BLOCKS + n for n in names]}}
-            folder = None
             if options.get('iso9660'):
-                # A hybrid image: a file system on the whole disk, beside its partitions.
+                # A hybrid image: the whole disk says it holds the file system too,
+                # but UDisks2 offers only the partition to mount (no Filesystem).
                 table['org.freedesktop.UDisks2.Block'].update(IdUsage='filesystem', IdType='iso9660', IdLabel=label)
-                table['org.freedesktop.UDisks2.Filesystem'] = {'MountPoints': [], 'Size': size}
-                folder = options.get('dir') or f'/tmp/udisks-mock/{name}'
-                os.makedirs(folder, exist_ok=True)
-            stick['blocks'][BLOCKS + disk] = folder
+            stick['blocks'][BLOCKS + disk] = None
             self.add(BLOCKS + disk, table)
         for number, node in enumerate(names, 1):
             path = BLOCKS + node
@@ -325,6 +322,8 @@ class Mock:
             if not os.path.isdir(folder):
                 os.makedirs(folder)
                 os.chmod(folder, 0o777)
+            if options.get('iso9660'):
+                filesystem = 'iso9660'
             interfaces = {'org.freedesktop.UDisks2.Block': self.block(node, stick, size // parts, filesystem)}
             if filesystem != 'none':
                 this = label if parts == 1 else f'{label}{number}'

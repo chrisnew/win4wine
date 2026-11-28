@@ -16,20 +16,22 @@ type and ntdll marks only CD and floppy file systems removable. UDisks2's
 serial number was not passed on to drive letters, and the storage descriptor
 had no vendor or product and said fixed media on a SCSI bus.
 Change: of a removable drive that is neither optical nor floppy, only a block
-device with a file system (IdUsage "filesystem", a size, neither HintIgnore
-nor HintSystem) is a drive, of type DEVICE_HARDDISK, which is reported as
-DRIVE_REMOVABLE; one that loses its file system (a card taken out of its
-reader) loses its letter. The disk keeps UDisks2's drive ID as its serial
+device with a file system to mount (UDisks2's Filesystem interface, a size,
+neither HintIgnore nor HintSystem) is a drive, of type DEVICE_HARDDISK, which
+is reported as DRIVE_REMOVABLE; one that loses its file system (a card taken
+out of its reader) loses its letter. The disk keeps UDisks2's drive ID as its serial
 number, and its vendor, model and bus for the storage descriptor. Where the
 device cannot be read, FAT and exFAT are reported as FAT32, and their ID
 (IdUUID) is the volume serial number, which was 0. ntddstor.h gets the bus
 types from BusTypeiScsi to BusTypeMmc.
 Evidence: tests/hotplug-probe.c in the XP session on the bench with
 tools/bench/udisks-mock.py: a partitioned stick, one without a partition
-table and one with two partitions.
+table and one with two partitions. On the EeePC a Debian installer stick: its
+whole disk has IdUsage "filesystem" (iso9660) beside the partition table and
+no Filesystem interface, as UDisks2 offers only the partition to mount.
 Scope: all programs; only drives UDisks2 reports as removable.
 ---
- dlls/mountmgr.sys/dbus.c     | 57 +++++++++++++++++++++++++-----
+ dlls/mountmgr.sys/dbus.c     | 56 +++++++++++++++++++++++++-----
  dlls/mountmgr.sys/device.c   | 82 +++++++++++++++++++++++++++++++++++++-------
  dlls/mountmgr.sys/diskarb.c  |  6 ++--
  dlls/mountmgr.sys/mountmgr.c |  5 +--
@@ -37,10 +39,10 @@ Scope: all programs; only drives UDisks2 reports as removable.
  dlls/mountmgr.sys/unixlib.c  | 22 ++++++++++--
  dlls/mountmgr.sys/unixlib.h  | 14 +++++++-
  include/ntddstor.h           |  5 +++
- 8 files changed, 166 insertions(+), 30 deletions(-)
+ 8 files changed, 165 insertions(+), 30 deletions(-)
 
 diff --git a/dlls/mountmgr.sys/dbus.c b/dlls/mountmgr.sys/dbus.c
-index 09501fc..453921f 100644
+index 09501fc..165e49e 100644
 --- a/dlls/mountmgr.sys/dbus.c
 +++ b/dlls/mountmgr.sys/dbus.c
 @@ -268,8 +268,8 @@ static void udisks_new_device( const char *udi )
@@ -86,7 +88,7 @@ index 09501fc..453921f 100644
              }
          }
      }
-@@ -372,8 +379,12 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+@@ -372,13 +379,17 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
      const char *label = NULL;
      GUID guid, *guid_ptr = NULL;
      const char *iface, *name;
@@ -95,20 +97,23 @@ index 09501fc..453921f 100644
      enum device_type drive_type = DEVICE_UNKNOWN;
 +    struct hotplug_info hotplug = { "", NULL, NULL, NULL, NULL };
 +    dbus_uint64_t size = 0;
-+    const char *usage = NULL;
-+    BOOL stick;
++    BOOL stick, has_filesystem = FALSE;
  
      while ((iface = udisks_next_dict_entry( block, &iter )))
      {
-@@ -405,8 +416,16 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+         if (!strcmp( iface, "org.freedesktop.UDisks2.Filesystem" ))
+         {
++            has_filesystem = TRUE;
+             while ((name = udisks_next_dict_entry( &iter, &variant )))
+             {
+                 if (!strcmp( name, "MountPoints" ))
+@@ -405,8 +416,14 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
                  else if (!strcmp( name, "Drive" ))
                  {
                      p_dbus_message_iter_get_basic( &variant, &drive );
 -                    udisks2_get_drive_info( drive, dict, &drive_type, &removable, &id );
 +                    udisks2_get_drive_info( drive, dict, &drive_type, &removable, &id, &hotplug );
                  }
-+                else if (!strcmp( name, "IdUsage" ))
-+                    p_dbus_message_iter_get_basic( &variant, &usage );
 +                else if (!strcmp( name, "Size" ))
 +                    p_dbus_message_iter_get_basic( &variant, &size );
 +                else if (!strcmp( name, "HintIgnore" ))
@@ -118,7 +123,7 @@ index 09501fc..453921f 100644
                  else if (!strcmp( name, "IdUUID" ))
                  {
                      const char *uuid_str;
-@@ -415,6 +434,7 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+@@ -415,6 +432,7 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
                      else
                          p_dbus_message_iter_get_basic( &variant, &uuid_str );
                      guid_ptr = parse_uuid( &guid, uuid_str );
@@ -126,7 +131,7 @@ index 09501fc..453921f 100644
                  }
              }
          }
-@@ -424,6 +444,10 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+@@ -424,6 +442,10 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
             debugstr_a(udi), debugstr_a(device), debugstr_a(mount_point),
             debugstr_guid(guid_ptr), debugstr_a(type), debugstr_a(label), removable );
  
@@ -137,19 +142,20 @@ index 09501fc..453921f 100644
      if (type)
      {
          if (!strcmp( type, "iso9660" ))
-@@ -437,10 +461,27 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+@@ -437,10 +459,28 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
              drive_type = DEVICE_DVD;
          }
      }
 +    if (stick)
 +    {
-+        /* Only what holds a file system is a drive: not the disk around its
-+         * partitions, a card reader with no card, or what UDisks2 says to
-+         * leave alone. */
-+        if (hint_ignore || hint_system || !size || !usage || strcmp( usage, "filesystem" ))
++        /* Only what holds a file system UDisks2 can mount is a drive: not the
++         * disk around its partitions (also when it says it holds one itself, as
++         * a hybrid ISO image does), a card reader with no card, or what UDisks2
++         * says to leave alone. */
++        if (hint_ignore || hint_system || !size || !has_filesystem)
 +        {
-+            TRACE( "no drive for %s: usage %s size %s ignore %u system %u\n", debugstr_a(udi),
-+                   debugstr_a(usage), size ? "set" : "0", hint_ignore, hint_system );
++            TRACE( "no drive for %s: file system %u size %s ignore %u system %u\n", debugstr_a(udi),
++                   has_filesystem, size ? "set" : "0", hint_ignore, hint_system );
 +            udisks_removed_device( udi );  /* it may have been a drive before */
 +            return;
 +        }

@@ -31,7 +31,7 @@ optical nor floppy.
  4 files changed, 84 insertions(+), 2 deletions(-)
 
 diff --git a/dlls/mountmgr.sys/dbus.c b/dlls/mountmgr.sys/dbus.c
-index 453921f..23ebe4a 100644
+index 165e49e..dfff8e0 100644
 --- a/dlls/mountmgr.sys/dbus.c
 +++ b/dlls/mountmgr.sys/dbus.c
 @@ -381,7 +381,7 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
@@ -41,9 +41,9 @@ index 453921f..23ebe4a 100644
 -    struct hotplug_info hotplug = { "", NULL, NULL, NULL, NULL };
 +    struct hotplug_info hotplug = { NULL, "", NULL, NULL, NULL, NULL };
      dbus_uint64_t size = 0;
-     const char *usage = NULL;
-     BOOL stick;
-@@ -474,6 +474,7 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
+     BOOL stick, has_filesystem = FALSE;
+ 
+@@ -473,6 +473,7 @@ static void udisks2_add_device( const char *udi, DBusMessageIter *dict, DBusMess
              return;
          }
          if (drive_type == DEVICE_UNKNOWN) drive_type = DEVICE_HARDDISK;
