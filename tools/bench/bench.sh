@@ -21,6 +21,8 @@
 #   tools/bench/bench.sh drive NAME ACTION... tools/eeepc/drive.py on the bench's display
 #   tools/bench/bench.sh shot NAME OUT.png [CROP]  screenshot (CROP: WxH+X+Y)
 #   tools/bench/bench.sh logs NAME          the session's logs
+#   tools/bench/bench.sh usb NAME ARGS...   plug and pull out fake USB sticks
+#                                           (tools/bench/udisks-mock.py)
 #   tools/bench/bench.sh rm NAME            remove the container
 #
 # Inside: user tester (password "Secret ^1", for the lock screen), checkout
@@ -44,6 +46,20 @@ as_user() {
       cat; } | docker exec -i -u tester "$name" bash -s
 }
 
+# The system bus with the fake UDisks2 (udisks-mock.py), as root. Wine's
+# mountmgr looks for UDisks2 once, when it starts: so before the session.
+udisks() {
+    docker exec "$name" test -b /dev/sdb || return 0
+    # A PID file: pgrep -f would find the shell that runs these very lines.
+    docker exec "$name" sh -c "kill -0 \$(cat /run/udisks-mock.pid 2>/dev/null) 2>/dev/null && exit 0
+        mkdir -p /run/dbus
+        kill -0 \$(cat /run/dbus/pid 2>/dev/null) 2>/dev/null || { rm -f /run/dbus/pid; dbus-daemon --system --fork; }
+        python3 -I $checkout/tools/bench/udisks-mock.py serve > /tmp/udisks-mock.log 2>&1 &
+        echo \$! > /run/udisks-mock.pid
+        for i in \$(seq 50); do grep -q serving /tmp/udisks-mock.log && exit 0; sleep 0.1; done
+        cat /tmp/udisks-mock.log; exit 1"
+}
+
 copy_checkout() {
     tar -C "$root" --exclude=./.local --exclude=./localres --exclude=./.git -cf - . |
         docker exec -i "$name" tar -C "$checkout" -xf -
@@ -62,6 +78,14 @@ up)
         { echo 'Needs .local/wine-install (wine/container-build.sh) and .local/assets (extract/extract.py)' >&2; exit 1; }
     docker image inspect "$image" >/dev/null 2>&1 || "$0" image
     device=(); [[ -e /dev/ntsync ]] && device=(--device /dev/ntsync)
+    # Block device nodes for udisks-mock.py's sticks: loop devices of this
+    # computer bound under a stick's names. A rootless container can see them,
+    # not open them.
+    loop=20
+    for node in sdb sdb1 sdb2 sdc sdc1 sdc2 sdd sdd1; do
+        [[ -b /dev/loop$loop ]] && device+=(-v "/dev/loop$loop:/dev/$node")
+        loop=$((loop + 1))
+    done
     docker run -d --init --name "$name" --hostname "$name" --shm-size=256m "${device[@]}" \
         -v "$root/.local/wine-install:/opt/wine:ro" -v "$root/.local/assets:/opt/assets:ro" \
         "$image" sleep infinity >/dev/null
@@ -104,6 +128,7 @@ EOF
     ;;
 start)
     debug=${1:-}
+    udisks
     as_user <<EOF
 python3 - '$debug' <<'PY'
 import json, os, sys
@@ -151,6 +176,11 @@ shot)
     echo 'python3 tools/eeepc/shot.py /dev/stdout' | as_user |
         magick ppm:- ${crop:+-crop "$crop" +repage} -strip "$out"
     echo "$out ($(magick identify -format '%wx%h' "$out"))"
+    ;;
+usb)
+    udisks
+    docker exec "$name" test -b /dev/sdb || { echo "This container has no fake device nodes: make it with 'up' again" >&2; exit 1; }
+    docker exec "$name" python3 -I "$checkout/tools/bench/udisks-mock.py" "$@"
     ;;
 logs)
     echo 'for f in ~/supervisor.log ~/.local/state/win4wine/*.log; do echo "== $f"; tail -40 "$f"; done' | as_user

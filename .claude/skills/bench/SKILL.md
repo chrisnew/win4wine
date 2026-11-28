@@ -86,6 +86,25 @@ WINEPREFIX=$P WIN4WINE_EXTERNAL_SHELL=1 xvfb-run -a $W 'Z:\tmp\probes\startmenu.
 EOF
 ```
 
+## USB sticks and memory cards
+
+The container has no block devices of its own, so `tools/bench/udisks-mock.py` stands in for UDisks2 on its system bus, and
+Wine's mountmgr and the real `udisksctl` talk to it. `bench.sh usb NAME` runs it (a container made before 2026-11-28 lacks
+the device nodes: `up` a new one):
+
+```sh
+B=tools/bench/bench.sh
+$B usb w4w-usb plug holiday --label HOLIDAY      # then mount it, or let session/removable.py do it
+$B usb w4w-usb plug card --whole --bus sdio --fs exfat --no-power-off
+$B usb w4w-usb yank holiday                      # also: media card out|in, busy holiday on, list
+```
+
+A stick's files are in `/tmp/udisks-mock/NAME` in the container (`--dir DIR` for another folder); mounting links
+`/media/tester/LABEL` to them. `start` runs the mock before the session, since mountmgr looks for UDisks2 only when it starts.
+`tests/hotplug-probe.c` shows the drives, the `WM_DEVICECHANGE` messages and ejects as a program sees them.
+
+`tools/bench/pe_resources.py` lists the icons, strings and dialog templates of an XP file.
+
 ## Other devices on a network
 
 Extra containers on a user-defined Docker network see each other's multicast (rootless too): `docker network create w4w-net`,
