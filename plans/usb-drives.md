@@ -67,10 +67,32 @@ Debian image and a Raspberry Pi's SD card, both of whose partitions appeared. Fr
 **Still open, on the EeePC:**
 
 1. Deploy the 0168 fix (a new Wine).
-2. Not reported as tried: an exFAT or NTFS stick, the sounds one by one, AutoRun of each image in `~/Images`, Eject of an
-   image from the tray, Shift, and the time to the AutoPlay dialog.
-3. Windows Media Player does not start in the bench (BUGS.md): music and video's "Play" depends on it.
+2. The sounds play, and disc images work (AutoRun and Eject, reported by the user). To try: an exFAT or NTFS stick,
+   Shift, and the time to the AutoPlay dialog.
+3. To try: a stick with music or video. Windows Media Player does not start in the bench (BUGS.md), and "Play" depends
+   on it.
 4. EeePC pictures in place of the bench ones.
+5. Encrypted drives do nothing: [Encrypted drives](#encrypted-drives-luks-not-built).
+
+## Encrypted drives (LUKS): not built
+
+Plugging in a LUKS drive shows nothing at all. Seen on the EeePC 2026-11-28 with a USB hard disk: its partition is
+`IdUsage` `crypto` with an `Encrypted` interface (`CleartextDevice` `/`) and no `Filesystem`, so mountmgr gives it no
+letter (0168) and `removable.py` passes it over. Unlocking it by hand would not help: the unlocked device (`dm-N`) belongs to
+no drive of its own (to be checked), and both halves look for a removable one. It was not part of the plan's scope.
+
+What it would take:
+
+- `removable.py`: on a locked partition of a removable drive, ask for the passphrase and unlock it (`udisksctl unlock
+  --key-file`, a file in `$XDG_RUNTIME_DIR` that is deleted at once, or the same call over D-Bus without a file). polkit
+  allows `encrypted-unlock` to the active session without a password (checked on the EeePC). Follow
+  `CryptoBackingDevice` to the drive to mount what appears.
+- A passphrase dialog in XP's style (XP had nothing for this, so it is ours), with Cancel leaving the drive locked and a
+  message for a wrong passphrase. Safely Remove Hardware should list a drive that stays locked.
+- mountmgr (a change to 0168): take the removable drive of the `CryptoBackingDevice` for the unlocked device, so that it
+  is a Removable Disk.
+- Eject (a change to 0169): unmount, **lock** (`udisksctl lock`), then power off.
+- To probe: what UDisks2 reports once unlocked, and what is left behind when the drive is pulled out unlocked.
 
 ## What exists
 
