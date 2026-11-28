@@ -9,6 +9,21 @@ Each picture says where it was taken: **EeePC** (the real machine, 1024x600) or 
 and few Linux apps). The pictures are in [images/showcase/](images/showcase/). The XP screens in them are copyrighted by
 Microsoft.
 
+## USB sticks and memory cards
+
+Plugging in a stick gets XP's "Found New Hardware" the first time, a **Removable Disk** in My Computer, and the **Safely
+Remove Hardware** icon in the notification area ([plans/usb-drives.md](../plans/usb-drives.md)).
+
+<img src="images/showcase/usb-found-new-hardware.png" alt="XP's Found New Hardware balloon saying USB Mass Storage Device" width="330" />
+
+<img src="images/showcase/usb-my-computer.png" alt="My Computer with HOLIDAY (D:) under Devices with Removable Storage" width="800" />
+
+<img src="images/showcase/usb-safely-remove.png" alt="The menu of the Safely Remove Hardware icon: Safely remove USB Mass Storage Device - Drive(D:)" width="360" />
+
+<img src="images/showcase/usb-safe-to-remove.png" alt="XP's Safe To Remove Hardware balloon" width="400" />
+
+*Bench with a stand-in stick (`tools/bench/udisks-mock.py`), 2026-11-28.*
+
 ## Alt+F4 on the desktop
 
 With the desktop active (clicked, or after the last window was closed), Alt+F4 opens XP's "Turn off computer", as on XP.

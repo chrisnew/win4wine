@@ -29,8 +29,10 @@ FILES = {
     **dict.fromkeys(('scrnsave.scr', 'ss3dfo.scr', 'ssbezier.scr', 'ssflwbox.scr', 'ssmarque.scr',
                      'ssmypics.scr', 'ssmyst.scr', 'sspipes.scr', 'ssstars.scr', 'sstext3d.scr'), 'screensavers'),
     # Icons and dialog templates of the notification area's network, battery
-    # and volume icons (xp-explorer/helpers/xptray.c).
-    **dict.fromkeys(('stobject.dll', 'powercfg.cpl', 'batmeter.dll', 'netshell.dll', 'sndvol32.exe', 'xpsp2res.dll'), 'tray'),
+    # and volume icons, and the icons and texts of its hotplug balloons
+    # (xp-explorer/helpers/xptray.c).
+    **dict.fromkeys(('stobject.dll', 'powercfg.cpl', 'batmeter.dll', 'netshell.dll', 'sndvol32.exe', 'xpsp2res.dll',
+                     'hotplug.dll', 'newdev.dll'), 'tray'),
     # Internet Explorer 6 for the desktop's Internet icon, installed beside its
     # iexplore.exe (prefix/extras.py), never over Wine's system DLLs.
     **dict.fromkeys(('iexplore.exe', 'mshtml.dll', 'mshtmled.dll', 'mshtmler.dll', 'mshtml.tlb', 'jscript.dll',
@@ -141,7 +143,7 @@ def missing_groups(output):
     """The ADDED_GROUPS an extraction made before them lacks."""
     def has(path):
         return (output / path).exists()
-    checks = {'cpl': 'cpl/desk.cpl', 'tray': 'tray/xpsp2res.dll', 'ie': 'ie/iexplore.exe',
+    checks = {'cpl': 'cpl/desk.cpl', 'tray': 'tray/hotplug.dll', 'ie': 'ie/iexplore.exe',
               'wmp': 'wmp/wmplayer.exe', 'inf': 'inf/hivecls.inf', 'shell': 'shell/shimgvw.dll',
               'media': 'media', 'duser': 'system32/duser.dll', 'intl': 'intl/input.dll',
               'themes': 'themes/Windows Classic.theme', 'screensavers': 'screensavers/ssstars.scr',

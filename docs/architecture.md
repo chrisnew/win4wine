@@ -401,6 +401,27 @@ files too; Wine never reads the block device. Linux and Windows are linked only 
   that moment keeps showing "Removable Disk" until it is refreshed again.
 - **Internal disks** are not added, as before: only drives UDisks2 reports as removable.
 
+### XP's hotplug UI (`xp-explorer/helpers/xptray.c`)
+
+`xptray.exe`, which already stands in for XP's `systray.exe`, also does what XP's PnP manager and `stobject.dll` did. It
+follows `WM_DEVICECHANGE` and uses Windows APIs only, so it treats sticks, cards and disc images alike. A drive is a
+**stick** (real hardware) if its storage descriptor says removable media on a USB or SD bus; everything else that is
+`DRIVE_CDROM` is a disc image to it.
+
+- **Sounds**: `DeviceConnect` when a drive arrives and `DeviceDisconnect` when its letter goes, from XP's sound scheme
+  (Sounds control panel), once for the partitions of one stick. Drives there at logon are silent.
+- **Found New Hardware**: for a stick seen the first time, XP's two balloons. Seen serial numbers are kept in
+  `HKCU\Software\win4wine\Hotplug\Seen`.
+- **Safely Remove Hardware**: the icon shows while a stick or disc image is in. A click lists XP's "Safely remove USB Mass
+  Storage Device - Drive(E:)" (partitions of one stick in one entry; "SD Storage Device" for a card on an SD bus, "Disc
+  Image" for an image). Choosing it sends the volume `IOCTL_STORAGE_EJECT_MEDIA`, as XP's Eject does, from a thread of its
+  own. A busy drive gets XP's "Problem Ejecting" message.
+- **"Safe To Remove Hardware"** also after XP's own Eject: a stick that was unmounted before its letter went was ejected,
+  one whose letter goes while mounted was pulled out. A card whose reader cannot be powered off stays; the balloon comes 3 s
+  after it was unmounted.
+- The icons and texts are XP's, from `stobject.dll`, `hotplug.dll` and `newdev.dll` in `C:\xp\tray`. It sets timers only
+  while a balloon is up, so an idle session wakes it no more than before.
+
 ## The Recycle Bin
 
 XP's own shell32 does all of it: a deleted file moves to `RECYCLER\<user SID>` on its drive under a new name (`D`, the drive's

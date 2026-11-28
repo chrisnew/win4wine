@@ -71,7 +71,7 @@ compile "$root/.local/bridge/keyboard-watch.exe" "$root/session/keyboard-watch.c
 helpers=$root/xp-explorer/helpers
 i686-w64-mingw32-windres -I "$helpers" "$helpers/xptray.rc" -O coff -o "$root/.local/bridge/xptray.res"
 compile "$root/.local/bridge/xptray.exe" -std=gnu11 "$helpers/xptray.c" "$root/.local/bridge/xptray.res" \
-    -mwindows -lcomctl32 -lgdi32 -luser32 -lkernel32
+    -mwindows -lcomctl32 -lgdi32 -luser32 -lkernel32 -ladvapi32 -lwinmm
 rm -f "$root/.local/bridge/xptray.res"
 compile "$root/.local/bridge/startmenu.exe" -std=gnu11 "$helpers/startmenu.c" -lshell32 -lole32 -luuid -ladvapi32 -luser32
 compile "$root/.local/bridge/iexplore.exe" -std=gnu11 "$helpers/iexplore.c" -mwindows -lshell32

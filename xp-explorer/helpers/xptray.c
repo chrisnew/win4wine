@@ -1,7 +1,8 @@
 /* Network, power and volume icons for XP's notification area.
  *
  * On XP these came from systray.exe/stobject.dll and netshell.dll; under Wine
- * there are none, so this program reads the Linux state instead:
+ * there are none, so this program reads the Linux state instead (and has XP's
+ * hotplug UI for removable drives, below):
  *   power    /sys/class/power_supply (battery level, AC, time remaining)
  *   network  /sys/class/net, /proc/net/route and nmcli (SSID, signal, speed)
  *   volume   a bash helper on pactl subscribe (PulseAudio) or wpctl (PipeWire)
@@ -16,7 +17,10 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <commctrl.h>
+#include <mmsystem.h>
 #include <shellapi.h>
+#include <winioctl.h>
+#include <dbt.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +33,16 @@
 #define ID_POWER     1
 #define ID_NETWORK   2
 #define ID_VOLUME    3
-#define ID_COUNT     4
+#define ID_HOTPLUG   4
+#define ID_NEW_HARDWARE 5
+#define ID_COUNT     6
+#define WM_DRIVE     (WM_APP + 4)  /* wParam: the drive; lParam: event and flags */
+#define WM_EJECTED   (WM_APP + 5)  /* wParam: the drive; lParam: the error */
+#define WM_NOT_FORMATTED (WM_APP + 6)  /* wParam: the drive */
+#define TIMER_NEW_HARDWARE 8
+#define TIMER_BALLOON 9
+#define TIMER_EJECTED 100          /* + the drive */
+#define CMD_EJECT    300           /* + the drive */
 #define TIMER_POLL   1
 #define TIMER_FIND   2
 #define TIMER_APPLY  3
@@ -158,6 +171,8 @@ static struct { const WCHAR *file; int id; HICON icon; } xp_icons[] = {
     { L"xpsp2res.dll", 1003, NULL }, /* 10 wireless connected */
     { L"xpsp2res.dll", 1004, NULL }, /* 11 wireless not connected */
     { L"xpsp2res.dll", 1018, NULL }, /* 12 wireless limited connectivity */
+    { L"stobject.dll", 210, NULL },  /* 13 safely remove hardware */
+    { L"newdev.dll", 200, NULL },    /* 14 found new hardware */
 };
 
 static HICON xp_icon(int index)
@@ -1082,6 +1097,306 @@ static void show_network(void)
     set_icon(ID_NETWORK, TRUE, xp_icon(index), tip, balloon ? title : NULL, balloon ? info : NULL, NIIF_INFO);
 }
 
+/* ---- XP's hotplug UI ----------------------------------------------------
+ * On XP these came from the PnP manager (the Found New Hardware balloons),
+ * stobject.dll with hotplug.dll (the Safely Remove Hardware icon) and the Shell
+ * Hardware Detection service (AutoPlay). Here they follow the WM_DEVICECHANGE
+ * messages that Wine's mountmgr.sys broadcasts for USB sticks, memory cards and
+ * mounted disc images (Wine patch 0163): the sounds, the balloons, the icon and
+ * its menu, and autoplay.exe for each drive that arrives. Windows APIs only. */
+
+typedef struct
+{
+    BOOL listed;            /* a removable drive or disc the notifications told of */
+    BOOL media;             /* it has a volume */
+    BOOL stick;             /* a USB stick or memory card: real hardware */
+    BOOL sd;                /* on an SD bus */
+    ULONGLONG unmounted;    /* when its volume went */
+    WCHAR serial[128];      /* the drive's, the same for its partitions */
+} DRIVE;
+
+static DRIVE drives[26];
+static BOOL ejecting[26];           /* by us, from the menu */
+static WCHAR safe_serial[128];      /* the drive last said to be safe to remove, */
+static ULONGLONG safe_time;         /* and when */
+static ULONGLONG balloon_until;     /* the Safely Remove icon stays for its balloon */
+static int new_hardware_stage;
+
+/* String ID of XP's FILE as it stands, with its %s, or FALLBACK. */
+static void xp_string(const WCHAR *file, UINT id, const WCHAR *fallback, WCHAR *out, int size)
+{
+    HMODULE module = xp_module(file);
+    if (!module || !LoadStringW(module, id, out, size)) lstrcpynW(out, fallback, size);
+}
+
+/* What the drive's kind is called, as XP's drivers named their devices. */
+static const WCHAR *device_name(const DRIVE *drive)
+{
+    if (!drive->stick) return own_text(L"Disc Image", L"ディスク イメージ");
+    if (drive->sd) return L"SD Storage Device";
+    return own_text(L"USB Mass Storage Device", L"USB 大容量記憶装置デバイス");
+}
+
+/* Describes drive INDEX (0 is A:); FALSE unless it is removable or a disc. */
+static BOOL query_drive(int index, DRIVE *drive)
+{
+    WCHAR root[] = L"A:\\", volume[64];
+    DWORD serial = 0, done;
+    UINT type;
+    HANDLE device;
+
+    memset(drive, 0, sizeof(*drive));
+    root[0] = L'A' + index;
+    type = GetDriveTypeW(root);
+    if (type != DRIVE_REMOVABLE && type != DRIVE_CDROM) return FALSE;
+    drive->media = GetVolumeInformationW(root, NULL, 0, &serial, NULL, NULL, NULL, 0);
+    if (!GetVolumeNameForVolumeMountPointW(root, volume, ARRAYSIZE(volume))) return TRUE;
+    volume[wcslen(volume) - 1] = 0;
+    device = CreateFileW(volume, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+    if (device != INVALID_HANDLE_VALUE)
+    {
+        STORAGE_PROPERTY_QUERY query = {StorageDeviceProperty, PropertyStandardQuery, {0}};
+        union { STORAGE_DEVICE_DESCRIPTOR d; char bytes[1024]; } answer;
+        memset(&answer, 0, sizeof(answer));
+        if (DeviceIoControl(device, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), &answer,
+                            sizeof(answer) - 1, &done, NULL))
+        {
+            /* BusTypeUsb and BusTypeSd, which older headers lack */
+            drive->stick = answer.d.RemovableMedia && (answer.d.BusType == 7 || answer.d.BusType == 12);
+            drive->sd = answer.d.BusType == 12;
+            if (drive->stick && answer.d.SerialNumberOffset && answer.d.SerialNumberOffset < sizeof(answer) - 1)
+                MultiByteToWideChar(CP_ACP, 0, answer.bytes + answer.d.SerialNumberOffset, -1, drive->serial,
+                                    ARRAYSIZE(drive->serial) - 1);
+        }
+        CloseHandle(device);
+    }
+    if (drive->stick && !drive->serial[0])
+        swprintf(drive->serial, ARRAYSIZE(drive->serial), L"volume %08lx", serial);
+    return TRUE;
+}
+
+static void hotplug_icon(void)
+{
+    WCHAR tip[64];
+    BOOL show = GetTickCount64() < balloon_until;
+    for (int i = 2; i < 26; i++) show |= drives[i].listed && drives[i].media;
+    xp_string(L"stobject.dll", 211, L"Safely Remove Hardware", tip, ARRAYSIZE(tip));
+    set_icon(ID_HOTPLUG, show, show ? xp_icon(13) : NULL, tip, NULL, NULL, 0);
+}
+
+/* "Safe To Remove Hardware", once for a drive and all its partitions. */
+static void safe_to_remove(const DRIVE *drive)
+{
+    WCHAR title[64], format[256], text[256], tip[64];
+    ULONGLONG now = GetTickCount64();
+    if (drive->serial[0] && !wcscmp(drive->serial, safe_serial) && now - safe_time < 10000) return;
+    wcscpy(safe_serial, drive->serial);
+    safe_time = now;
+    xp_string(L"hotplug.dll", 2261, L"Safe To Remove Hardware", title, ARRAYSIZE(title));
+    xp_string(L"hotplug.dll", 2260, L"The '%s' device can now be safely removed from the system.", format,
+              ARRAYSIZE(format));
+    insert_text(format, device_name(drive), text, ARRAYSIZE(text));
+    xp_string(L"stobject.dll", 211, L"Safely Remove Hardware", tip, ARRAYSIZE(tip));
+    balloon_until = now + 8000;
+    SetTimer(window, TIMER_BALLOON, 8100, NULL);
+    set_icon(ID_HOTPLUG, TRUE, xp_icon(13), tip, title, text, NIIF_INFO);
+}
+
+static void new_hardware_balloon(const WCHAR *text)
+{
+    WCHAR title[64];
+    xp_string(L"newdev.dll", 2123, L"Found New Hardware", title, ARRAYSIZE(title));
+    set_icon(ID_NEW_HARDWARE, TRUE, xp_icon(14), title, title, text, NIIF_INFO);
+}
+
+/* The balloons of a stick or card reader seen for the first time. */
+static void found_new_hardware(const DRIVE *drive)
+{
+    HKEY key;
+    DWORD one = 1;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\win4wine\\Hotplug\\Seen", 0, NULL, 0, KEY_ALL_ACCESS,
+                        NULL, &key, NULL)) return;
+    if (RegQueryValueExW(key, drive->serial, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
+    {
+        RegSetValueExW(key, drive->serial, 0, REG_DWORD, (const BYTE *)&one, sizeof(one));
+        new_hardware_stage = 1;
+        new_hardware_balloon(device_name(drive));
+        SetTimer(window, TIMER_NEW_HARDWARE, 2500, NULL);
+    }
+    RegCloseKey(key);
+}
+
+static void new_hardware_timer(void)
+{
+    if (new_hardware_stage == 1)
+    {
+        WCHAR text[128];
+        xp_string(L"newdev.dll", 2151, L"Your new hardware is installed and ready to use.", text, ARRAYSIZE(text));
+        new_hardware_stage = 2;
+        new_hardware_balloon(text);
+        SetTimer(window, TIMER_NEW_HARDWARE, 7000, NULL);
+    }
+    else
+    {
+        KillTimer(window, TIMER_NEW_HARDWARE);
+        new_hardware_stage = 0;
+        set_icon(ID_NEW_HARDWARE, FALSE, NULL, L"", NULL, NULL, 0);
+    }
+}
+
+/* The event of XP's sound scheme, once for the partitions of one drive. */
+static void device_sound(BOOL arrival)
+{
+    static ULONGLONG played[2];
+    ULONGLONG now = GetTickCount64();
+    if (played[arrival] && now - played[arrival] < 1500) return;
+    played[arrival] = now;
+    PlaySoundW(arrival ? L"DeviceConnect" : L"DeviceDisconnect", NULL, SND_ALIAS | SND_ASYNC | SND_NODEFAULT);
+}
+
+static void autoplay(int index)
+{
+    static const WCHAR program[] = L"C:\\xp\\bin\\autoplay.exe";
+    WCHAR line[64];
+    STARTUPINFOW startup = {.cb = sizeof(startup)};
+    PROCESS_INFORMATION process;
+    swprintf(line, ARRAYSIZE(line), L"\"%ls\" %c:", program, L'A' + index);
+    if (!CreateProcessW(program, line, NULL, NULL, FALSE, 0, NULL, NULL, &startup, &process)) return;
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+}
+
+static void drive_arrived(int index)
+{
+    DRIVE drive;
+    BOOL known = drives[index].listed, had_media = known && drives[index].media;
+    /* Mounted again shortly after it was unmounted: an eject that failed. */
+    BOOL again = known && drives[index].unmounted && GetTickCount64() - drives[index].unmounted < 10000;
+
+    if (!query_drive(index, &drive)) return;
+    drive.listed = drive.media = TRUE;
+    KillTimer(window, TIMER_EJECTED + index);
+    drives[index] = drive;
+    if (!had_media)
+    {
+        if (!known)
+        {
+            device_sound(TRUE);
+            if (drive.stick) found_new_hardware(&drive);
+        }
+        if (!again && !ejecting[index]) autoplay(index);
+    }
+    hotplug_icon();
+}
+
+static void drive_removed(int index, UINT flags)
+{
+    DRIVE drive = drives[index];
+    if (!drive.listed) return;
+    if (flags & DBTF_MEDIA)
+    {
+        /* Unmounted. A stick goes next, once it is powered off; a card whose
+         * reader cannot be powered off stays, and is safe to take out. */
+        drives[index].media = FALSE;
+        drives[index].unmounted = GetTickCount64();
+        if (drive.stick) SetTimer(window, TIMER_EJECTED + index, 3000, NULL);
+    }
+    else
+    {
+        KillTimer(window, TIMER_EJECTED + index);
+        memset(&drives[index], 0, sizeof(drives[index]));
+        device_sound(FALSE);
+        /* Unmounted first: ejected, not pulled out. */
+        if (drive.stick && !drive.media) safe_to_remove(&drive);
+    }
+    hotplug_icon();
+}
+
+/* The drives there at the start: listed, without sounds, balloons or AutoPlay. */
+static void scan_drives(void)
+{
+    DWORD present = GetLogicalDrives();
+    for (int i = 2; i < 26; i++)
+        if ((present & (1u << i)) && query_drive(i, &drives[i]))
+            drives[i].listed = drives[i].media;
+}
+
+/* Ejects a drive as XP's Eject does. In a thread of its own: unmounting writes
+ * what is not yet written, and mountmgr.sys tells this window of it meanwhile. */
+static DWORD WINAPI eject_thread(void *parameter)
+{
+    int index = (int)(INT_PTR)parameter;
+    WCHAR root[] = L"A:\\", volume[64];
+    DWORD done, error = 0;
+    HANDLE device = INVALID_HANDLE_VALUE;
+
+    root[0] = L'A' + index;
+    if (GetVolumeNameForVolumeMountPointW(root, volume, ARRAYSIZE(volume)))
+    {
+        volume[wcslen(volume) - 1] = 0;
+        device = CreateFileW(volume, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+    }
+    if (device == INVALID_HANDLE_VALUE) error = GetLastError();
+    else
+    {
+        if (!DeviceIoControl(device, IOCTL_STORAGE_EJECT_MEDIA, NULL, 0, NULL, 0, &done, NULL))
+            error = GetLastError();
+        CloseHandle(device);
+    }
+    PostMessageW(window, WM_EJECTED, index, error);
+    return 0;
+}
+
+static void eject(int index)
+{
+    HANDLE thread;
+    if (ejecting[index]) return;
+    ejecting[index] = TRUE;
+    if ((thread = CreateThread(NULL, 0, eject_thread, (void *)(INT_PTR)index, 0, NULL))) CloseHandle(thread);
+    else ejecting[index] = FALSE;
+}
+
+/* XP's "Safely remove USB Mass Storage Device - Drive(E:)", for each drive. */
+static void hotplug_menu(void)
+{
+    HMENU menu = CreatePopupMenu();
+    WCHAR format[128], drive_format[32], letters[96], name[192], item[256];
+    BOOL done[26] = {FALSE};
+    POINT cursor;
+    int command;
+
+    xp_string(L"stobject.dll", 216, L"Safely remove %s", format, ARRAYSIZE(format));
+    for (int i = 2; i < 26; i++)
+    {
+        int count = 0;
+        if (done[i] || !drives[i].listed || !drives[i].media) continue;
+        letters[0] = 0;
+        /* The partitions of one drive are one entry. */
+        for (int j = i; j < 26; j++)
+        {
+            if (!drives[j].listed || !drives[j].media) continue;
+            if (j != i && (!drives[i].stick || wcscmp(drives[i].serial, drives[j].serial))) continue;
+            done[j] = TRUE;
+            swprintf(letters + wcslen(letters), ARRAYSIZE(letters) - wcslen(letters), L"%ls%c:",
+                     count++ ? L", " : L"", L'A' + j);
+        }
+        wcscpy(drive_format, count > 1 ? own_text(L"Drives", L"ドライブ") : own_text(L"Drive", L"ドライブ"));
+        swprintf(name, ARRAYSIZE(name), L"%ls - %ls(%ls)", device_name(&drives[i]), drive_format, letters);
+        insert_text(format, name, item, ARRAYSIZE(item));
+        AppendMenuW(menu, MF_STRING, CMD_EJECT + i, item);
+    }
+    if (GetMenuItemCount(menu) > 0)
+    {
+        GetCursorPos(&cursor);
+        SetForegroundWindow(window);
+        command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN, cursor.x, cursor.y, 0,
+                                 window, NULL);
+        PostMessageW(window, WM_NULL, 0, 0);
+        if (command >= CMD_EJECT) eject(command - CMD_EJECT);
+    }
+    DestroyMenu(menu);
+}
+
 static void poll(void)
 {
     static int last_up = -2;
@@ -1105,6 +1420,7 @@ static void add_all(void)
     for (int i = 0; i < ID_COUNT; i++) icons[i].shown = FALSE;
     tick = 0;
     poll();
+    hotplug_icon();
 }
 
 static void run_settings(UINT command);
@@ -1121,7 +1437,7 @@ static void run_settings(UINT command);
 static HMODULE xp_module(const WCHAR *file)
 {
     /* Loaded once each: the tips read their strings every second. */
-    static struct { const WCHAR *file; HMODULE module; } loaded[8];
+    static struct { const WCHAR *file; HMODULE module; } loaded[12];
     static unsigned count;
     WCHAR path[MAX_PATH];
     HMODULE module;
@@ -2719,8 +3035,61 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
     }
     switch (message)
     {
+    case WM_DEVICECHANGE:
+    {
+        const DEV_BROADCAST_VOLUME *volume = (const DEV_BROADCAST_VOLUME *)lparam;
+        if ((wparam == DBT_DEVICEARRIVAL || wparam == DBT_DEVICEREMOVECOMPLETE) && volume &&
+            volume->dbcv_devicetype == DBT_DEVTYP_VOLUME)
+            /* Answer at once: the broadcaster waits. */
+            for (int i = 2; i < 26; i++)
+                if (volume->dbcv_unitmask & (1u << i))
+                    PostMessageW(hwnd, WM_DRIVE, i, MAKELPARAM(wparam == DBT_DEVICEARRIVAL, volume->dbcv_flags));
+        return TRUE;
+    }
+    case WM_DRIVE:
+        if (LOWORD(lparam)) drive_arrived((int)wparam);
+        else drive_removed((int)wparam, HIWORD(lparam));
+        return 0;
+    case WM_EJECTED:
+    {
+        DRIVE drive = drives[wparam];
+        ejecting[wparam] = FALSE;
+        if (!lparam) safe_to_remove(&drive);
+        else
+        {
+            WCHAR title[128], format[256], text[256];
+            xp_string(L"hotplug.dll", 2254, L"Problem Ejecting %s", format, ARRAYSIZE(format));
+            insert_text(format, device_name(&drive), title, ARRAYSIZE(title));
+            xp_string(L"hotplug.dll", 1206, L"The device '%s' cannot be stopped right now.  Try stopping the "
+                      L"device again later.", format, ARRAYSIZE(format));
+            insert_text(format, own_text(L"Generic volume", L"汎用ボリューム"), text, ARRAYSIZE(text));
+            MessageBoxW(NULL, text, title, MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST);
+        }
+        return 0;
+    }
+    case WM_NOT_FORMATTED:
+    {
+        WCHAR title[64], text[128];
+        lstrcpynW(title, own_text(L"Disk is not formatted", L"フォーマットされていないディスク"), ARRAYSIZE(title));
+        swprintf(text, ARRAYSIZE(text), own_text(L"The disk in drive %c: is not formatted.",
+                 L"ドライブ %c: のディスクはフォーマットされていません。"), (WCHAR)wparam);
+        MessageBoxW(NULL, text, title, MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
+        return 0;
+    }
     case WM_TIMER:
-        if (wparam == TIMER_FIND)
+        if (wparam >= TIMER_EJECTED && wparam < TIMER_EJECTED + 26)
+        {
+            int index = (int)wparam - TIMER_EJECTED;
+            KillTimer(hwnd, wparam);
+            if (drives[index].listed && !drives[index].media) safe_to_remove(&drives[index]);
+        }
+        else if (wparam == TIMER_NEW_HARDWARE) new_hardware_timer();
+        else if (wparam == TIMER_BALLOON)
+        {
+            KillTimer(hwnd, TIMER_BALLOON);
+            hotplug_icon();
+        }
+        else if (wparam == TIMER_FIND)
         {
             if (find_tray())
             {
@@ -2750,7 +3119,9 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
         switch (LOWORD(lparam))
         {
         case WM_LBUTTONUP:
-            if (wparam == ID_VOLUME) show_popup();
+            if (wparam == ID_HOTPLUG) hotplug_menu();
+            else if (wparam == ID_NEW_HARDWARE) break;
+            else if (wparam == ID_VOLUME) show_popup();
             else if (wparam == ID_NETWORK) show_wireless_networks();
             else show_power_meter();
             break;
@@ -2758,7 +3129,9 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
             if (wparam == ID_VOLUME) run_settings(CMD_MIXER);
             break;
         case WM_RBUTTONUP:
-            context_menu((UINT)wparam);
+            if (wparam == ID_HOTPLUG) hotplug_menu();
+            else if (wparam == ID_NEW_HARDWARE) break;
+            else context_menu((UINT)wparam);
             break;
         }
         return 0;
@@ -2779,6 +3152,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, WCHAR *command_line,
     MSG message;
     BOOL open_connections = command_line && wcsstr(command_line, L"connections") != NULL;
     BOOL open_wireless = command_line && wcsstr(command_line, L"wireless") != NULL;
+    const WCHAR *not_formatted = command_line ? wcsstr(command_line, L"--not-formatted ") : NULL;
     (void)previous; (void)show;
 
     CreateMutexW(NULL, TRUE, L"XPTrayHelperRunning");
@@ -2790,8 +3164,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, WCHAR *command_line,
             if (existing) SendMessageTimeoutW(existing, open_wireless ? WM_OPEN_WIRELESS : WM_OPEN_CONNECTIONS,
                                              0, 0, SMTO_ABORTIFHUNG, 3000, NULL);
         }
+        if (not_formatted)
+        {
+            HWND existing = FindWindowW(L"XPTrayHelper", L"XP notification icons");
+            if (existing) PostMessageW(existing, WM_NOT_FORMATTED, not_formatted[16], 0);
+        }
         return 0;
     }
+    /* session.json's "removable": {"forget_autoplay": true} */
+    if (GetEnvironmentVariableW(L"WIN4WINE_AUTOPLAY_FORGET", NULL, 0))
+        RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\"
+                       L"AutoplayHandlers\\UserChosenExecuteHandlers");
     InitCommonControlsEx(&controls);
     RegisterClassW(&main_class);
     /* stobject's Power Meter template names systray's own dialog class. */
@@ -2805,6 +3188,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, WCHAR *command_line,
     taskbar_created = RegisterWindowMessageW(L"TaskbarCreated");
     window = CreateWindowW(L"XPTrayHelper", L"XP notification icons", WS_POPUP, 0, 0, 0, 0, NULL, NULL, instance, NULL);
     if (!window) return 1;
+    scan_drives();
     if (open_connections) PostMessageW(window, WM_OPEN_CONNECTIONS, 0, 0);
     if (open_wireless) PostMessageW(window, WM_OPEN_WIRELESS, 0, 0);
     SetTimer(window, TIMER_FIND, 500, NULL);
